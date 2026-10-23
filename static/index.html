@@ -102,18 +102,30 @@
           <button type="submit" data-i18n="home.create_button"></button>
         </form>
       </div>
-      <div class="home-toolbar">
-        <h2 class="section-title" data-i18n="home.boards_heading"></h2>
-        <input id="board-search" type="search" autocomplete="off" data-i18n-attr="placeholder:home.search_placeholder,aria-label:home.search_label" />
-        <button type="button" id="new-folder-button" class="secondary small" data-i18n="home.new_folder"></button>
-      </div>
-      <div id="board-folders" class="board-folders"></div>
-      <p id="no-boards" class="muted" data-i18n="home.no_boards" hidden></p>
+      <input id="board-search" class="home-search" type="search" autocomplete="off" data-i18n-attr="placeholder:home.search_placeholder,aria-label:home.search_label" />
       <p id="no-matches" class="muted" data-i18n="home.no_matches" hidden></p>
-      <div id="shared-cards-section" hidden>
-        <h2 class="section-title" data-i18n="home.shared_cards_heading"></h2>
-        <ul id="shared-cards" class="link-list card"></ul>
-      </div>
+
+      <!-- Boards you own, in your folders. -->
+      <section id="own-section" class="home-section">
+        <div class="home-section-head">
+          <h2 class="section-title" data-i18n="home.boards_heading"></h2>
+          <button type="button" id="new-folder-button" class="secondary small" data-i18n="home.new_folder"></button>
+        </div>
+        <div id="board-folders" class="board-folders"></div>
+        <p id="no-boards" class="muted" data-i18n="home.no_boards" hidden></p>
+      </section>
+
+      <!-- Other people's boards you are on, and single cards shared with you. -->
+      <section id="shared-section" class="home-section" hidden>
+        <div class="home-section-head">
+          <h2 class="section-title" data-i18n="home.shared_heading"></h2>
+        </div>
+        <div id="shared-boards" class="boards-grid"></div>
+        <div id="shared-cards-section" hidden>
+          <h3 class="home-subheading" data-i18n="home.shared_cards_heading"></h3>
+          <ul id="shared-cards" class="link-list card"></ul>
+        </div>
+      </section>
     </section>
 
     <section id="signed-in" hidden>

@@ -246,7 +246,7 @@ p.due-chip { margin: 0.5rem 0; }
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  min-height: 5.5rem;
+  min-height: 4rem;
   padding: 0.85rem 1rem;
   color: var(--fg);
   text-decoration: none;
@@ -257,7 +257,6 @@ p.due-chip { margin: 0.5rem 0; }
 }
 .board-tile:hover { border-color: var(--tone); }
 .board-tile-title { font-weight: 700; font-size: 1.05rem; }
-.board-tile-role { font-size: 0.8rem; color: var(--fg-muted); }
 
 .link-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; }
 .link-row {
@@ -756,9 +755,12 @@ input.card-number:focus { color: var(--fg); background: var(--bg); border-color:
 
 
 /* Home: search, folders, and tiles with a move-to-folder button. */
-.home-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem; margin: 0.5rem 0 0.75rem; }
-.home-toolbar .section-title { flex: 1 1 auto; margin: 0; }
-.home-toolbar input[type="search"] { flex: 1 1 12rem; max-width: 20rem; width: auto; }
+.home-search { width: 100%; margin: 0.25rem 0 0.5rem; }
+/* "Your boards" and "Shared with you": two clearly separate blocks. */
+.home-section { margin-top: 1.25rem; padding-top: 1.25rem; border-top: 1px solid var(--border); }
+.home-section-head { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.9rem; }
+.home-section-head .section-title { flex: 1 1 auto; margin: 0; font-size: 1.25rem; }
+.home-subheading { margin: 1.25rem 0 0.6rem; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--fg-muted); }
 .board-folders { display: flex; flex-direction: column; gap: 1rem; }
 .folder-head { display: flex; align-items: center; gap: 0.25rem; margin-bottom: 0.5rem; }
 .folder-toggle {

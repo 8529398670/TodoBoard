@@ -282,8 +282,9 @@ home:
   # Lists every new board starts with, comma separated.
   default_lists: "To do, Doing, Done"
   boards_heading: "Your boards"
-  no_boards: "No boards yet. Create one above, or ask someone to add you to theirs."
-  shared_cards_heading: "Cards shared with you"
+  no_boards: "You have no boards of your own yet. Create one above."
+  shared_heading: "Shared with you"
+  shared_cards_heading: "Single cards"
   search_label: "Search boards"
   search_placeholder: "Search boards…"
   no_matches: "No boards match."

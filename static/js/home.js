@@ -1,6 +1,7 @@
-// The boards home: every board I own or am on, sorted into my own folders,
-// a search box over them, cards shared with me from boards I am not on, and a
-// form to start a board. A new board gets the lists named in language.yaml
+// The boards home, in two parts: "Your boards" -- the ones I own, sorted
+// into my own folders -- and "Shared with you" -- other people's boards I am
+// on, and single cards shared with me from boards I am not on. A search box
+// over both, and a form to start a board. A new board gets the lists named in language.yaml
 // (home.default_lists), so they come out in whatever language the app is set
 // to.
 //
@@ -8,6 +9,7 @@
 // shared board here moves it on my home page and nobody else's.
 const Home = {
   boards: [],
+  shared: [],
   folders: [],
 
   async init( me ) {
@@ -26,9 +28,11 @@ const Home = {
       App.showError( error.message );
       return;
     }
-    this.boards = result.boards;
+    this.boards = result.boards.filter( function ( board ) { return board.role === "owner"; } );
+    this.shared = result.boards.filter( function ( board ) { return board.role !== "owner"; } );
     this.folders = result.folders || [];
     this.render();
+    this.renderShared();
 
     const shared = Dom.get( "shared-cards" );
     Dom.clear( shared );
@@ -37,10 +41,21 @@ const Home = {
       Markdown.renderInline( item.card_title , link );
       shared.appendChild( Dom.el( "li" , { class: "link-row" , children: [
         link,
-        Dom.el( "span" , { class: "muted" , text: item.board_title + " · " + T( "share.mode_" + item.mode ) } ),
+        Dom.el( "span" , { class: "muted" , text: item.board_title } ),
       ] } ) );
     } );
     Dom.show( Dom.get( "shared-cards-section" ) , result.shared_cards.length > 0 );
+    Dom.show( Dom.get( "shared-section" ) , this.shared.length > 0 || result.shared_cards.length > 0 );
+    this.filter();
+  },
+
+  // Boards other people own and I am on: one plain grid. Folders are for
+  // sorting your own boards.
+  renderShared() {
+    const grid = Dom.get( "shared-boards" );
+    Dom.clear( grid );
+    this.shared.forEach( ( board ) => grid.appendChild( this.tile( board , false ) ) );
+    Dom.show( grid , this.shared.length > 0 );
   },
 
   // Collapsed folders, remembered in this browser: folder ids.
@@ -118,14 +133,15 @@ const Home = {
     section.querySelector( ".boards-grid" ).hidden = !open;
   },
 
-  tile( board ) {
+  // filable: one of my own boards, which gets the move-to-folder menu.
+  tile( board , filable ) {
     const wrap = Dom.el( "div" , { class: "board-tile-wrap" , attrs: { "data-board-id": board.id } } );
     const tile = Dom.el( "a" , { class: "board-tile color-" + ( board.color || "none" ) , attrs: { href: "/b/" + ( board.slug || board.id ) } } );
     const title = Dom.el( "span" , { class: "board-tile-title" } );
     Markdown.renderInline( board.title , title );
     tile.appendChild( title );
-    tile.appendChild( Dom.el( "span" , { class: "board-tile-role" , text: T( "share.role_" + board.role ) } ) );
     wrap.appendChild( tile );
+    if ( filable === false ) return wrap;
     wrap.appendChild( Dom.el( "button" , {
       class: "icon-button small tile-menu",
       text: T( "board.menu_symbol" ),
@@ -172,6 +188,18 @@ const Home = {
   // folder with a match opens and the rest step aside.
   filter() {
     const query = Dom.get( "board-search" ).value.trim().toLowerCase();
+    let sharedShown = 0;
+    Dom.all( ".board-tile-wrap" , Dom.get( "shared-boards" ) ).forEach( ( wrap ) => {
+      const board = this.shared.find( function ( item ) { return item.id === Number( wrap.getAttribute( "data-board-id" ) ); } );
+      const hit = !query || ( board && board.title.toLowerCase().indexOf( query ) >= 0 );
+      wrap.hidden = !hit;
+      if ( hit ) sharedShown += 1;
+    } );
+    Dom.all( "li" , Dom.get( "shared-cards" ) ).forEach( function ( row ) {
+      const hit = !query || row.textContent.toLowerCase().indexOf( query ) >= 0;
+      row.hidden = !hit;
+      if ( hit ) sharedShown += 1;
+    } );
     const closed = this.collapsed();
     let shown = 0;
     Dom.all( ".folder" , Dom.get( "board-folders" ) ).forEach( ( section ) => {
@@ -189,7 +217,7 @@ const Home = {
       section.hidden = !!query && matches === 0 && !folderMatches;
       this.showFolder( section , query ? true : closed.indexOf( folderId ) < 0 );
     } );
-    Dom.show( Dom.get( "no-matches" ) , !!query && shown === 0 && this.boards.length > 0 );
+    Dom.show( Dom.get( "no-matches" ) , !!query && shown + sharedShown === 0 );
   },
 
   // New folder (folder null), or rename / delete one.
