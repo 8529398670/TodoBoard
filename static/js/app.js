@@ -132,6 +132,7 @@ const App = {
     // Each screen owns its own file and its own init(). This is the one line
     // that knows the API keys screen exists.
     Pin.init( me );
+    LoginLink.init( me );
     await Keys.init( me );
 
     if ( me.role !== "admin" ) return;

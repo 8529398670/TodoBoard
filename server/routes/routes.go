@@ -90,6 +90,9 @@ func ( handlers *Handlers ) Register( app *fiber.App ) {
 	// A session only: a PIN lets its holder sign in through an invite link,
 	// so a key that could set one could turn itself into a session.
 	account.Post( "/account/pin" , handlers.Guard.RequireSession , handlers.SetPin )
+	// Also a session only: a login link becomes a session, so a key that
+	// could mint one could do the same.
+	account.Post( "/account/login-link" , handlers.Guard.RequireSession , handlers.IssueOwnLoginLink )
 	account.Post( "/logout" , handlers.Logout )
 	account.Get( "/team" , handlers.ListTeam )
 

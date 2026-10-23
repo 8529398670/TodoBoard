@@ -252,4 +252,32 @@ td .row-actions { display: flex; gap: 0.4rem; }
   padding: 0.5rem 0.75rem; border: 1px solid var(--border); border-radius: 6px;
 }
 .choice-list .choice .muted { margin-left: 0.5rem; }
+/* A card folded to its heading and a one-line summary; <details> does the
+   opening and closing, so it works by keyboard with no script. */
+.collapsible > summary {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  list-style: none;
+  cursor: pointer;
+  border-radius: 6px;
+}
+.collapsible > summary::-webkit-details-marker { display: none; }
+.collapsible > summary::after {
+  content: "";
+  flex: 0 0 auto;
+  width: 0.55rem;
+  height: 0.55rem;
+  margin-left: auto;
+  border-right: 2px solid var(--fg-muted);
+  border-bottom: 2px solid var(--fg-muted);
+  transform: rotate(45deg);
+  transition: transform 0.15s;
+}
+.collapsible[open] > summary::after { transform: rotate(-135deg); }
+.collapsible > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+.collapsible[open] > summary { margin-bottom: 0.75rem; }
+.collapsible-head { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
+.collapsible-head h2 { margin: 0; }
+
 .card .row-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; }

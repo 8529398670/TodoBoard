@@ -176,6 +176,32 @@ func ( handlers *Handlers ) SetPin( c fiber.Ctx ) ( err error ) {
 	return
 }
 
+// IssueOwnLoginLink is ReissueLogin for yourself: a one-time link to sign in
+// on another device, or to keep for when this browser loses its cookie. Like
+// any new link it replaces one the account had not used yet; this session
+// stays signed in.
+func ( handlers *Handlers ) IssueOwnLoginLink( c fiber.Ctx ) ( err error ) {
+	var body csrfOnlyRequest
+	if c.Bind().JSON( &body ) != nil {
+		err = badRequest( c , "malformed request body" )
+		return
+	}
+	if handlers.Guard.CheckCSRF( c , body.CSRFToken ) == false {
+		err = forbidden( c , "invalid csrf token" )
+		return
+	}
+	credential , token_err := models.IssueLoginToken( handlers.Store , security.UserFrom( c ).ID , handlers.Config.LoginTokenTTL )
+	if token_err != nil {
+		err = serverError( c )
+		return
+	}
+	err = c.JSON( fiber.Map{
+		"login_path":         "/login/" + credential,
+		"expires_in_seconds": int( handlers.Config.LoginTokenTTL.Seconds() ),
+	} )
+	return
+}
+
 // Logout deletes the session server-side as well as clearing the cookie, so
 // a copy of the cookie captured earlier is dead too.
 //

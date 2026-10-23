@@ -150,12 +150,32 @@
         <div id="user-settings-root"></div>
       </div>
 
-      <!-- Push notifications through Pushover; see notify_settings.js. -->
-      <div class="card" id="notifications">
-        <h2 data-i18n="notify.settings_heading"></h2>
+      <!-- Push notifications through Pushover; see notify_settings.js.
+           Folded to one line with a summary of what is on; opened to edit. -->
+      <details class="card collapsible" id="notifications">
+        <summary>
+          <span class="collapsible-head">
+            <h2 data-i18n="notify.settings_heading"></h2>
+            <span id="notify-summary" class="muted"></span>
+          </span>
+        </summary>
         <p class="muted" data-i18n="notify.settings_intro"></p>
         <p id="notify-server-off" class="notice notice-warn" data-i18n="notify.server_off" hidden></p>
         <div id="notify-form-root"></div>
+      </details>
+
+      <!-- A one-time login link for yourself; see login_link.js. Sessions
+           only: an API key cannot mint one. -->
+      <div class="card" id="own-login-panel" hidden>
+        <h2 data-i18n="own_login.heading"></h2>
+        <p class="muted" data-i18n="own_login.description"></p>
+        <button type="button" id="own-login-button" class="secondary" data-i18n="own_login.create_button"></button>
+        <div id="own-login-box" class="notice notice-link" hidden>
+          <p id="own-login-expiry"></p>
+          <code id="own-login-value"></code>
+          <button type="button" id="own-login-copy" class="secondary" data-i18n="own_login.copy_button"></button>
+          <span id="own-login-copied" class="muted" data-i18n="own_login.copied_notice" hidden></span>
+        </div>
       </div>
 
       <!-- Only for non-admin accounts; see pin.js. -->
@@ -369,6 +389,7 @@
   <script src="/js/keys.js"></script>
   <script src="/js/join.js"></script>
   <script src="/js/pin.js"></script>
+  <script src="/js/login_link.js"></script>
   <script src="/js/invites.js"></script>
   <script src="/vendor/katex/katex.min.js"></script>
   <script src="/vendor/katex/contrib/mhchem.min.js"></script>

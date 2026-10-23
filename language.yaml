@@ -59,6 +59,16 @@ account:
   saved_notice: "Saved."
   logout_button: "Log out"
 
+# A login link for yourself, from the Account page.
+own_login:
+  heading: "Sign in on another device"
+  description: "Make a one-time login link for yourself -- to sign in on your phone, or to keep for when this browser forgets you. Making a new one cancels the last one you did not use. You stay signed in here."
+  create_button: "Create login link"
+  again_button: "Create a new link"
+  link_notice: "Anyone with this link can sign in as you. It works once, within {minutes} minutes."
+  copy_button: "Copy link"
+  copied_notice: "Copied."
+
 admin:
   heading: "Admin"
   description: "Create an account by minting a login link. Send the link to the person; it works once."
@@ -636,6 +646,11 @@ notify:
   settings_heading: "Push notifications"
   settings_intro: "Get due-date reminders and updates on your phone through Pushover. Every board and card can override these defaults from its Notifications button."
   server_off: "Push notifications are not switched on for this server yet. An admin sets pushover.app_token in config.yaml."
+  summary_server_off: "Off -- not switched on for this server"
+  summary_not_set_up: "Not set up -- open to add your Pushover key"
+  summary_paused: "Paused"
+  summary_on: "On"
+  summary_on_leads: "On -- reminders {leads}"
   key_label: "Pushover user key"
   key_placeholder: "30 letters and digits, from pushover.net"
   key_saved_placeholder: "Saved ({hint}) -- type a new one to replace it"

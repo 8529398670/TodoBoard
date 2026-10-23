@@ -1,5 +1,6 @@
 // The account page's notification settings: the Pushover user key, when
 // reminders arrive, and the defaults every board and card starts from. The
+// card is folded to one line saying what is on, and opened to edit. The
 // key itself is never sent back to the browser once saved -- only a hint of
 // it -- so the field is left blank to keep it and typed into to replace it.
 const NotifySettings = {
@@ -16,7 +17,11 @@ const NotifySettings = {
       return;
     }
     this.render();
-    if ( window.location.hash === "#notifications" ) Dom.get( "notifications" ).scrollIntoView();
+    // A link straight here (a board's Notifications panel) means "edit them".
+    if ( window.location.hash === "#notifications" ) {
+      Dom.get( "notifications" ).open = true;
+      Dom.get( "notifications" ).scrollIntoView();
+    }
   },
 
   leadLabel( minutes ) {
@@ -32,8 +37,19 @@ const NotifySettings = {
     return zones;
   },
 
+  // The folded card's one line: is anything going to arrive, and when.
+  summary() {
+    const prefs = this.prefs;
+    if ( !prefs.push_enabled ) return T( "notify.summary_server_off" );
+    if ( !prefs.has_pushover_key ) return T( "notify.summary_not_set_up" );
+    if ( prefs.paused ) return T( "notify.summary_paused" );
+    if ( !prefs.reminder_lead_minutes.length ) return T( "notify.summary_on" );
+    return I18n.fill( "notify.summary_on_leads" , { leads: prefs.reminder_lead_minutes.map( ( minutes ) => this.leadLabel( minutes ) ).join( ", " ) } );
+  },
+
   render() {
     const prefs = this.prefs;
+    Dom.text( Dom.get( "notify-summary" ) , this.summary() );
     Dom.show( Dom.get( "notify-server-off" ) , !prefs.push_enabled );
     const root = Dom.get( "notify-form-root" );
     Dom.clear( root );
