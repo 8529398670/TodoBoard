@@ -3,6 +3,7 @@ package config
 import (
 	flag "flag"
 	fmt "fmt"
+	io "io"
 	os "os"
 	strconv "strconv"
 	strings "strings"
@@ -21,7 +22,8 @@ Usage:
   shell [-file path] docker|build|server
                                      print one section as shell assignments,
                                      for dockerRun.sh, build.sh and run.sh
-                                     to eval
+                                     to eval (-file - reads the config from
+                                     standard input)
 
 Without -file, the file is found the way the server finds it:
   ./config.yaml, then ~/.config/todoboard/config.yaml
@@ -102,10 +104,20 @@ func commandExample( arguments []string ) ( err error ) {
 }
 
 // pickFile resolves -file, or the file the server would use. found is false
-// when there is no file, in which case the defaults apply.
+// when there is no file, in which case the defaults apply. "-" reads the
+// config from standard input: the Docker scripts pipe config.yaml in rather
+// than mounting it, so reading it never depends on which host user the
+// container's user maps to.
 func pickFile( explicit string ) ( file *File , path string , found bool , err error ) {
 	if explicit == "" {
 		file , path , found , err = Current()
+		return
+	}
+	if explicit == "-" {
+		raw , read_err := io.ReadAll( os.Stdin )
+		if read_err != nil { return nil , "-" , false , read_err }
+		path , found = "-" , true
+		file , err = Parse( raw , "standard input" )
 		return
 	}
 	path = explicit

@@ -14,21 +14,26 @@
 CONFIG_FILE="$( pwd )/config.yaml"
 
 # config_run runs the freshly built binary in a throwaway container that can do
-# nothing but read config.yaml: no network, read-only, no capabilities. It runs
-# as the invoking user, so a 0600 config.yaml owned by that user is readable on
-# Linux as well as macOS.
+# nothing but read the config it is handed: no network, read-only, no
+# capabilities. config.yaml is piped in on standard input (-file -) rather
+# than mounted, so this shell -- you -- reads the 0600 file, and nothing
+# depends on how the container's user maps to host users. That mapping differs
+# under rootless Docker and user-namespace remapping, where a mounted 0600
+# file is unreadable from inside however --user is set.
 #
-# The file is only mounted when it exists. Mounting a missing file makes Docker
-# create an empty *directory* in its place, which then breaks every later run.
+# With no config.yaml yet, nothing is piped and the defaults apply.
+#
+#   config_run shell docker   ->   config shell -file - docker
 config_run() {
-  local mount=()
+  local command="$1"
+  shift
   if [ -f "$CONFIG_FILE" ]; then
-    mount=( -v "${CONFIG_FILE}:/app/config.yaml:ro" )
+    docker run --rm -i --network none --read-only --cap-drop ALL \
+      "$IMAGE_ID" config "$command" -file - "$@" < "$CONFIG_FILE"
+  else
+    docker run --rm --network none --read-only --cap-drop ALL \
+      "$IMAGE_ID" config "$command" "$@"
   fi
-  docker run --rm --network none --read-only --cap-drop ALL \
-    --user "$( id -u ):$( id -g )" \
-    ${mount[@]+"${mount[@]}"} \
-    "$IMAGE_ID" config "$@"
 }
 
 # build_image [extra-tag]
