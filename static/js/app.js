@@ -33,7 +33,10 @@ const App = {
     }
 
     this.currentUser = me.authenticated ? me : null;
-    if ( me.authenticated ) Dates.configure( me.display );
+    if ( me.authenticated ) {
+      Dates.configure( me.display );
+      Theme.setUser( me.display.theme , me.display.own_theme_on_boards );
+    }
     Dom.show( Dom.get( "main" ) , true );
 
     if ( this.loginCredential() !== "" ) {

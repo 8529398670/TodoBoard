@@ -1,13 +1,13 @@
 // Your own settings, all on the Account page: theme, how dates and times
-// read, and whether cards are numbered by default. Theme is per browser
-// (theme.js); the rest are the account's, so they follow the person to every
-// device. A guest on a share link has no account page, so the board page
-// opens just the theme for them in a panel (open).
+// read, and whether cards are numbered by default. They are the account's,
+// so they follow the person to every device. A guest on a share link has no
+// account page, so the board page opens the theme (kept in this browser) and
+// times for them in a panel (open).
 const UserSettings = {
   // The Account page card.
   render( root , me ) {
     Dom.clear( root );
-    root.appendChild( this.appearance() );
+    root.appendChild( this.appearance( me ) );
     root.appendChild( this.time( me ) );
     root.appendChild( this.cards( me ) );
   },
@@ -15,20 +15,32 @@ const UserSettings = {
   // A guest's panel on the board page.
   open( me ) {
     Panel.open( "user_settings.title" , ( body ) => {
-      body.appendChild( this.appearance() );
+      body.appendChild( this.appearance( me ) );
       body.appendChild( this.time( me ) );
     } );
   },
 
-  appearance() {
+  // The person's own theme. Signed in, it is the account's and saved to the
+  // server; a guest's stays in this browser.
+  appearance( me ) {
     const section = Dom.el( "section" , { class: "panel-section" } );
     section.appendChild( Dom.el( "h3" , { text: T( "user_settings.appearance_heading" ) } ) );
-    const theme = Ui.select( [
-      { value: "light" , text: T( "user_settings.theme_light" ) },
-      { value: "dark" , text: T( "user_settings.theme_dark" ) },
-    ] , Theme.isDark() ? "dark" : "light" );
-    theme.addEventListener( "change" , function () { Theme.set( theme.value === "dark" ); } );
-    section.appendChild( Ui.field( "user_settings.theme_label" , theme ) );
+    const signedIn = !!( me && me.authenticated );
+    section.appendChild( ThemeEditor.render( Theme.user , function ( theme ) {
+      if ( !signedIn ) {
+        Theme.setUser( theme , false );
+        return;
+      }
+      UserSettings.save( me , theme ? { theme: theme } : { clear_theme: true } );
+    } ) );
+    if ( signedIn ) {
+      section.appendChild( Ui.checkbox( "user_settings.own_theme_on_boards" , me.display && me.display.own_theme_on_boards , function ( checked ) {
+        UserSettings.save( me , { own_theme_on_boards: checked } );
+      } ) );
+      section.appendChild( Dom.el( "p" , { class: "muted small-print" , text: T( "user_settings.own_theme_hint" ) } ) );
+    } else {
+      section.appendChild( Dom.el( "p" , { class: "muted small-print" , text: T( "user_settings.guest_theme_hint" ) } ) );
+    }
     return section;
   },
 
@@ -46,6 +58,7 @@ const UserSettings = {
       const saved = await Api.post( "/api/account/display" , body );
       me.display = saved;
       Dates.configure( saved );
+      Theme.setUser( saved.theme , saved.own_theme_on_boards );
       Ui.toast( T( "user_settings.saved" ) , "ok" );
     } catch ( error ) {
       Ui.error( error );

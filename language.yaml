@@ -172,6 +172,7 @@ admin_keys:
 errors:
   generic: "Something went wrong. Please try again."
   network: "Could not reach the server."
+  invalid_theme: "That theme has a colour that is not a #rrggbb code."
   # Error codes the invite link and PIN routes answer with, by name.
   invite_link_invalid: "This invite link is invalid, expired, or has been switched off."
   invite_link_full: "This link has no places left."
@@ -242,16 +243,15 @@ push:
 nav:
   boards: "Boards"
   account: "Account"
-  theme_toggle: "Light / dark"
   settings: "Settings"
 
 # Your own settings: how the app looks and how times read, wherever you are.
 user_settings:
   title: "Your settings"
-  appearance_heading: "Appearance"
-  theme_label: "Theme"
-  theme_light: "Light"
-  theme_dark: "Dark"
+  appearance_heading: "Theme"
+  own_theme_on_boards: "Always use my own theme on boards"
+  own_theme_hint: "Boards can have a theme of their own. Tick this to see yours everywhere instead."
+  guest_theme_hint: "Your theme is kept in this browser."
   time_heading: "Dates and times"
   timezone_label: "Timezone"
   timezone_browser: "This device ({zone})"
@@ -523,7 +523,6 @@ settings:
   add_label: "Add label"
   delete_label: "Delete"
   delete_label_confirm: "Delete the label \"{name}\"? It is removed from every card."
-  swatch_symbol: "●"
   archived_heading: "Archived"
   nothing_archived: "Nothing archived."
   archived_list: "List: {name}"
@@ -535,6 +534,38 @@ settings:
   delete_board_confirm: "Delete \"{name}\" and everything on it, for everyone?"
   leave_board: "Leave this board"
   leave_confirm: "Leave \"{name}\"? You will need to be added again to get back in."
+
+# Themes: yours (Account) and a board's (Board settings).
+theme:
+  presets: "Start from"
+  preset_light: "Light"
+  preset_dark: "Dark"
+  preset_ocean: "Ocean"
+  preset_forest: "Forest"
+  preset_sepia: "Sepia"
+  preset_grape: "Grape"
+  preset_midnight: "Midnight"
+  preset_slate: "Slate"
+  mode: "Light or dark"
+  mode_light: "Light"
+  mode_dark: "Dark"
+  field_accent: "Accent"
+  field_background: "Page background"
+  field_surface: "Header and panels"
+  field_column: "Columns"
+  field_card: "Cards"
+  reset: "Reset colours"
+  board_heading: "Theme"
+  board_hint: "Everyone on this board sees its theme, unless they have chosen to always use their own."
+  board_choice: "Board theme"
+  board_inherit: "Each person's own theme"
+  board_own: "A theme for this board"
+
+color_picker:
+  default: "Default"
+  custom: "Custom colour…"
+  hex_label: "Colour code"
+  low_contrast: "Text may be hard to read on this colour. Try the other mode, or a lighter or darker shade."
 
 colors:
   blue: "Blue"

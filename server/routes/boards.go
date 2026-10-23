@@ -143,6 +143,7 @@ func ( handlers *Handlers ) boardPayload( principal *access.Principal , board *m
 			"owner_id":     board.OwnerID,
 			"default_view": board.DefaultView,
 			"color":        board.Color,
+			"theme":        board.Theme,
 			"rev":          board.Rev,
 			"lists":        lists,
 			"labels":       board.Labels,

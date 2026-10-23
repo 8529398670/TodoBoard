@@ -41,7 +41,7 @@ func ( handlers *Handlers ) GetMe( c fiber.Ctx ) ( err error ) {
 		return
 	}
 
-	display := fiber.Map{ "timezone": "" , "hour12": nil , "number_cards": false , "plain_icons": false }
+	display := fiber.Map{ "timezone": "" , "hour12": nil , "number_cards": false , "plain_icons": false , "theme": nil , "own_theme_on_boards": false }
 	if prefs , prefs_err := models.GetUserPrefs( handlers.Store , user.ID ); prefs_err == nil {
 		display = displayPayload( prefs )
 	}
@@ -97,22 +97,26 @@ func ( handlers *Handlers ) RenameAccount( c fiber.Ctx ) ( err error ) {
 }
 
 type displayRequest struct {
-	Timezone    string `json:"timezone"`
-	Hour12      *bool  `json:"hour12"`
-	NumberCards *bool  `json:"number_cards"`
-	PlainIcons  *bool  `json:"plain_icons"`
-	CSRFToken   string `json:"csrf_token"`
+	Timezone         string        `json:"timezone"`
+	Hour12           *bool         `json:"hour12"`
+	NumberCards      *bool         `json:"number_cards"`
+	PlainIcons       *bool         `json:"plain_icons"`
+	Theme            *models.Theme `json:"theme"`
+	ClearTheme       bool          `json:"clear_theme"`
+	OwnThemeOnBoards *bool         `json:"own_theme_on_boards"`
+	CSRFToken        string        `json:"csrf_token"`
 }
 
 func displayPayload( prefs *models.UserPrefs ) ( payload fiber.Map ) {
-	payload = fiber.Map{ "timezone": prefs.DisplayTimezone , "hour12": prefs.Hour12 , "number_cards": prefs.NumberCards , "plain_icons": prefs.PlainIcons }
+	payload = fiber.Map{ "timezone": prefs.DisplayTimezone , "hour12": prefs.Hour12 , "number_cards": prefs.NumberCards , "plain_icons": prefs.PlainIcons , "theme": prefs.Theme , "own_theme_on_boards": prefs.OwnThemeOnBoards }
 	return
 }
 
 // SaveDisplay stores how this person wants times shown: a timezone ("" for
 // the browser's own) and 12- or 24-hour clocks (null for the locale's) --
 // and, when sent, whether cards are numbered and status icons grey by
-// default.
+// default, the person's theme (clear_theme back to plain light), and
+// whether boards with a theme of their own keep showing the person's.
 func ( handlers *Handlers ) SaveDisplay( c fiber.Ctx ) ( err error ) {
 	var body displayRequest
 	if ok , bind_err := bindBody( c , &body ); ok == false { return bind_err }
@@ -130,6 +134,15 @@ func ( handlers *Handlers ) SaveDisplay( c fiber.Ctx ) ( err error ) {
 	if body.Timezone != "" { prefs.Timezone = body.Timezone }
 	if body.NumberCards != nil { prefs.NumberCards = *body.NumberCards }
 	if body.PlainIcons != nil { prefs.PlainIcons = *body.PlainIcons }
+	if body.OwnThemeOnBoards != nil { prefs.OwnThemeOnBoards = *body.OwnThemeOnBoards }
+	if body.Theme != nil {
+		if body.Theme.Validate() != nil {
+			err = badRequest( c , "invalid_theme" )
+			return
+		}
+		prefs.Theme = body.Theme
+	}
+	if body.ClearTheme { prefs.Theme = nil }
 	if save_err := models.SaveUserPrefs( handlers.Store , user.ID , prefs ); save_err != nil {
 		err = badRequest( c , "invalid_timezone" )
 		return

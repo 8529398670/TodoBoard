@@ -53,6 +53,11 @@ type UserPrefs struct {
 	// PlainIcons shows Doing / Done icons in greyscale on every board this
 	// person has not set otherwise (BoardRef.PlainIcons).
 	PlainIcons bool `json:"plain_icons"`
+
+	// Theme is the person's own look everywhere; nil is plain light.
+	// OwnThemeOnBoards keeps it on boards that have a theme of their own.
+	Theme            *Theme `json:"theme"`
+	OwnThemeOnBoards bool   `json:"own_theme_on_boards"`
 }
 
 func DefaultUserPrefs() ( prefs *UserPrefs ) {
@@ -91,6 +96,9 @@ func ( prefs *UserPrefs ) Validate() ( err error ) {
 	if _ , load_err := time.LoadLocation( prefs.Timezone ); load_err != nil || prefs.Timezone == "" { return ErrBadInput }
 	if prefs.DisplayTimezone != "" {
 		if _ , load_err := time.LoadLocation( prefs.DisplayTimezone ); load_err != nil { return ErrBadInput }
+	}
+	if prefs.Theme != nil {
+		if err = prefs.Theme.Validate(); err != nil { return }
 	}
 	if prefs.AllDayReminderHour < 0 || prefs.AllDayReminderHour > 23 { return ErrBadInput }
 	leads := []int{}

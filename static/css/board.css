@@ -6,7 +6,7 @@
   custom properties, light by default with dark opt-in via data-theme.
 */
 
-:root {
+:root, [data-theme="light"] {
   --c-blue: #1f6feb;   --c-blue-bg: #ddeafe;
   --c-green: #1a7f37;  --c-green-bg: #d8f3df;
   --c-teal: #0f7b7b;   --c-teal-bg: #d3f1f0;
@@ -158,7 +158,6 @@ textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; 
 button.label-chip { min-height: 32px; cursor: pointer; }
 button.label-chip.unselected { opacity: 0.45; }
 button.label-chip.selected { border-color: var(--tone); }
-.label-chip.swatch { min-width: 1.6rem; justify-content: center; }
 
 .card-labels { display: flex; flex-wrap: wrap; gap: 0.3rem; }
 .card-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.5rem; font-size: 0.78rem; color: var(--fg-muted); }
@@ -621,6 +620,89 @@ dialog::backdrop { background: rgba(10, 14, 20, 0.45); }
 .label-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
 .label-row input { flex: 1 1 8rem; width: auto; }
 .label-row select { width: auto; }
+
+/* ------------------------------------------------------------------ */
+/* colour pickers (color_picker.js) and the theme editor               */
+/* ------------------------------------------------------------------ */
+
+.swatches { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.swatch {
+  width: 36px;
+  height: 36px;
+  min-height: 36px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--swatch, var(--bg));
+}
+.swatch-named { background: var(--tone); border-color: transparent; }
+/* "Default": an empty swatch struck through, read as "no colour of its own". */
+.swatch-default, .swatch-named.swatch-default {
+  background: linear-gradient(135deg, var(--bg) 46%, var(--fg-muted) 46%, var(--fg-muted) 54%, var(--bg) 54%);
+  border-color: var(--border);
+}
+/* A ring both light and dark swatches show against either mode's panels. */
+.swatch-hex { border-color: transparent; box-shadow: inset 0 0 0 1px rgba(127, 127, 127, 0.45); }
+.swatch-custom { background: var(--swatch, conic-gradient(#e03131, #f08c00, #fab005, #2f9e44, #1c7ed6, #7048e8, #c2255c, #e03131)); }
+.swatch[aria-checked="true"] { box-shadow: inset 0 0 0 1px rgba(127, 127, 127, 0.45), 0 0 0 2px var(--card-bg), 0 0 0 4px var(--fg); }
+.swatch:focus-visible { outline: 2px solid var(--accent); outline-offset: 5px; }
+
+.color-custom { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.swatch-native { position: absolute; left: 0; bottom: 0; width: 1px; height: 1px; padding: 0; border: 0; opacity: 0; pointer-events: none; }
+.color-hex { width: 7.5rem; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.9rem; padding: 0.4rem 0.6rem; }
+.color-hex.invalid { border-color: var(--danger); }
+.color-warning { flex-basis: 100%; margin: 0; color: var(--warn-fg); }
+
+.theme-editor { display: flex; flex-direction: column; gap: 0.9rem; margin-bottom: 0.75rem; }
+.segmented { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+
+.theme-presets { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.5rem; max-width: 32rem; }
+.theme-preset {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.3rem;
+  min-height: 0;
+  padding: 0.35rem;
+  font-size: 0.8rem;
+  color: var(--fg);
+  background: transparent;
+  border-color: var(--border);
+}
+.theme-preset.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.theme-preset-swatch {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 2.5rem;
+  padding: 5px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+}
+.theme-preset-column { flex: 1; height: 100%; border-radius: 4px; background: var(--column-bg); }
+.theme-preset-accent { width: 30%; height: 45%; border-radius: 4px; background: var(--accent); }
+
+.theme-colors { display: flex; flex-direction: column; gap: 0.75rem; }
+.theme-color-row { display: flex; flex-direction: column; gap: 0.35rem; }
+.theme-color-name { font-size: 0.85rem; font-weight: 600; color: var(--fg-muted); }
+
+.theme-preview {
+  display: flex;
+  flex-direction: column;
+  max-width: 22rem;
+  overflow: hidden;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.theme-preview-header { display: flex; justify-content: flex-end; padding: 8px; background: var(--card-bg); border-bottom: 1px solid var(--border); }
+.theme-preview-button { width: 3rem; height: 0.9rem; border-radius: 4px; background: var(--accent); }
+.theme-preview-body { display: flex; gap: 8px; padding: 10px; }
+.theme-preview-column { flex: 1; display: flex; flex-direction: column; gap: 6px; min-height: 5rem; padding: 6px; border-radius: 6px; background: var(--column-bg); }
+.theme-preview-card { display: block; padding: 8px; border-radius: 6px; background: var(--face-bg); box-shadow: var(--face-shadow); }
+.theme-preview-line { display: block; height: 6px; border-radius: 3px; background: var(--fg); opacity: 0.7; }
 
 /* ------------------------------------------------------------------ */
 /* export card: always light, whatever theme is on                     */

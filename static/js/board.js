@@ -89,6 +89,7 @@ const BoardPage = {
       throw new Error( "not authenticated" );
     }
     Dates.configure( this.me.display );
+    Theme.setUser( this.me.display.theme , this.me.display.own_theme_on_boards );
     this.client = BoardApi.member( /^\d+$/.test( match[ 1 ] ) ? Number( match[ 1 ] ) : match[ 1 ] );
   },
 
@@ -246,6 +247,7 @@ const BoardPage = {
     const board = ctx.board;
     document.title = board.title + " · " + T( "app.title" );
     Markdown.renderInline( board.title , Dom.get( "board-title" ) );
+    Theme.setBoard( board.theme );
     document.body.className = "board-page color-" + ( board.color || "none" ) + ( ctx.plainIcons() ? " plain-status" : "" );
 
     Dom.all( "[data-view]" ).forEach( ( button ) => {

@@ -71,6 +71,7 @@ type Board struct {
 	Labels      []*Label          `json:"labels"`
 	DefaultView string            `json:"default_view"`
 	Color       string            `json:"color"`
+	Theme       *Theme            `json:"theme"`
 	Rev         uint64            `json:"rev"`
 	NextLocalID uint64            `json:"next_local_id"`
 	CreatedAt   time.Time         `json:"created_at"`
@@ -276,6 +277,7 @@ func MutateBoard( store *db.Store , board_id uint64 , mutate func( board *Board 
 // Slug "" means "make one from the title again". ListTitles names the lists
 // to add when switching to LayoutThree leaves the board with fewer than three
 // -- the names come from the client (language.yaml), like at creation.
+// ClearTheme drops the board's theme so each person sees their own again.
 type BoardSettings struct {
 	Title       *string  `json:"title"`
 	DefaultView *string  `json:"default_view"`
@@ -284,6 +286,8 @@ type BoardSettings struct {
 	Layout      *string  `json:"layout"`
 	Numbering   *string  `json:"numbering"`
 	ListTitles  []string `json:"list_titles"`
+	Theme       *Theme   `json:"theme"`
+	ClearTheme  bool     `json:"clear_theme"`
 }
 
 // UpdateBoardSettings applies settings in one transaction; the slug index
@@ -323,6 +327,11 @@ func ( settings *BoardSettings ) Apply( board *Board ) ( err error ) {
 		if ValidColor( *settings.Color ) == false { return ErrBadInput }
 		board.Color = *settings.Color
 	}
+	if settings.Theme != nil {
+		if err = settings.Theme.Validate(); err != nil { return }
+		board.Theme = settings.Theme
+	}
+	if settings.ClearTheme { board.Theme = nil }
 	if settings.Layout != nil {
 		if *settings.Layout != LayoutFree && *settings.Layout != LayoutThree { return ErrBadInput }
 		board.Layout = *settings.Layout

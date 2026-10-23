@@ -1,6 +1,6 @@
 // Board settings: everything about the board in one panel. It opens on
 // tiles for sharing, notifications and export (each its own panel, with a
-// way back here), then name, default view, colour, numbering, labels,
+// way back here), then name, default view, colour, numbering, theme, labels,
 // archived lists and cards, and leaving or deleting the board.
 const BoardSettings = {
   open( ctx ) {
@@ -9,6 +9,7 @@ const BoardSettings = {
       // A guest edits cards, not the board's own setup.
       const member = ctx.canEdit && !ctx.isGuest;
       if ( member ) body.appendChild( this.general( ctx ) );
+      if ( member ) body.appendChild( this.theme( ctx ) );
       if ( member ) body.appendChild( this.labelsSection( ctx ) );
       if ( member ) body.appendChild( this.archived( ctx ) );
       if ( !ctx.isGuest && ctx.data.me.role ) body.appendChild( this.personal( ctx ) );
@@ -65,9 +66,8 @@ const BoardSettings = {
       { value: "todo" , text: T( "views.todo" ) },
       { value: "timeline" , text: T( "views.timeline" ) },
     ] , ctx.board.default_view );
-    const color = Ui.select( [ { value: "" , text: T( "settings.color_none" ) } ].concat( Colors.map( function ( name ) {
-      return { value: name , text: T( "colors." + name ) };
-    } ) ) , ctx.board.color );
+    let boardColor = ctx.board.color || "";
+    const color = ColorPicker.named( boardColor , function ( name ) { boardColor = name; } , { none: true , labelKey: "settings.color_label" } );
     const layout = Ui.select( [
       { value: "" , text: T( "settings.layout_free" ) },
       { value: "three" , text: T( "settings.layout_three" ) },
@@ -85,15 +85,15 @@ const BoardSettings = {
     form.appendChild( Dom.el( "p" , { class: "muted small-print" , text: T( "settings.slug_hint" ) } ) );
     const options = Dom.el( "div" , { class: "form-row" } );
     options.appendChild( Ui.field( "settings.default_view_label" , view ) );
-    options.appendChild( Ui.field( "settings.color_label" , color ) );
     options.appendChild( Ui.field( "settings.layout_label" , layout ) );
     form.appendChild( options );
+    form.appendChild( BoardSettings.swatchField( "settings.color_label" , color ) );
     form.appendChild( Dom.el( "p" , { class: "muted small-print" , text: T( "settings.layout_hint" ) } ) );
     form.appendChild( Ui.field( "settings.numbering_label" , numbering ) );
     form.appendChild( Dom.el( "button" , { text: T( "board.save" ) , attrs: { type: "submit" } } ) );
     form.addEventListener( "submit" , async function ( event ) {
       event.preventDefault();
-      const changes = { title: title.value , default_view: view.value , color: color.value , layout: layout.value , numbering: numbering.value };
+      const changes = { title: title.value , default_view: view.value , color: boardColor , layout: layout.value , numbering: numbering.value };
       if ( slug.value !== ( ctx.board.slug || "" ) ) changes.slug = slug.value.replace( /^-+|-+$/g , "" );
       // Lists to add if the three-column layout finds fewer than three.
       if ( layout.value === "three" ) changes.list_titles = T( "home.default_lists" ).split( "," ).map( function ( name ) { return name.trim(); } );
@@ -101,6 +101,25 @@ const BoardSettings = {
       if ( result ) Ui.toast( T( "settings.saved" ) , "ok" );
     } );
     section.appendChild( form );
+    return section;
+  },
+
+  // A labelled swatch row; a radiogroup has no single control to point a
+  // <label for> at, so it is named by aria-label and shown with a span.
+  swatchField( labelKey , picker ) {
+    return Dom.el( "div" , { class: "field" , children: [ Dom.el( "span" , { class: "field-label" , text: T( labelKey ) } ) , picker ] } );
+  },
+
+  // The board's theme, which everyone on it sees unless they keep their
+  // own (their Account setting).
+  theme( ctx ) {
+    const section = Dom.el( "section" , { class: "panel-section" } );
+    section.appendChild( Dom.el( "h3" , { text: T( "theme.board_heading" ) } ) );
+    section.appendChild( Dom.el( "p" , { class: "muted small-print" , text: T( "theme.board_hint" ) } ) );
+    section.appendChild( ThemeEditor.render( ctx.board.theme , async function ( theme ) {
+      const result = await ctx.mutate( function () { return ctx.client.updateBoard( theme ? { theme: theme } : { clear_theme: true } ); } );
+      if ( result ) Ui.toast( T( "settings.saved" ) , "ok" );
+    } , { inherit: true , start: Theme.user } ) );
     return section;
   },
 
@@ -136,17 +155,18 @@ const BoardSettings = {
     ctx.board.labels.forEach( function ( label ) {
       const name = Dom.el( "input" , { attrs: { maxlength: "40" , "aria-label": T( "settings.label_name" ) } } );
       name.value = label.name;
-      const color = Ui.select( Colors.map( function ( item ) { return { value: item , text: T( "colors." + item ) }; } ) , label.color );
-      color.setAttribute( "aria-label" , T( "settings.label_color" ) );
-      const swatch = Dom.el( "span" , { class: "label-chip swatch color-" + label.color , text: T( "settings.swatch_symbol" ) } );
+      let labelColor = label.color;
       const save = async function () {
-        await ctx.mutate( function () { return ctx.client.updateLabel( label.id , { name: name.value , color: color.value } ); } );
+        await ctx.mutate( function () { return ctx.client.updateLabel( label.id , { name: name.value , color: labelColor } ); } );
         redraw();
       };
+      const color = ColorPicker.named( labelColor , function ( value ) {
+        labelColor = value;
+        save();
+      } , { labelKey: "settings.label_color" } );
       name.addEventListener( "change" , save );
-      color.addEventListener( "change" , save );
       list.appendChild( Dom.el( "li" , { class: "label-row" , children: [
-        swatch , name , color ,
+        name , color ,
         Ui.button( "settings.delete_label" , async function () {
           if ( !window.confirm( I18n.fill( "settings.delete_label_confirm" , { name: label.name || label.color } ) ) ) return;
           await ctx.mutate( function () { return ctx.client.deleteLabel( label.id ); } );
@@ -158,15 +178,14 @@ const BoardSettings = {
 
     const form = Dom.el( "form" , { attrs: { autocomplete: "off" } } );
     const name = Dom.el( "input" , { attrs: { maxlength: "40" , placeholder: T( "settings.label_name_placeholder" ) } } );
-    const color = Ui.select( Colors.map( function ( item ) { return { value: item , text: T( "colors." + item ) }; } ) , Colors[ ctx.board.labels.length % Colors.length ] );
-    const fields = Dom.el( "div" , { class: "form-row" } );
-    fields.appendChild( Ui.field( "settings.label_name" , name ) );
-    fields.appendChild( Ui.field( "settings.label_color" , color ) );
-    form.appendChild( fields );
+    let newColor = Colors[ ctx.board.labels.length % Colors.length ];
+    const color = ColorPicker.named( newColor , function ( value ) { newColor = value; } , { labelKey: "settings.label_color" } );
+    form.appendChild( Ui.field( "settings.label_name" , name ) );
+    form.appendChild( BoardSettings.swatchField( "settings.label_color" , color ) );
     form.appendChild( Dom.el( "button" , { text: T( "settings.add_label" ) , attrs: { type: "submit" } } ) );
     form.addEventListener( "submit" , async function ( event ) {
       event.preventDefault();
-      await ctx.mutate( function () { return ctx.client.createLabel( name.value , color.value ); } );
+      await ctx.mutate( function () { return ctx.client.createLabel( name.value , newColor ); } );
       redraw();
     } );
     section.appendChild( form );

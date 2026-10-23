@@ -6,10 +6,12 @@
 
   Light is the default and stays the default. Dark is opt-in via
   <html data-theme="dark"> rather than prefers-color-scheme, so the app looks
-  the same for everyone unless someone deliberately switches it.
+  the same for everyone unless someone deliberately switches it. A theme's
+  own colours are set over these as inline variables on <html> (theme.js);
+  [data-theme="light"] lets a theme preview be light inside a dark page.
 */
 
-:root {
+:root, [data-theme="light"] {
   color-scheme: light;
 
   --fg: #16191d;
@@ -118,7 +120,7 @@ form {
   gap: 0.25rem;
 }
 
-label {
+label, .field-label {
   font-size: 0.85rem;
   font-weight: 600;
   color: var(--fg-muted);
