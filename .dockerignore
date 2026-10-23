@@ -1,0 +1,9 @@
+.git
+.gitignore
+data/
+*.db
+config.yaml
+*.md
+Dockerfile
+dockerRun.sh
+dist/

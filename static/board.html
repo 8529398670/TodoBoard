@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light" />
+  <title data-i18n="app.title">&nbsp;</title>
+  <script src="/js/theme.js"></script>
+  <link rel="stylesheet" href="/vendor/katex/katex.min.css" />
+  <link rel="stylesheet" href="/css/style.css" />
+  <link rel="stylesheet" href="/css/board.css" />
+</head>
+<body class="board-page">
+  <!--
+    One page for members (/b/<id>) and for guests with a share link
+    (/s/<credential>); board.js tells them apart. As everywhere, no text is
+    written here -- data-i18n keys pull it from language.yaml.
+  -->
+  <header class="board-header">
+    <div class="board-header-main">
+      <a id="home-link" class="home-link" href="/" data-i18n="nav.boards"></a>
+      <h1 id="board-title" class="board-title"></h1>
+    </div>
+    <div id="view-switch" class="view-switch" role="group" data-i18n-attr="aria-label:views.label">
+      <button type="button" class="secondary small" data-view="kanban" data-i18n="views.kanban"></button>
+      <button type="button" class="secondary small" data-view="todo" data-i18n="views.todo"></button>
+      <button type="button" class="secondary small" data-view="timeline" data-i18n="views.timeline"></button>
+    </div>
+    <div class="board-actions row-actions">
+      <button type="button" id="share-button" class="secondary small" data-i18n="board.share_button" hidden></button>
+      <button type="button" id="notify-button" class="secondary small" data-i18n="board.notify_button" hidden></button>
+      <button type="button" id="export-button" class="secondary small" data-i18n="board.export_button"></button>
+      <button type="button" id="settings-button" class="secondary small" data-i18n="settings.title" hidden></button>
+      <button type="button" class="secondary small" data-user-settings data-i18n="nav.settings"></button>
+    </div>
+  </header>
+
+  <p id="guest-banner" class="notice notice-link guest-banner" hidden></p>
+
+  <main id="board-root" class="board-root"></main>
+
+  <dialog id="card-dialog" class="card-dialog">
+    <div id="card-dialog-body" class="card-dialog-body"></div>
+  </dialog>
+
+  <dialog id="panel-dialog" class="panel-dialog">
+    <div class="panel-head">
+      <h2 id="panel-title"></h2>
+      <button type="button" id="panel-close" class="icon-button" data-i18n="ui.close_symbol" data-i18n-attr="aria-label:ui.close,title:ui.close"></button>
+    </div>
+    <div id="panel-body" class="panel-body"></div>
+  </dialog>
+
+  <dialog id="guest-name-dialog" class="panel-dialog">
+    <form id="guest-name-form" method="dialog" autocomplete="off" class="stack">
+      <h2 data-i18n="share.guest_name_heading"></h2>
+      <p class="muted" data-i18n="share.guest_name_body"></p>
+      <div class="field">
+        <label for="guest-name-input" data-i18n="share.guest_name_label"></label>
+        <input id="guest-name-input" maxlength="40" data-i18n-attr="placeholder:share.guest_name_placeholder" />
+      </div>
+      <div class="row-actions">
+        <button type="submit" data-i18n="share.guest_name_continue"></button>
+        <button type="button" id="guest-name-skip" class="secondary" data-i18n="share.guest_name_skip"></button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Off-screen: card PNG exports are drawn from here. -->
+  <div id="export-stage" class="export-stage" aria-hidden="true"></div>
+
+  <p id="toast" class="notice toast" role="status" hidden></p>
+
+  <script src="/vendor/marked/marked.min.js"></script>
+  <script src="/vendor/dompurify/purify.min.js"></script>
+  <script src="/vendor/katex/katex.min.js"></script>
+  <script src="/vendor/katex/contrib/mhchem.min.js"></script>
+  <script src="/vendor/sortable/Sortable.min.js"></script>
+  <script src="/vendor/html-to-image/html-to-image.js"></script>
+  <script src="/js/dom.js"></script>
+  <script src="/js/i18n.js"></script>
+  <script src="/js/api.js"></script>
+  <script src="/js/board_api.js"></script>
+  <script src="/js/ui.js"></script>
+  <script src="/js/markdown.js"></script>
+  <script src="/js/view_kanban.js"></script>
+  <script src="/js/view_todo.js"></script>
+  <script src="/js/view_timeline.js"></script>
+  <script src="/js/card_modal.js"></script>
+  <script src="/js/card_export.js"></script>
+  <script src="/js/sharing.js"></script>
+  <script src="/js/subscribe.js"></script>
+  <script src="/js/board_settings.js"></script>
+  <script src="/js/user_settings.js"></script>
+  <script src="/js/board.js"></script>
+</body>
+</html>

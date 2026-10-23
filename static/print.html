@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light" />
+  <title data-i18n="app.title">&nbsp;</title>
+  <link rel="stylesheet" href="/vendor/katex/katex.min.css" />
+  <link rel="stylesheet" href="/css/style.css" />
+  <link rel="stylesheet" href="/css/board.css" />
+  <link rel="stylesheet" href="/css/print.css" />
+</head>
+<body class="print-page">
+  <!-- The board laid out for paper. Always light: it is what a PDF gets. -->
+  <div class="print-toolbar no-print">
+    <p class="muted" data-i18n="export.print_hint"></p>
+    <div class="row-actions">
+      <button type="button" id="print-button" data-i18n="export.print_button"></button>
+      <label class="check"><input type="checkbox" id="print-descriptions" checked /><span data-i18n="export.print_descriptions"></span></label>
+      <label class="check"><input type="checkbox" id="print-done" checked /><span data-i18n="export.print_done"></span></label>
+    </div>
+  </div>
+  <main id="print-root" class="print-root"></main>
+  <p id="toast" class="notice toast" role="status" hidden></p>
+
+  <script src="/vendor/marked/marked.min.js"></script>
+  <script src="/vendor/dompurify/purify.min.js"></script>
+  <script src="/vendor/katex/katex.min.js"></script>
+  <script src="/vendor/katex/contrib/mhchem.min.js"></script>
+  <script src="/js/dom.js"></script>
+  <script src="/js/i18n.js"></script>
+  <script src="/js/api.js"></script>
+  <script src="/js/board_api.js"></script>
+  <script src="/js/ui.js"></script>
+  <script src="/js/markdown.js"></script>
+  <script src="/js/print.js"></script>
+</body>
+</html>

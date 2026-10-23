@@ -1,0 +1,54 @@
+/*
+  The print layout: what "Export as PDF" saves. Always light -- paper is
+  white -- and laid out as a document rather than a board: each list a
+  heading, each card a block that is never split across a page.
+*/
+
+.print-page {
+  --fg: #16191d;
+  --fg-muted: #5b6472;
+  --bg: #f3f5f8;
+  --card-bg: #ffffff;
+  --border: #d5dae1;
+  background: #ffffff;
+  color: var(--fg);
+}
+
+.print-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+.print-toolbar p { margin: 0; }
+
+.print-root { max-width: 48rem; margin: 0 auto; padding: 1.5rem 1rem 3rem; }
+.print-title { font-size: 1.8rem; margin: 0 0 0.25rem; }
+.print-list { margin-top: 1.5rem; }
+.print-list > h2 { font-size: 1.3rem; padding-bottom: 0.3rem; border-bottom: 2px solid var(--fg); }
+.print-card {
+  padding: 0.6rem 0 0.8rem;
+  border-bottom: 1px solid var(--border);
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+.print-card h3 { font-size: 1.05rem; margin: 0 0 0.3rem; }
+.print-card.is-done h3 { color: var(--fg-muted); }
+.print-card .card-meta { margin-bottom: 0.4rem; }
+.print-card .description { font-size: 0.95rem; }
+.print-card .checklist { list-style: none; padding: 0; margin: 0.4rem 0 0; }
+
+@page { margin: 16mm 14mm; }
+
+@media print {
+  .no-print, .toast { display: none !important; }
+  .print-root { max-width: none; padding: 0; }
+  .print-list { break-before: auto; }
+  .print-list > h2 { break-after: avoid; page-break-after: avoid; }
+  a { color: inherit; text-decoration: none; }
+  .label-chip, .due-chip { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}

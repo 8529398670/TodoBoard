@@ -1,0 +1,16 @@
+# Runtime state -- never commit these. config.yaml holds the secret key.
+config.yaml
+data/
+*.db
+
+# Compiled output. Built by the Dockerfile, build.sh, or `go build`.
+#
+# The trailing negations matter: a bare "/server" also matches the server/
+# source directory, which silently keeps the entire backend out of the
+# repository. Ignore the binaries, then put the directories back.
+/server
+!/server/
+/manage
+!/manage/
+/todoboard
+dist/

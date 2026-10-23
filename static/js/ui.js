@@ -1,0 +1,426 @@
+// Small UI pieces the board screens share: buttons, a reusable side panel,
+// a transient message, file downloads, and the date and colour helpers card
+// faces need. No app logic -- that lives in each screen's own file.
+const T = function ( key ) { return I18n.get( key ); };
+
+const Ui = {
+  button( key , onClick , className ) {
+    return Dom.el( "button" , {
+      class: className || "secondary small",
+      text: T( key ),
+      attrs: { type: "button" },
+      on: { click: onClick },
+    } );
+  },
+
+  // A labelled form control. Labels stay visible at every width.
+  field( labelKey , control ) {
+    const id = control.id || ( "f-" + Math.random().toString( 36 ).slice( 2 ) );
+    control.id = id;
+    return Dom.el( "div" , { class: "field" , children: [
+      Dom.el( "label" , { text: T( labelKey ) , attrs: { for: id } } ),
+      control,
+    ] } );
+  },
+
+  select( options , value ) {
+    const select = Dom.el( "select" );
+    options.forEach( function ( option ) {
+      const node = Dom.el( "option" , { text: option.text , attrs: { value: String( option.value ) } } );
+      if ( String( option.value ) === String( value ) ) node.selected = true;
+      select.appendChild( node );
+    } );
+    return select;
+  },
+
+  checkbox( labelKey , checked , onChange ) {
+    const input = Dom.el( "input" , { attrs: { type: "checkbox" } } );
+    input.checked = !!checked;
+    if ( onChange ) input.addEventListener( "change" , function () { onChange( input.checked ); } );
+    return Dom.el( "label" , { class: "check" , children: [ input , Dom.el( "span" , { text: T( labelKey ) } ) ] } );
+  },
+
+  toast( message , kind ) {
+    const banner = Dom.get( "toast" );
+    if ( !banner ) return;
+    banner.className = "notice toast " + ( kind === "ok" ? "notice-ok" : "notice-error" );
+    Dom.text( banner , message );
+    Dom.flash( banner , 4000 );
+  },
+
+  // Errors from the server are codes ("card_stale", "share_link_invalid");
+  // language.yaml's errors: section words them.
+  error( error ) {
+    const code = error && error.message ? error.message : "";
+    const worded = code ? T( "errors." + code ) : "";
+    this.toast( worded || code || T( "errors.generic" ) , "error" );
+  },
+
+  download( blob , filename ) {
+    const url = URL.createObjectURL( blob );
+    const link = Dom.el( "a" , { attrs: { href: url , download: filename } } );
+    document.body.appendChild( link );
+    link.click();
+    link.remove();
+    window.setTimeout( function () { URL.revokeObjectURL( url ); } , 5000 );
+  },
+
+  slug( text ) {
+    const slug = String( text || "" ).toLowerCase().replace( /[^a-z0-9]+/g , "-" ).replace( /^-+|-+$/g , "" ).slice( 0 , 60 );
+    return slug || "card";
+  },
+
+  async copyText( text ) {
+    try {
+      await navigator.clipboard.writeText( text );
+      this.toast( T( "export.copied" ) , "ok" );
+    } catch ( error ) {
+      this.toast( T( "export.copy_failed" ) , "error" );
+    }
+  },
+};
+
+// One dialog reused for every side panel (sharing, notifications, export,
+// board settings). build( body ) fills it.
+const Panel = {
+  open( titleKey , build ) {
+    const dialog = Dom.get( "panel-dialog" );
+    Dom.text( Dom.get( "panel-title" ) , T( titleKey ) );
+    const body = Dom.get( "panel-body" );
+    Dom.clear( body );
+    build( body );
+    if ( !dialog.open ) dialog.showModal();
+  },
+
+  close() {
+    const dialog = Dom.get( "panel-dialog" );
+    if ( dialog.open ) dialog.close();
+  },
+
+  bind() {
+    const close = Dom.get( "panel-close" );
+    if ( close ) close.addEventListener( "click" , function () { Panel.close(); } );
+    closeOnBackdrop( Dom.get( "panel-dialog" ) );
+  },
+};
+
+// Text that shows rendered -- markdown and math -- and turns into an input
+// when clicked, so nothing editable has to show raw TeX. Saves on Enter or
+// blur, gives up on Escape.
+//
+//   options: { onSave( value ) , label , maxlength , className , textarea }
+const InlineEdit = {
+  build( text , options ) {
+    const settings = options || {};
+    const wrap = Dom.el( "span" , { class: "inline-edit " + ( settings.className || "" ) } );
+    const show = function ( value ) {
+      Dom.clear( wrap );
+      const view = Dom.el( "span" , {
+        class: "inline-edit-view",
+        attrs: { tabindex: "0" , role: "button" , "aria-label": settings.label || "" , title: settings.label || "" },
+      } );
+      Markdown.renderInline( value , view );
+      view.addEventListener( "click" , function ( event ) {
+        if ( event.target.closest( "a" ) ) return;
+        edit( value );
+      } );
+      view.addEventListener( "keydown" , function ( event ) {
+        if ( event.key === "Enter" || event.key === " " ) {
+          event.preventDefault();
+          edit( value );
+        }
+      } );
+      wrap.appendChild( view );
+    };
+    const edit = function ( value ) {
+      Dom.clear( wrap );
+      const input = Dom.el( settings.textarea ? "textarea" : "input" , {
+        class: "inline-edit-input",
+        attrs: { maxlength: String( settings.maxlength || 300 ) , "aria-label": settings.label || "" , rows: "1" },
+      } );
+      if ( !settings.textarea ) input.type = "text";
+      input.value = value;
+      let done = false;
+      const finish = function ( save ) {
+        if ( done ) return;
+        done = true;
+        const next = input.value.trim();
+        if ( save && next && next !== value ) {
+          show( next );
+          settings.onSave( next );
+          return;
+        }
+        show( value );
+      };
+      input.addEventListener( "keydown" , function ( event ) {
+        if ( event.key === "Enter" ) {
+          event.preventDefault();
+          finish( true );
+        } else if ( event.key === "Escape" ) {
+          event.preventDefault();
+          event.stopPropagation();
+          finish( false );
+        }
+      } );
+      input.addEventListener( "blur" , function () { finish( true ); } );
+      wrap.appendChild( input );
+      input.focus();
+      input.select();
+    };
+    show( String( text || "" ) );
+    return wrap;
+  },
+};
+
+function closeOnBackdrop( dialog ) {
+  if ( !dialog ) return;
+  dialog.addEventListener( "click" , function ( event ) {
+    if ( event.target === dialog ) dialog.close();
+  } );
+}
+
+// Dates. Cards carry RFC 3339 instants; an all-day date is midnight UTC of
+// that day and is always shown and edited as a plain date, whatever the
+// timezone.
+//
+// A timed value is shown on the clock of the person's chosen timezone
+// (Dates.configure, from their settings), else the browser's. Calendar days
+// -- what the views lay out and step through -- are plain Date objects at
+// local midnight used only as a year/month/day holder; Dates.zoned and
+// Dates.fromZoned convert between those and real instants in the zone.
+const Dates = {
+  DAY: 24 * 60 * 60 * 1000,
+  zone: null,
+  hour12: null,
+  formatters: {},
+
+  // settings: { timezone: "" | IANA name , hour12: null | bool }
+  configure( settings ) {
+    const value = settings || {};
+    this.zone = value.timezone || null;
+    this.hour12 = typeof value.hour12 === "boolean" ? value.hour12 : null;
+    this.formatters = {};
+    try {
+      if ( this.zone ) new Intl.DateTimeFormat( undefined , { timeZone: this.zone } );
+    } catch ( error ) {
+      this.zone = null;
+    }
+  },
+
+  browserZone() {
+    try { return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"; } catch ( error ) { return "UTC"; }
+  },
+
+  timezones() {
+    let zones = [];
+    try { zones = Intl.supportedValuesOf( "timeZone" ); } catch ( error ) { zones = []; }
+    if ( zones.indexOf( "UTC" ) < 0 ) zones.unshift( "UTC" );
+    return zones;
+  },
+
+  // Intl options with the person's zone and clock applied.
+  options( base , utc ) {
+    const options = Object.assign( {} , base );
+    if ( utc ) options.timeZone = "UTC";
+    else if ( this.zone ) options.timeZone = this.zone;
+    if ( options.hour !== undefined && options.hourCycle === undefined && this.hour12 !== null ) options.hour12 = this.hour12;
+    return options;
+  },
+
+  formatter( base , utc ) {
+    const key = JSON.stringify( base ) + ( utc ? "|utc" : "" );
+    if ( !this.formatters[ key ] ) this.formatters[ key ] = new Intl.DateTimeFormat( undefined , this.options( base , utc ) );
+    return this.formatters[ key ];
+  },
+
+  // The wall-clock parts of an instant in the configured zone.
+  zoned( value ) {
+    const date = value instanceof Date ? value : new Date( value );
+    const parts = {};
+    this.formatter( { year: "numeric" , month: "numeric" , day: "numeric" , hour: "numeric" , minute: "numeric" , hourCycle: "h23" } )
+      .formatToParts( date ).forEach( function ( part ) { parts[ part.type ] = Number( part.value ); } );
+    return { year: parts.year , month: parts.month , day: parts.day , hour: parts.hour % 24 , minute: parts.minute };
+  },
+
+  // The instant a wall-clock time in the configured zone names. Two passes
+  // settle the zone offset, DST included.
+  fromZoned( year , month , day , hour , minute ) {
+    const wall = Date.UTC( year , month - 1 , day , hour || 0 , minute || 0 );
+    let guess = wall;
+    for ( let pass = 0; pass < 2; pass += 1 ) {
+      const seen = this.zoned( new Date( guess ) );
+      const offset = Date.UTC( seen.year , seen.month - 1 , seen.day , seen.hour , seen.minute ) - guess;
+      guess = wall - offset;
+    }
+    return new Date( guess );
+  },
+
+  // An <input type=date> + <input type=time> pair, read in the zone.
+  fromInputs( day , time ) {
+    const [ year , month , date ] = day.split( "-" ).map( Number );
+    const [ hour , minute ] = ( time || "00:00" ).split( ":" ).map( Number );
+    return this.fromZoned( year , month , date , hour , minute );
+  },
+
+  // "14:05", for an <input type=time>, in the zone.
+  timeInput( value ) {
+    const parts = this.zoned( value );
+    return String( parts.hour ).padStart( 2 , "0" ) + ":" + String( parts.minute ).padStart( 2 , "0" );
+  },
+
+  parse( value ) {
+    return value ? new Date( value ) : null;
+  },
+
+  // "2026-10-30". With utc, the UTC day of an instant (all-day values);
+  // otherwise the day a calendar-day Date holds.
+  isoDay( date , utc ) {
+    const year = utc ? date.getUTCFullYear() : date.getFullYear();
+    const month = ( utc ? date.getUTCMonth() : date.getMonth() ) + 1;
+    const day = utc ? date.getUTCDate() : date.getDate();
+    return year + "-" + String( month ).padStart( 2 , "0" ) + "-" + String( day ).padStart( 2 , "0" );
+  },
+
+  // The calendar day a card value falls on in the zone.
+  localDay( value , allDay ) {
+    const date = new Date( value );
+    if ( allDay ) return new Date( date.getUTCFullYear() , date.getUTCMonth() , date.getUTCDate() );
+    const parts = this.zoned( date );
+    return new Date( parts.year , parts.month - 1 , parts.day );
+  },
+
+  // The instant a calendar day starts in the zone.
+  dayStart( day ) {
+    return this.fromZoned( day.getFullYear() , day.getMonth() + 1 , day.getDate() , 0 , 0 );
+  },
+
+  today() {
+    return this.localDay( new Date() , false );
+  },
+
+  addDays( date , days ) {
+    const copy = new Date( date.getTime() );
+    copy.setDate( copy.getDate() + days );
+    return copy;
+  },
+
+  daysBetween( a , b ) {
+    return Math.round( ( Date.UTC( b.getFullYear() , b.getMonth() , b.getDate() ) - Date.UTC( a.getFullYear() , a.getMonth() , a.getDate() ) ) / this.DAY );
+  },
+
+  format( value , allDay , withWeekday ) {
+    if ( !value ) return "";
+    const options = { month: "short" , day: "numeric" };
+    if ( withWeekday ) options.weekday = "short";
+    if ( allDay ) return this.formatter( options , true ).format( new Date( value ) );
+    options.hour = "numeric";
+    options.minute = "2-digit";
+    return this.formatter( options ).format( new Date( value ) );
+  },
+
+  // "14:05" or "2:05 PM", per the person's clock.
+  formatTime( value ) {
+    return this.formatter( { hour: "numeric" , minute: "2-digit" } ).format( new Date( value ) );
+  },
+
+  // A card's dates as one line: "Oct 23, 10:00 – 11:30", "Oct 23 – Oct 25".
+  formatSpan( card ) {
+    const start = card.start_at;
+    const due = card.due_at;
+    if ( !start ) return this.format( due , card.due_all_day );
+    if ( !due ) return this.format( start , card.start_all_day );
+    const sameDay = !card.start_all_day && !card.due_all_day &&
+      this.isoDay( this.localDay( start , false ) ) === this.isoDay( this.localDay( due , false ) );
+    if ( sameDay ) return this.format( start , false ) + " – " + this.formatTime( due );
+    return this.format( start , card.start_all_day ) + " – " + this.format( due , card.due_all_day );
+  },
+
+  // The moment a due date counts as passed: the instant itself, or the end
+  // of the day for an all-day date.
+  deadline( card ) {
+    if ( !card.due_at ) return null;
+    if ( card.due_all_day ) return Dates.dayStart( Dates.addDays( Dates.localDay( card.due_at , true ) , 1 ) );
+    return new Date( card.due_at );
+  },
+
+  // overdue | soon (within a day) | later | done
+  dueState( card ) {
+    if ( !card.due_at ) return "";
+    if ( card.done ) return "done";
+    const deadline = this.deadline( card );
+    const left = deadline.getTime() - Date.now();
+    if ( left < 0 ) return "overdue";
+    if ( left < this.DAY ) return "soon";
+    return "later";
+  },
+};
+
+// Pieces of a card face, shared by the kanban, todo and timeline views.
+const CardBits = {
+  labels( card , board ) {
+    const wrap = Dom.el( "div" , { class: "card-labels" } );
+    card.label_ids.forEach( function ( id ) {
+      const label = board.labels.find( function ( item ) { return item.id === id; } );
+      if ( !label ) return;
+      wrap.appendChild( Dom.el( "span" , { class: "label-chip color-" + label.color , text: label.name , attrs: { title: label.name } } ) );
+    } );
+    return wrap.childNodes.length ? wrap : null;
+  },
+
+  due( card ) {
+    if ( !card.due_at ) return null;
+    return Dom.el( "span" , {
+      class: "due-chip due-" + Dates.dueState( card ),
+      text: Dates.format( card.due_at , card.due_all_day ),
+      attrs: { title: T( "card.due_label" ) },
+    } );
+  },
+
+  checklist( card ) {
+    if ( !card.checklist.length ) return null;
+    const done = card.checklist.filter( function ( item ) { return item.done; } ).length;
+    return Dom.el( "span" , {
+      class: "checklist-chip" + ( done === card.checklist.length ? " complete" : "" ),
+      text: I18n.fill( "card.checklist_progress" , { done: done , total: card.checklist.length } ),
+    } );
+  },
+
+  initials( name ) {
+    return String( name || "?" ).trim().split( /\s+/ ).slice( 0 , 2 ).map( function ( part ) { return part.charAt( 0 ).toUpperCase(); } ).join( "" );
+  },
+
+  assignees( card , people ) {
+    if ( !card.assignees.length ) return null;
+    const wrap = Dom.el( "div" , { class: "avatars" } );
+    card.assignees.forEach( function ( id ) {
+      const name = people[ id ] || "?";
+      wrap.appendChild( Dom.el( "span" , { class: "avatar" , text: CardBits.initials( name ) , attrs: { title: name } } ) );
+    } );
+    return wrap;
+  },
+
+  hasDescription( card ) {
+    return card.description && card.description.trim() !== "";
+  },
+
+  // "Sam (guest)" for a guest edit, the name otherwise.
+  actorName( stored ) {
+    const value = String( stored || "" );
+    if ( value.indexOf( "guest:" ) === 0 ) {
+      const name = value.slice( 6 ) || T( "share.anonymous" );
+      return I18n.fill( "share.guest_name" , { name: name } );
+    }
+    return value;
+  },
+
+  // Midpoint position for a card dropped between two neighbours.
+  positionBetween( before , after ) {
+    if ( before == null && after == null ) return 1024;
+    if ( before == null ) return after / 2;
+    if ( after == null ) return before + 1024;
+    return ( before + after ) / 2;
+  },
+};
+
+// The board colour palette, the same closed set the server accepts.
+const Colors = [ "blue" , "green" , "teal" , "yellow" , "orange" , "red" , "pink" , "purple" , "gray" ];

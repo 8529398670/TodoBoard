@@ -1,0 +1,133 @@
+package routes
+
+import (
+	fiber "github.com/gofiber/fiber/v3"
+
+	access "todoboard/server/access"
+	models "todoboard/server/models"
+)
+
+type createCardRequest struct {
+	ListID   uint64   `json:"list_id"`
+	Title    string   `json:"title"`
+	Position *float64 `json:"position"`
+}
+
+type checklistAddRequest struct {
+	Text string `json:"text"`
+}
+
+func ( handlers *Handlers ) CreateCard( c fiber.Ctx ) ( err error ) {
+	principal , board , err := handlers.requireBoard( c , access.Edit )
+	if board == nil { return }
+	var body createCardRequest
+	if ok , bind_err := bindBody( c , &body ); ok == false { return bind_err }
+	card , create_err := models.CreateCard( handlers.Store , board.ID , body.ListID , body.Title , body.Position , principal.UserID , principal.Name )
+	if create_err != nil {
+		err = modelError( c , create_err )
+		return
+	}
+	err = c.JSON( cardPayload( card , access.Card( principal , board , card ) , access.Board( principal , board ) ) )
+	return
+}
+
+// PatchCard edits a card. Editing its fields needs edit rights on the card;
+// moving or archiving it changes the board around it, so that needs edit
+// rights on the board -- someone with one shared card cannot rearrange the
+// rest.
+func ( handlers *Handlers ) PatchCard( c fiber.Ctx ) ( err error ) {
+	principal , board , card , err := handlers.requireCard( c , access.Edit )
+	if card == nil { return }
+	var body models.CardPatch
+	if ok , bind_err := bindBody( c , &body ); ok == false { return bind_err }
+	if body.Moves() && access.Board( principal , board ) < access.Edit {
+		err = forbidden( c , "forbidden" )
+		return
+	}
+	updated , change , patch_err := models.PatchCard( handlers.Store , board.ID , card.ID , &body , principal.Name )
+	if patch_err != nil {
+		if patch_err == models.ErrStale {
+			// Hand back the current card so the client can show what changed
+			// without a second request.
+			current , _ := models.GetCard( handlers.Store , board.ID , card.ID )
+			if current != nil {
+				err = c.Status( fiber.StatusConflict ).JSON( fiber.Map{ "error": "card_stale" , "card": cardPayload( current , access.Card( principal , board , current ) , access.Board( principal , board ) ) } )
+				return
+			}
+		}
+		err = modelError( c , patch_err )
+		return
+	}
+	handlers.Notify.CardChanged( board.ID , card.ID , change , principal.UserID , principal.Name )
+	err = c.JSON( cardPayload( updated , access.Card( principal , board , updated ) , access.Board( principal , board ) ) )
+	return
+}
+
+func ( handlers *Handlers ) DeleteCard( c fiber.Ctx ) ( err error ) {
+	principal , board , card , err := handlers.requireCard( c , access.Edit )
+	if card == nil { return }
+	if access.Board( principal , board ) < access.Edit {
+		err = forbidden( c , "forbidden" )
+		return
+	}
+	if delete_err := models.DeleteCard( handlers.Store , board.ID , card.ID ); delete_err != nil {
+		err = modelError( c , delete_err )
+		return
+	}
+	err = c.JSON( fiber.Map{ "ok": true } )
+	return
+}
+
+func ( handlers *Handlers ) AddChecklistItem( c fiber.Ctx ) ( err error ) {
+	principal , board , card , err := handlers.requireCard( c , access.Edit )
+	if card == nil { return }
+	var body checklistAddRequest
+	if ok , bind_err := bindBody( c , &body ); ok == false { return bind_err }
+	updated , mutate_err := models.MutateCard( handlers.Store , board.ID , card.ID , principal.Name , func( _ *models.Board , target *models.Card ) ( inner error ) {
+		_ , inner = models.AddChecklistItem( target , body.Text )
+		return
+	} )
+	err = handlers.cardResult( c , principal , board , updated , mutate_err )
+	return
+}
+
+func ( handlers *Handlers ) UpdateChecklistItem( c fiber.Ctx ) ( err error ) {
+	principal , board , card , err := handlers.requireCard( c , access.Edit )
+	if card == nil { return }
+	item_id , ok := paramID( c , "item_id" )
+	if ok == false {
+		err = notFound( c , "item_not_found" )
+		return
+	}
+	var body models.ChecklistUpdate
+	if ok , bind_err := bindBody( c , &body ); ok == false { return bind_err }
+	updated , mutate_err := models.MutateCard( handlers.Store , board.ID , card.ID , principal.Name , func( _ *models.Board , target *models.Card ) error {
+		return body.Apply( target , item_id )
+	} )
+	err = handlers.cardResult( c , principal , board , updated , mutate_err )
+	return
+}
+
+func ( handlers *Handlers ) DeleteChecklistItem( c fiber.Ctx ) ( err error ) {
+	principal , board , card , err := handlers.requireCard( c , access.Edit )
+	if card == nil { return }
+	item_id , ok := paramID( c , "item_id" )
+	if ok == false {
+		err = notFound( c , "item_not_found" )
+		return
+	}
+	updated , mutate_err := models.MutateCard( handlers.Store , board.ID , card.ID , principal.Name , func( _ *models.Board , target *models.Card ) error {
+		return models.DeleteChecklistItem( target , item_id )
+	} )
+	err = handlers.cardResult( c , principal , board , updated , mutate_err )
+	return
+}
+
+func ( handlers *Handlers ) cardResult( c fiber.Ctx , principal *access.Principal , board *models.Board , card *models.Card , model_err error ) ( err error ) {
+	if model_err != nil {
+		err = modelError( c , model_err )
+		return
+	}
+	err = c.JSON( cardPayload( card , access.Card( principal , board , card ) , access.Board( principal , board ) ) )
+	return
+}
