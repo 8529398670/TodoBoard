@@ -4,12 +4,29 @@
 // account page, so the board page opens the theme (kept in this browser) and
 // times for them in a panel (open).
 const UserSettings = {
-  // The Account page card.
+  // The Account page card, folded to the line summary() writes.
   render( root , me ) {
     Dom.clear( root );
     root.appendChild( this.appearance( me ) );
     root.appendChild( this.time( me ) );
     root.appendChild( this.cards( me ) );
+    this.summarize( me );
+  },
+
+  // "Midnight theme · America/New_York · 24-hour clock"; only on the
+  // Account page, where the folded card shows it.
+  summarize( me ) {
+    const line = Dom.get( "user-settings-summary" );
+    if ( !line ) return;
+    const display = me.display || {};
+    const theme = display.theme || { mode: "light" };
+    const preset = ThemeEditor.presets.find( function ( item ) { return ThemeEditor.same( theme , item.theme ); } );
+    const clock = display.hour12 === true ? "user_settings.summary_12" : display.hour12 === false ? "user_settings.summary_24" : "user_settings.summary_clock_auto";
+    Dom.text( line , I18n.fill( "user_settings.summary" , {
+      theme: preset ? T( "theme.preset_" + preset.key ) : T( "user_settings.summary_custom" ),
+      zone: display.timezone || I18n.fill( "user_settings.timezone_browser" , { zone: Dates.browserZone() } ),
+      clock: T( clock ),
+    } ) );
   },
 
   // A guest's panel on the board page.
@@ -59,6 +76,7 @@ const UserSettings = {
       me.display = saved;
       Dates.configure( saved );
       Theme.setUser( saved.theme , saved.own_theme_on_boards );
+      this.summarize( me );
       Ui.toast( T( "user_settings.saved" ) , "ok" );
     } catch ( error ) {
       Ui.error( error );

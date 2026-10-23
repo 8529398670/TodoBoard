@@ -144,11 +144,16 @@
       </div>
 
       <!-- Theme, dates and times, card numbering: every personal setting in
-           one place. See user_settings.js. -->
-      <div class="card" id="display-settings">
-        <h2 data-i18n="user_settings.account_heading"></h2>
+           one place. See user_settings.js. Folded to a one-line summary. -->
+      <details class="card collapsible" id="display-settings">
+        <summary>
+          <span class="collapsible-head">
+            <h2 data-i18n="user_settings.account_heading"></h2>
+            <span id="user-settings-summary" class="muted"></span>
+          </span>
+        </summary>
         <div id="user-settings-root"></div>
-      </div>
+      </details>
 
       <!-- Push notifications through Pushover; see notify_settings.js.
            Folded to one line with a summary of what is on; opened to edit. -->
