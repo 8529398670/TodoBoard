@@ -3,14 +3,18 @@
 // my defaults" removes the override again. The server resolves card, then
 // board, then defaults -- the "source" it reports says which one applied.
 const Subscribe = {
-  openBoard( ctx ) {
+  openBoard( ctx , back ) {
     Panel.open( "notify.board_title" , ( body ) => {
-      this.render( body , {
+      // render redraws body from scratch, so it gets a box of its own below
+      // the back button.
+      const box = Dom.el( "div" );
+      body.appendChild( box );
+      this.render( box , {
         load: function () { return ctx.client.boardSubscription(); },
         save: function ( events ) { return ctx.client.setBoardSubscription( events ); },
         intro: T( "notify.board_intro" ),
       } );
-    } );
+    } , back );
   },
 
   openCard( ctx , card ) {

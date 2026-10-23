@@ -120,7 +120,7 @@ func TestShareLinks( t *testing.T ) {
 	board , _ := CreateBoard( store , owner.ID , "B" , []string{ "L" } )
 	card , _ := CreateCard( store , board.ID , board.Lists[ 0 ].ID , "c" , nil , owner.ID , "" )
 
-	credential , link , err := IssueShareLink( store , board.ID , card.ID , ModeEdit , "for Sam" , 0 , owner.ID )
+	credential , link , err := IssueShareLink( store , board.ID , card.ID , 0 , ModeEdit , "for Sam" , 0 , owner.ID )
 	if err != nil { t.Fatal( err ) }
 	if loaded := LoadShareLink( store , credential ); loaded == nil || loaded.CardID != card.ID {
 		t.Fatalf( "a fresh link should load" )
@@ -128,7 +128,7 @@ func TestShareLinks( t *testing.T ) {
 	if LoadShareLink( store , link.ID + ".wrong" ) != nil {
 		t.Errorf( "a wrong secret must not load" )
 	}
-	if _ , _ , err = IssueShareLink( store , board.ID , 0 , "admin" , "" , 0 , owner.ID ); err == nil {
+	if _ , _ , err = IssueShareLink( store , board.ID , 0 , 0 , "admin" , "" , 0 , owner.ID ); err == nil {
 		t.Errorf( "a link mode must be view or edit" )
 	}
 	if err = RevokeShareLink( store , link.ID ); err != nil { t.Fatal( err ) }
@@ -136,11 +136,50 @@ func TestShareLinks( t *testing.T ) {
 		t.Errorf( "a revoked link must not load" )
 	}
 
+	// A column link names a column that exists, and never a card as well.
+	if _ , _ , err = IssueShareLink( store , board.ID , card.ID , board.Lists[ 0 ].ID , ModeView , "" , 0 , owner.ID ); err == nil {
+		t.Errorf( "a link cannot be for a card and a column at once" )
+	}
+	if _ , _ , err = IssueShareLink( store , board.ID , 0 , 9999 , ModeView , "" , 0 , owner.ID ); errors.Is( err , ErrListNotFound ) == false {
+		t.Errorf( "a column link needs a real column, got %v" , err )
+	}
+
 	// Deleting the card takes its links with it.
-	credential , _ , _ = IssueShareLink( store , board.ID , card.ID , ModeView , "" , 7 , owner.ID )
+	credential , _ , _ = IssueShareLink( store , board.ID , card.ID , 0 , ModeView , "" , 7 , owner.ID )
 	if err = DeleteCard( store , board.ID , card.ID ); err != nil { t.Fatal( err ) }
 	if LoadShareLink( store , credential ) != nil {
 		t.Errorf( "a deleted card's link must not load" )
+	}
+}
+
+func TestNewBoardDefaults( t *testing.T ) {
+	store := testStore( t )
+	owner , _ := CreateUser( store , "Owner" , RoleAdmin )
+
+	// New boards are three columns, with three lists even if fewer were named.
+	board , err := CreateBoard( store , owner.ID , "B" , []string{ "Backlog" } )
+	if err != nil { t.Fatal( err ) }
+	if board.Layout != LayoutThree || len( board.Lists ) != 3 || board.SortedLists()[ 0 ].Title != "Backlog" {
+		t.Errorf( "a new board should be three columns: %q %d lists" , board.Layout , len( board.Lists ) )
+	}
+
+	on := NumberingOn
+	if _ , err = UpdateBoardSettings( store , board.ID , &BoardSettings{ Numbering: &on } ); err != nil { t.Fatal( err ) }
+	bad := "sometimes"
+	if _ , err = UpdateBoardSettings( store , board.ID , &BoardSettings{ Numbering: &bad } ); errors.Is( err , ErrBadInput ) == false {
+		t.Errorf( "numbering must be on, off or empty, got %v" , err )
+	}
+
+	// Deleting a column takes its column links.
+	list := board.SortedLists()[ 1 ].ID
+	credential , _ , err := IssueShareLink( store , board.ID , 0 , list , ModeEdit , "" , 0 , owner.ID )
+	if err != nil { t.Fatal( err ) }
+	if loaded := LoadShareLink( store , credential ); loaded == nil || loaded.ListID != list {
+		t.Fatalf( "a fresh column link should load" )
+	}
+	if err = DeleteList( store , board.ID , list ); err != nil { t.Fatal( err ) }
+	if LoadShareLink( store , credential ) != nil {
+		t.Errorf( "a deleted column's link must not load" )
 	}
 }
 
@@ -215,5 +254,110 @@ func TestEffectiveEvents( t *testing.T ) {
 	bad.Timezone = "Mars/Olympus"
 	if bad.Validate() == nil {
 		t.Errorf( "an unknown timezone must be refused" )
+	}
+}
+
+func TestFolders( t *testing.T ) {
+	store := testStore( t )
+	owner , _ := CreateUser( store , "Owner" , RoleAdmin )
+	bob , _ := CreateUser( store , "Bob" , RoleUser )
+	board , _ := CreateBoard( store , owner.ID , "B" , nil )
+	if _ , err := SetMember( store , board.ID , bob.ID , BoardRoleViewer ); err != nil { t.Fatal( err ) }
+
+	work , err := CreateFolder( store , owner.ID , " Work " )
+	if err != nil || work.Name != "Work" { t.Fatalf( "create folder: %v %+v" , err , work ) }
+	if _ , err = CreateFolder( store , owner.ID , "   " ); errors.Is( err , ErrBadInput ) == false {
+		t.Errorf( "a blank folder name must be refused, got %v" , err )
+	}
+	if err = SetBoardFolder( store , owner.ID , board.ID , work.ID ); err != nil { t.Fatal( err ) }
+
+	// Folders are private: Bob cannot file into Owner's folder, and Owner's
+	// filing does not move the board on Bob's home page.
+	if err = SetBoardFolder( store , bob.ID , board.ID , work.ID ); errors.Is( err , ErrFolderNotFound ) == false {
+		t.Errorf( "someone else's folder must not be usable, got %v" , err )
+	}
+	boards , _ , _ := ListBoardsForUser( store , bob.ID )
+	if len( boards ) != 1 || boards[ 0 ].Folder != 0 {
+		t.Errorf( "bob's board should be unfiled: %+v" , boards )
+	}
+
+	// A change of role keeps the filing.
+	bob_folder , _ := CreateFolder( store , bob.ID , "Shared" )
+	SetBoardFolder( store , bob.ID , board.ID , bob_folder.ID )
+	SetMember( store , board.ID , bob.ID , BoardRoleEditor )
+	boards , _ , _ = ListBoardsForUser( store , bob.ID )
+	if boards[ 0 ].Folder != bob_folder.ID || boards[ 0 ].Role != BoardRoleEditor {
+		t.Errorf( "a role change should keep the folder: %+v" , boards[ 0 ] )
+	}
+
+	// Deleting a folder unfiles its boards.
+	if err = DeleteFolder( store , owner.ID , work.ID ); err != nil { t.Fatal( err ) }
+	boards , _ , _ = ListBoardsForUser( store , owner.ID )
+	if boards[ 0 ].Folder != 0 {
+		t.Errorf( "a deleted folder's boards should be unfiled: %+v" , boards[ 0 ] )
+	}
+	if folders , _ := ListFolders( store , owner.ID ); len( folders ) != 0 {
+		t.Errorf( "the folder should be gone: %+v" , folders )
+	}
+}
+
+func TestArchiveListCards( t *testing.T ) {
+	store := testStore( t )
+	owner , _ := CreateUser( store , "Owner" , RoleAdmin )
+	board , _ := CreateBoard( store , owner.ID , "B" , nil )
+	lists := board.SortedLists()
+	a , _ := CreateCard( store , board.ID , lists[ 2 ].ID , "a" , nil , owner.ID , "" )
+	b , _ := CreateCard( store , board.ID , lists[ 2 ].ID , "b" , nil , owner.ID , "" )
+	other , _ := CreateCard( store , board.ID , lists[ 0 ].ID , "other" , nil , owner.ID , "" )
+	archived := true
+	PatchCard( store , board.ID , b.ID , &CardPatch{ Archived: &archived } , "Owner" )
+
+	// Picking cards archives just those, and never a card on another list.
+	c , _ := CreateCard( store , board.ID , lists[ 2 ].ID , "c" , nil , owner.ID , "" )
+	ids , err := ArchiveListCards( store , board.ID , lists[ 2 ].ID , []uint64{ c.ID , other.ID } , "Owner" )
+	if err != nil { t.Fatal( err ) }
+	if len( ids ) != 1 || ids[ 0 ] != c.ID {
+		t.Errorf( "only the picked card on this column is archived, got %v" , ids )
+	}
+
+	ids , err = ArchiveListCards( store , board.ID , lists[ 2 ].ID , nil , "Owner" )
+	if err != nil { t.Fatal( err ) }
+	if len( ids ) != 1 || ids[ 0 ] != a.ID {
+		t.Errorf( "only the column's open cards are archived, got %v" , ids )
+	}
+	if reloaded , _ := GetCard( store , board.ID , a.ID ); reloaded.Archived == false {
+		t.Errorf( "the card should be archived" )
+	}
+	if reloaded , _ := GetCard( store , board.ID , other.ID ); reloaded.Archived {
+		t.Errorf( "a card in another column must be left alone" )
+	}
+	if _ , err = ArchiveListCards( store , board.ID , 9999 , nil , "Owner" ); errors.Is( err , ErrListNotFound ) == false {
+		t.Errorf( "an unknown column must error, got %v" , err )
+	}
+}
+
+func TestBoardPlainIcons( t *testing.T ) {
+	store := testStore( t )
+	owner , _ := CreateUser( store , "Owner" , RoleAdmin )
+	bob , _ := CreateUser( store , "Bob" , RoleUser )
+	board , _ := CreateBoard( store , owner.ID , "B" , nil )
+	SetMember( store , board.ID , bob.ID , BoardRoleEditor )
+
+	grey := true
+	if err := SetBoardPlainIcons( store , bob.ID , board.ID , &grey ); err != nil { t.Fatal( err ) }
+	if ref := GetBoardRef( store , bob.ID , board.ID ); ref == nil || ref.PlainIcons == nil || *ref.PlainIcons == false || ref.Role != BoardRoleEditor {
+		t.Errorf( "bob's choice should be saved with his role intact: %+v" , ref )
+	}
+	if ref := GetBoardRef( store , owner.ID , board.ID ); ref == nil || ref.PlainIcons != nil {
+		t.Errorf( "bob's choice is his alone: %+v" , ref )
+	}
+	// nil goes back to following the account default.
+	SetBoardPlainIcons( store , bob.ID , board.ID , nil )
+	if ref := GetBoardRef( store , bob.ID , board.ID ); ref.PlainIcons != nil {
+		t.Errorf( "clearing the board choice should leave it unset: %+v" , ref )
+	}
+	stranger , _ := CreateUser( store , "Stranger" , RoleUser )
+	if err := SetBoardPlainIcons( store , stranger.ID , board.ID , &grey ); errors.Is( err , ErrBoardNotFound ) == false {
+		t.Errorf( "someone not on the board has nothing to set, got %v" , err )
 	}
 }

@@ -11,8 +11,8 @@ import (
 	encryption "todoboard/server/encryption"
 )
 
-// ShareLink lets anyone holding it open a board, or one card, without an
-// account -- read-only or editable. It is a bearer credential like an API
+// ShareLink lets anyone holding it open a board, one column, or one card,
+// without an account -- read-only or editable. It is a bearer credential like an API
 // key, shaped and checked the same way: "<id>.<secret>", the id is the bolt
 // key, and only a sha256 of the 256-bit secret is stored, so a copy of the
 // database does not hand out working links.
@@ -24,7 +24,8 @@ type ShareLink struct {
 	ID         string     `json:"id"`
 	SecretHash string     `json:"secret_hash"`
 	BoardID    uint64     `json:"board_id"`
-	CardID     uint64     `json:"card_id"` // 0: the whole board
+	CardID     uint64     `json:"card_id"` // 0: the whole board (or a column)
+	ListID     uint64     `json:"list_id"` // 0: not a column link
 	Mode       string     `json:"mode"`
 	Label      string     `json:"label"`
 	CreatedBy  uint64     `json:"created_by"`
@@ -45,10 +46,12 @@ func ( link *ShareLink ) Live() ( result bool ) {
 	return
 }
 
-// IssueShareLink mints a link. days 0 means it does not expire.
-func IssueShareLink( store *db.Store , board_id uint64 , card_id uint64 , mode string , label string , days int , created_by uint64 ) ( credential string , link *ShareLink , err error ) {
+// IssueShareLink mints a link for the board, one card (card_id), or one
+// column (list_id) -- never both of the last two. days 0 means it does not
+// expire.
+func IssueShareLink( store *db.Store , board_id uint64 , card_id uint64 , list_id uint64 , mode string , label string , days int , created_by uint64 ) ( credential string , link *ShareLink , err error ) {
 	label = strings.TrimSpace( label )
-	if ( mode != ModeView && mode != ModeEdit ) || utf8.RuneCountInString( label ) > 80 || days < 0 || days > 3650 {
+	if ( mode != ModeView && mode != ModeEdit ) || utf8.RuneCountInString( label ) > 80 || days < 0 || days > 3650 || ( card_id != 0 && list_id != 0 ) {
 		err = ErrBadInput
 		return
 	}
@@ -56,7 +59,7 @@ func IssueShareLink( store *db.Store , board_id uint64 , card_id uint64 , mode s
 	secret := encryption.GenerateURLToken( 32 )
 	now := time.Now().UTC()
 	link = &ShareLink{
-		ID: link_id , SecretHash: encryption.Sha256Hex( secret ) , BoardID: board_id , CardID: card_id ,
+		ID: link_id , SecretHash: encryption.Sha256Hex( secret ) , BoardID: board_id , CardID: card_id , ListID: list_id ,
 		Mode: mode , Label: label , CreatedBy: created_by , CreatedAt: now ,
 	}
 	if days > 0 {
@@ -64,7 +67,9 @@ func IssueShareLink( store *db.Store , board_id uint64 , card_id uint64 , mode s
 		link.ExpiresAt = &expires
 	}
 	err = store.Write( func( tx *db.Tx ) ( tx_err error ) {
-		if _ , tx_err = getBoardTx( tx , board_id ); tx_err != nil { return }
+		board , tx_err := getBoardTx( tx , board_id )
+		if tx_err != nil { return }
+		if list_id != 0 && board.List( list_id ) == nil { return ErrListNotFound }
 		if card_id != 0 {
 			if _ , tx_err = getCardTx( tx , board_id , card_id ); tx_err != nil { return }
 		}

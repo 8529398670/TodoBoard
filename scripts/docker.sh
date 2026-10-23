@@ -45,8 +45,7 @@ build_image() {
   # Version metadata, stamped into the binary exactly as build.sh does, so
   # `docker exec <name> /app/server version` is as informative as a portable
   # binary's.
-  VERSION="$( git describe --tags --always --dirty 2>/dev/null || echo "dev" )"
-  commit="$( git rev-parse --short HEAD 2>/dev/null || echo "unknown" )"
+  VERSION="$( date +%Y.%m.%d-%H%M )"
   build_date="$( date -u +%Y-%m-%dT%H:%M:%SZ )"
 
   id_file="$( mktemp )"
@@ -54,7 +53,6 @@ build_image() {
   if ! docker build \
          --iidfile "$id_file" \
          --build-arg "VERSION=${VERSION}" \
-         --build-arg "COMMIT=${commit}" \
          --build-arg "BUILD_DATE=${build_date}" \
          .; then
     rm -f "$id_file"

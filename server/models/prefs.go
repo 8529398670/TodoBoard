@@ -45,6 +45,14 @@ type UserPrefs struct {
 	// sets Timezone, so reminders fire on the same clock the person reads.
 	DisplayTimezone string `json:"display_timezone"`
 	Hour12          *bool  `json:"hour12"`
+
+	// NumberCards is the person's default for boards whose own numbering
+	// setting is left to each viewer.
+	NumberCards bool `json:"number_cards"`
+
+	// PlainIcons shows Doing / Done icons in greyscale on every board this
+	// person has not set otherwise (BoardRef.PlainIcons).
+	PlainIcons bool `json:"plain_icons"`
 }
 
 func DefaultUserPrefs() ( prefs *UserPrefs ) {

@@ -1,8 +1,18 @@
-// Your own settings, from the gear in any header: theme, and how dates and
-// times read. Theme is per browser (theme.js); the clock settings are the
-// account's, so they follow the person to every device. A guest on a share
-// link has no account, so for them times follow the device.
+// Your own settings, all on the Account page: theme, how dates and times
+// read, and whether cards are numbered by default. Theme is per browser
+// (theme.js); the rest are the account's, so they follow the person to every
+// device. A guest on a share link has no account page, so the board page
+// opens just the theme for them in a panel (open).
 const UserSettings = {
+  // The Account page card.
+  render( root , me ) {
+    Dom.clear( root );
+    root.appendChild( this.appearance() );
+    root.appendChild( this.time( me ) );
+    root.appendChild( this.cards( me ) );
+  },
+
+  // A guest's panel on the board page.
   open( me ) {
     Panel.open( "user_settings.title" , ( body ) => {
       body.appendChild( this.appearance() );
@@ -22,6 +32,26 @@ const UserSettings = {
     return section;
   },
 
+  // Saves the account's display settings. The server takes them as one
+  // record, so what is not being changed is sent as it stands.
+  async save( me , changes ) {
+    const display = me.display || {};
+    const body = Object.assign( {
+      timezone: display.timezone || "",
+      hour12: typeof display.hour12 === "boolean" ? display.hour12 : null,
+      number_cards: !!display.number_cards,
+      plain_icons: !!display.plain_icons,
+    } , changes );
+    try {
+      const saved = await Api.post( "/api/account/display" , body );
+      me.display = saved;
+      Dates.configure( saved );
+      Ui.toast( T( "user_settings.saved" ) , "ok" );
+    } catch ( error ) {
+      Ui.error( error );
+    }
+  },
+
   time( me ) {
     const section = Dom.el( "section" , { class: "panel-section" } );
     section.appendChild( Dom.el( "h3" , { text: T( "user_settings.time_heading" ) } ) );
@@ -38,17 +68,8 @@ const UserSettings = {
       { value: "24" , text: T( "user_settings.clock_24" ) },
     ] , display.hour12 === true ? "12" : display.hour12 === false ? "24" : "" );
 
-    const save = async function () {
-      const hour12 = clock.value === "" ? null : clock.value === "12";
-      try {
-        const saved = await Api.post( "/api/account/display" , { timezone: zone.value , hour12: hour12 } );
-        me.display = saved;
-        Dates.configure( saved );
-        Ui.toast( T( "user_settings.saved" ) , "ok" );
-        if ( typeof UserSettings.onChange === "function" ) UserSettings.onChange();
-      } catch ( error ) {
-        Ui.error( error );
-      }
+    const save = function () {
+      UserSettings.save( me , { timezone: zone.value , hour12: clock.value === "" ? null : clock.value === "12" } );
     };
     zone.addEventListener( "change" , save );
     clock.addEventListener( "change" , save );
@@ -58,6 +79,20 @@ const UserSettings = {
     row.appendChild( Ui.field( "user_settings.clock_label" , clock ) );
     section.appendChild( row );
     section.appendChild( Dom.el( "p" , { class: "muted small-print" , text: T( "user_settings.time_hint" ) } ) );
+    return section;
+  },
+
+  cards( me ) {
+    const section = Dom.el( "section" , { class: "panel-section" } );
+    section.appendChild( Dom.el( "h3" , { text: T( "user_settings.cards_heading" ) } ) );
+    section.appendChild( Ui.checkbox( "user_settings.number_cards" , me.display && me.display.number_cards , function ( checked ) {
+      UserSettings.save( me , { number_cards: checked } );
+    } ) );
+    section.appendChild( Dom.el( "p" , { class: "muted small-print" , text: T( "user_settings.number_cards_hint" ) } ) );
+    section.appendChild( Ui.checkbox( "user_settings.plain_icons" , me.display && me.display.plain_icons , function ( checked ) {
+      UserSettings.save( me , { plain_icons: checked } );
+    } ) );
+    section.appendChild( Dom.el( "p" , { class: "muted small-print" , text: T( "user_settings.plain_icons_hint" ) } ) );
     return section;
   },
 

@@ -41,7 +41,7 @@ func ( handlers *Handlers ) GetMe( c fiber.Ctx ) ( err error ) {
 		return
 	}
 
-	display := fiber.Map{ "timezone": "" , "hour12": nil }
+	display := fiber.Map{ "timezone": "" , "hour12": nil , "number_cards": false , "plain_icons": false }
 	if prefs , prefs_err := models.GetUserPrefs( handlers.Store , user.ID ); prefs_err == nil {
 		display = displayPayload( prefs )
 	}
@@ -97,18 +97,22 @@ func ( handlers *Handlers ) RenameAccount( c fiber.Ctx ) ( err error ) {
 }
 
 type displayRequest struct {
-	Timezone  string `json:"timezone"`
-	Hour12    *bool  `json:"hour12"`
-	CSRFToken string `json:"csrf_token"`
+	Timezone    string `json:"timezone"`
+	Hour12      *bool  `json:"hour12"`
+	NumberCards *bool  `json:"number_cards"`
+	PlainIcons  *bool  `json:"plain_icons"`
+	CSRFToken   string `json:"csrf_token"`
 }
 
 func displayPayload( prefs *models.UserPrefs ) ( payload fiber.Map ) {
-	payload = fiber.Map{ "timezone": prefs.DisplayTimezone , "hour12": prefs.Hour12 }
+	payload = fiber.Map{ "timezone": prefs.DisplayTimezone , "hour12": prefs.Hour12 , "number_cards": prefs.NumberCards , "plain_icons": prefs.PlainIcons }
 	return
 }
 
 // SaveDisplay stores how this person wants times shown: a timezone ("" for
-// the browser's own) and 12- or 24-hour clocks (null for the locale's).
+// the browser's own) and 12- or 24-hour clocks (null for the locale's) --
+// and, when sent, whether cards are numbered and status icons grey by
+// default.
 func ( handlers *Handlers ) SaveDisplay( c fiber.Ctx ) ( err error ) {
 	var body displayRequest
 	if ok , bind_err := bindBody( c , &body ); ok == false { return bind_err }
@@ -124,6 +128,8 @@ func ( handlers *Handlers ) SaveDisplay( c fiber.Ctx ) ( err error ) {
 	}
 	prefs.DisplayTimezone , prefs.Hour12 = body.Timezone , body.Hour12
 	if body.Timezone != "" { prefs.Timezone = body.Timezone }
+	if body.NumberCards != nil { prefs.NumberCards = *body.NumberCards }
+	if body.PlainIcons != nil { prefs.PlainIcons = *body.PlainIcons }
 	if save_err := models.SaveUserPrefs( handlers.Store , user.ID , prefs ); save_err != nil {
 		err = badRequest( c , "invalid_timezone" )
 		return

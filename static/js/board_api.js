@@ -54,15 +54,37 @@ class BoardClient {
   }
 
   get( path )         { return this.call( "GET" , path ); }
+
+  // A file rather than JSON -- the spreadsheet export -- with the same
+  // credentials as every other call.
+  async file( path ) {
+    const headers = {};
+    if ( this.isGuest ) headers[ "X-Share-Token" ] = this.shareToken;
+    const response = await fetch( this.base + path , { credentials: this.isGuest ? "omit" : "same-origin" , headers: headers } );
+    if ( !response.ok ) {
+      let result = {};
+      try { result = await response.json(); } catch ( error ) { result = {}; }
+      const error = new Error( result.error || response.statusText );
+      error.status = response.status;
+      throw error;
+    }
+    return response.blob();
+  }
   post( path , body ) { return this.call( "POST" , path , body ); }
 
   board()                          { return this.get( "/" + this.boardId ); }
   stamp()                          { return this.get( "/" + this.boardId + "/stamp" ); }
   updateBoard( fields )            { return this.post( "/" + this.boardId , fields ); }
+  // format "xlsx" or "csv"; timed dates are written in zone.
+  exportSheet( format , archived , zone ) {
+    return this.file( "/" + this.boardId + "/export?format=" + format + "&archived=" + ( archived ? "1" : "0" ) + "&tz=" + encodeURIComponent( zone || "" ) );
+  }
 
   createList( title , position )   { return this.post( "/" + this.boardId + "/lists" , { title: title , position: position } ); }
   updateList( listId , fields )    { return this.post( "/" + this.boardId + "/lists/" + listId , fields ); }
   deleteList( listId )             { return this.post( "/" + this.boardId + "/lists/" + listId + "/delete" ); }
+  // Every open card in the list, or only cardIds.
+  archiveCards( listId , cardIds ) { return this.post( "/" + this.boardId + "/lists/" + listId + "/archive-cards" , { card_ids: cardIds } ); }
 
   createLabel( name , color )      { return this.post( "/" + this.boardId + "/labels" , { name: name , color: color } ); }
   updateLabel( labelId , fields )  { return this.post( "/" + this.boardId + "/labels/" + labelId , fields ); }
@@ -95,6 +117,8 @@ class BoardClient {
   setCardSubscription( cardId , events ) {
     return this.post( "/" + this.boardId + "/cards/" + cardId + "/subscription" , { events: events } );
   }
+  // How the board looks to this member alone.
+  setMyView( fields )              { return this.post( "/" + this.boardId + "/my-view" , fields ); }
   leave()                          { return this.post( "/" + this.boardId + "/leave" ); }
   deleteBoard()                    { return this.post( "/" + this.boardId + "/delete" ); }
 }

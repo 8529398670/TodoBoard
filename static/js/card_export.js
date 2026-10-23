@@ -188,10 +188,12 @@ const CardExport = {
   },
 };
 
-// Exporting a whole board: Markdown (copy or download), or the print layout,
-// which the browser saves as a PDF with real, selectable text and math.
+// Exporting a whole board: Markdown (copy or download), a spreadsheet (.xlsx
+// formatted, or .csv -- built by the server, see server/sheet), or the print
+// layout, which the browser saves as a PDF with real, selectable text and
+// math.
 const BoardExport = {
-  open( ctx ) {
+  open( ctx , back ) {
     Panel.open( "export.board_title" , ( body ) => {
       body.appendChild( Dom.el( "h3" , { text: T( "export.markdown_heading" ) } ) );
       body.appendChild( Dom.el( "div" , { class: "row-actions" , children: [
@@ -200,6 +202,15 @@ const BoardExport = {
           Ui.download( new Blob( [ this.markdown( ctx ) ] , { type: "text/markdown;charset=utf-8" } ) , Ui.slug( ctx.board.title ) + ".md" );
         } ),
       ] } ) );
+      body.appendChild( Dom.el( "h3" , { text: T( "export.sheet_heading" ) } ) );
+      body.appendChild( Dom.el( "p" , { class: "muted" , text: T( "export.sheet_hint" ) } ) );
+      const archived = Ui.checkbox( "export.sheet_archived" , ctx.showArchived() );
+      const sheet = ( format ) => this.sheet( ctx , format , archived.querySelector( "input" ).checked );
+      body.appendChild( Dom.el( "div" , { class: "row-actions" , children: [
+        Dom.el( "button" , { class: "small" , text: T( "export.download_xlsx" ) , attrs: { type: "button" } , on: { click: () => sheet( "xlsx" ) } } ),
+        Ui.button( "export.download_csv" , () => sheet( "csv" ) ),
+        archived,
+      ] } ) );
       body.appendChild( Dom.el( "h3" , { text: T( "export.pdf_heading" ) } ) );
       body.appendChild( Dom.el( "p" , { class: "muted" , text: T( "export.pdf_hint" ) } ) );
       body.appendChild( Dom.el( "a" , {
@@ -207,7 +218,17 @@ const BoardExport = {
         text: T( "export.open_print" ),
         attrs: { href: this.printPath( ctx ) , target: "_blank" , rel: "noopener" },
       } ) );
-    } );
+    } , back );
+  },
+
+  // Timed dates come out on the clock this person reads them on.
+  async sheet( ctx , format , archived ) {
+    try {
+      const blob = await ctx.client.exportSheet( format , archived , Dates.zone || Dates.browserZone() );
+      Ui.download( blob , Ui.slug( ctx.board.title ) + "." + format );
+    } catch ( error ) {
+      Ui.toast( T( "export.sheet_failed" ) );
+    }
   },
 
   printPath( ctx ) {

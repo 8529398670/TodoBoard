@@ -41,13 +41,19 @@ const BoardPage = {
     Dom.all( "[data-view]" ).forEach( ( button ) => {
       button.addEventListener( "click" , () => this.setView( button.getAttribute( "data-view" ) ) );
     } );
-    Dom.get( "share-button" ).addEventListener( "click" , () => Sharing.open( this.context() ) );
-    Dom.get( "notify-button" ).addEventListener( "click" , () => Subscribe.openBoard( this.context() ) );
-    Dom.get( "export-button" ).addEventListener( "click" , () => BoardExport.open( this.context() ) );
     Dom.get( "settings-button" ).addEventListener( "click" , () => BoardSettings.open( this.context() ) );
+    Dom.get( "archived-toggle" ).addEventListener( "click" , () => {
+      this.setShowArchived( !this.showArchived() );
+      this.render();
+    } );
     UserSettings.bind( () => this.me );
-    // A new timezone or clock redraws every date on the board.
-    UserSettings.onChange = () => this.render();
+
+    // Every change made from this tab can be undone; see history.js.
+    History.attach( this.client , () => this.data , () => this.load() );
+    History.onChange = () => this.showHistory();
+    History.bindKeys();
+    Dom.get( "undo-button" ).addEventListener( "click" , () => History.undo() );
+    Dom.get( "redo-button" ).addEventListener( "click" , () => History.redo() );
 
     await this.load();
     const params = new URLSearchParams( window.location.search );
@@ -64,9 +70,10 @@ const BoardPage = {
       this.me = { authenticated: false };
       Dom.show( Dom.get( "home-link" ) , false );
       if ( this.client.info.mode === "edit" ) await this.askGuestName();
+      const info = this.client.info;
       const banner = Dom.get( "guest-banner" );
-      Dom.text( banner , I18n.fill( this.client.info.mode === "edit" ? "share.banner_edit" : "share.banner_view" , {
-        label: this.client.info.label || this.client.info.board_title,
+      Dom.text( banner , I18n.fill( info.mode === "edit" ? "share.banner_edit" : "share.banner_view" , {
+        label: info.label || ( info.list_title ? info.board_title + " › " + info.list_title : info.board_title ),
       } ) );
       Dom.show( banner , true );
       return;
@@ -169,23 +176,52 @@ const BoardPage = {
       canEdit: level === "edit" || level === "manage",
       canManage: level === "manage",
       cardOnly: data ? data.card_only : false,
+      // A column share link: the one column is the whole board for them.
+      listOnly: data ? !!data.list_only : false,
       view: this.view,
       openCard( cardId ) { page.openCard( cardId ); },
       reload() { return page.load(); },
       setDragging( flag ) { page.dragging = flag; },
       // A three-column board shows its first three open lists and nothing
       // else; the rest are kept, and come back when the layout is changed.
+      // Someone shown a single column sees just that column either way.
       isThree() {
-        return !!data && data.board.layout === "three";
+        return !!data && data.board.layout === "three" && !data.list_only;
+      },
+      // Cards are numbered when the board says so, or, left to each person,
+      // when their account does. A guest has no account to ask.
+      numbered() {
+        if ( !data ) return false;
+        if ( data.board.numbering ) return data.board.numbering === "on";
+        return !!( page.me && page.me.display && page.me.display.number_cards );
+      },
+      // Grey status icons: this person's choice for this board, else their
+      // account default.
+      plainIcons() {
+        if ( !data ) return false;
+        if ( typeof data.me.plain_icons === "boolean" ) return data.me.plain_icons;
+        return !!( page.me && page.me.display && page.me.display.plain_icons );
       },
       lists() {
         const open = data.board.lists.filter( function ( list ) { return !list.archived; } );
         return this.isThree() ? open.slice( 0 , 3 ) : open;
       },
+      // A list's open cards, in order: what is counted, numbered, copied
+      // and moved among.
       cardsIn( listId ) {
         return data.cards
           .filter( function ( card ) { return card.list_id === listId && !card.archived; } )
           .sort( function ( a , b ) { return a.position - b.position; } );
+      },
+      showArchived() { return page.showArchived(); },
+      // What a column shows: its open cards, then -- with "Show archived"
+      // on -- its archived ones, faded, after them.
+      shownIn( listId ) {
+        const open = this.cardsIn( listId );
+        if ( !page.showArchived() ) return open;
+        return open.concat( data.cards
+          .filter( function ( card ) { return card.list_id === listId && card.archived; } )
+          .sort( function ( a , b ) { return a.position - b.position; } ) );
       },
       card( cardId ) {
         return data.cards.find( function ( card ) { return card.id === cardId; } ) || null;
@@ -210,17 +246,18 @@ const BoardPage = {
     const board = ctx.board;
     document.title = board.title + " · " + T( "app.title" );
     Markdown.renderInline( board.title , Dom.get( "board-title" ) );
-    document.body.className = "board-page color-" + ( board.color || "none" );
+    document.body.className = "board-page color-" + ( board.color || "none" ) + ( ctx.plainIcons() ? " plain-status" : "" );
 
     Dom.all( "[data-view]" ).forEach( ( button ) => {
       button.classList.toggle( "active" , button.getAttribute( "data-view" ) === this.view );
       button.setAttribute( "aria-pressed" , button.getAttribute( "data-view" ) === this.view ? "true" : "false" );
     } );
     Dom.show( Dom.get( "view-switch" ) , !ctx.cardOnly );
-    Dom.show( Dom.get( "share-button" ) , ctx.canManage );
-    Dom.show( Dom.get( "notify-button" ) , !ctx.isGuest && !ctx.cardOnly );
-    Dom.show( Dom.get( "settings-button" ) , !ctx.isGuest && !ctx.cardOnly );
-    Dom.show( Dom.get( "export-button" ) , !ctx.cardOnly );
+    Dom.show( Dom.get( "settings-button" ) , !ctx.cardOnly );
+    Dom.show( Dom.get( "account-link" ) , !ctx.isGuest );
+    this.showArchivedToggle( ctx );
+    Dom.show( Dom.get( "guest-settings-button" ) , ctx.isGuest );
+    this.showHistory();
 
     const root = Dom.get( "board-root" );
     const scroller = root.querySelector( ".scroll-x" );
@@ -236,6 +273,45 @@ const BoardPage = {
     const restored = root.querySelector( ".scroll-x" );
     if ( restored && scrollLeft ) restored.scrollLeft = scrollLeft;
     window.scrollTo( 0 , scrollTop );
+  },
+
+  // "Show archived" is remembered per board, in this browser.
+  showArchived() {
+    if ( !this.data ) return false;
+    try { return window.localStorage.getItem( "show_archived:" + this.data.board.id ) === "1"; } catch ( error ) { return false; }
+  },
+
+  setShowArchived( on ) {
+    try { window.localStorage.setItem( "show_archived:" + this.data.board.id , on ? "1" : "0" ); } catch ( error ) { /* not remembered */ }
+  },
+
+  // The toggle is offered in the views that show columns, when one of the
+  // visible columns has something archived -- or while it is on.
+  showArchivedToggle( ctx ) {
+    const toggle = Dom.get( "archived-toggle" );
+    const on = this.showArchived();
+    const shown = {};
+    ctx.lists().forEach( function ( list ) { shown[ list.id ] = true; } );
+    const count = ctx.cards.filter( function ( card ) { return card.archived && shown[ card.list_id ]; } ).length;
+    const columns = !ctx.cardOnly && ( this.view === "kanban" || this.view === "todo" );
+    Dom.show( toggle , columns && ( count > 0 || on ) );
+    toggle.setAttribute( "aria-pressed" , on ? "true" : "false" );
+    toggle.classList.toggle( "active" , on );
+    Dom.text( toggle , on ? T( "board.hide_archived" ) : I18n.fill( "board.show_archived" , { n: count } ) );
+  },
+
+  // The undo and redo buttons: there for anyone who can change something,
+  // usable when there is something to undo or redo.
+  showHistory() {
+    const data = this.data;
+    const canEdit = !!data && ( data.access === "edit" || data.access === "manage" ||
+      data.cards.some( function ( card ) { return card.access === "edit"; } ) );
+    const undo = Dom.get( "undo-button" );
+    const redo = Dom.get( "redo-button" );
+    Dom.show( undo , canEdit );
+    Dom.show( redo , canEdit );
+    undo.disabled = !History.canUndo();
+    redo.disabled = !History.canRedo();
   },
 
   setView( view ) {

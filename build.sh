@@ -49,27 +49,21 @@ fi
 # Version metadata, stamped into the binary and readable later with
 # `./todoboard version`. Being able to ask a binary what it is beats
 # guessing from a filename once a few copies are in circulation.
-VERSION="$( git describe --tags --always --dirty 2>/dev/null || echo "dev" )"
-COMMIT="$( git rev-parse --short HEAD 2>/dev/null || echo "unknown" )"
-# The commit's own timestamp rather than "now", so building the same commit
-# twice produces the same bytes. Outside a git checkout there is no commit to
-# anchor to, and the current time is the honest answer. (`date -r` is BSD and
-# macOS; `date -d @` is GNU.)
-BUILD_EPOCH="$( git log -1 --format=%ct 2>/dev/null || date +%s )"
-BUILD_DATE="$( date -u -r "$BUILD_EPOCH" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
-  || date -u -d "@$BUILD_EPOCH" +%Y-%m-%dT%H:%M:%SZ )"
+# The version is when it was built -- 2026.10.23-1430 -- and nothing from
+# git, so it reads the same whatever state the checkout is in.
+VERSION="$( date +%Y.%m.%d-%H%M )"
+BUILD_DATE="$( date -u +%Y-%m-%dT%H:%M:%SZ )"
 
 # -s -w drop the symbol and DWARF tables (smaller, less detail for anyone
 # poking at a deployed binary). -trimpath keeps build-machine paths out of it,
 # which also makes the output reproducible across checkout locations.
 LDFLAGS="-s -w"
 LDFLAGS="$LDFLAGS -X main.version=${VERSION}"
-LDFLAGS="$LDFLAGS -X main.commit=${COMMIT}"
 LDFLAGS="$LDFLAGS -X main.buildDate=${BUILD_DATE}"
 
 mkdir -p "$OUTPUT_DIR"
 
-echo "Building ${BINARY_NAME} ${VERSION} (${COMMIT})"
+echo "Building ${BINARY_NAME} ${VERSION}"
 echo ""
 
 FAILED=()

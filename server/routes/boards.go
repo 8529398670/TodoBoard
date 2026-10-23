@@ -25,8 +25,8 @@ type labelRequest struct {
 	Color *string `json:"color"`
 }
 
-// ListMyBoards is the home page: boards I own or am a member of, and single
-// cards shared with me from boards I am not on.
+// ListMyBoards is the home page: boards I own or am a member of, the folders
+// I sort them into, and single cards shared with me from boards I am not on.
 func ( handlers *Handlers ) ListMyBoards( c fiber.Ctx ) ( err error ) {
 	user := security.UserFrom( c )
 	boards , cards , list_err := models.ListBoardsForUser( handlers.Store , user.ID )
@@ -34,7 +34,12 @@ func ( handlers *Handlers ) ListMyBoards( c fiber.Ctx ) ( err error ) {
 		err = serverError( c )
 		return
 	}
-	err = c.JSON( fiber.Map{ "boards": boards , "shared_cards": cards } )
+	folders , folder_err := models.ListFolders( handlers.Store , user.ID )
+	if folder_err != nil {
+		err = serverError( c )
+		return
+	}
+	err = c.JSON( fiber.Map{ "boards": boards , "folders": folders , "shared_cards": cards } )
 	return
 }
 
@@ -76,7 +81,13 @@ func ( handlers *Handlers ) GetBoardStamp( c fiber.Ctx ) ( err error ) {
 
 func ( handlers *Handlers ) boardPayload( principal *access.Principal , board *models.Board , all_cards []*models.Card ) ( payload fiber.Map ) {
 	board_level := access.Board( principal , board )
-	card_only := board_level == access.None
+	// A column link sees that one column as a board of its own; a card-only
+	// caller sees just their cards. Neither is shown the member list.
+	list_only := access.ListOnly( principal , board )
+	card_only := board_level == access.None && list_only == 0
+	whole_board := board_level != access.None
+	reported := board_level
+	if list_only != 0 { reported = access.List( principal , board , list_only ) }
 
 	visible := []fiber.Map{}
 	visible_lists := map[uint64]bool{}
@@ -91,12 +102,13 @@ func ( handlers *Handlers ) boardPayload( principal *access.Principal , board *m
 
 	lists := []*models.List{}
 	for _ , list := range board.SortedLists() {
+		if list_only != 0 && list.ID != list_only { continue }
 		if card_only && visible_lists[ list.ID ] == false { continue }
 		lists = append( lists , list )
 	}
 
 	members := []fiber.Map{}
-	if card_only == false {
+	if whole_board {
 		for id := range board.Members { people_ids[ id ] = true }
 	}
 	people := map[uint64]string{}
@@ -105,7 +117,7 @@ func ( handlers *Handlers ) boardPayload( principal *access.Principal , board *m
 			people[ id ] = user.DisplayName
 		}
 	}
-	if card_only == false {
+	if whole_board {
 		members = append( members , fiber.Map{ "user_id": board.OwnerID , "role": models.BoardRoleOwner , "display_name": people[ board.OwnerID ] } )
 		for id , role := range board.Members {
 			members = append( members , fiber.Map{ "user_id": id , "role": role , "display_name": people[ id ] } )
@@ -116,6 +128,9 @@ func ( handlers *Handlers ) boardPayload( principal *access.Principal , board *m
 	if principal.IsGuest() == false {
 		me[ "user_id" ] = principal.UserID
 		me[ "role" ] = board.RoleOf( principal.UserID )
+		if ref := models.GetBoardRef( handlers.Store , principal.UserID , board.ID ); ref != nil {
+			me[ "plain_icons" ] = ref.PlainIcons
+		}
 	}
 
 	payload = fiber.Map{
@@ -124,6 +139,7 @@ func ( handlers *Handlers ) boardPayload( principal *access.Principal , board *m
 			"title":        board.Title,
 			"slug":         board.Slug,
 			"layout":       board.Layout,
+			"numbering":    board.Numbering,
 			"owner_id":     board.OwnerID,
 			"default_view": board.DefaultView,
 			"color":        board.Color,
@@ -134,8 +150,9 @@ func ( handlers *Handlers ) boardPayload( principal *access.Principal , board *m
 		},
 		"cards":     visible,
 		"people":    people,
-		"access":    board_level.String(),
+		"access":    reported.String(),
 		"card_only": card_only,
+		"list_only": list_only,
 		"me":        me,
 	}
 	return
@@ -202,6 +219,26 @@ func ( handlers *Handlers ) DeleteBoard( c fiber.Ctx ) ( err error ) {
 		return
 	}
 	err = c.JSON( fiber.Map{ "ok": true } )
+	return
+}
+
+// plain_icons null means "use my account default".
+type myViewRequest struct {
+	PlainIcons *bool `json:"plain_icons"`
+}
+
+// SetMyBoardView saves how this board looks to the caller alone -- greyscale
+// status icons, for now. Only people on the board have somewhere to keep it.
+func ( handlers *Handlers ) SetMyBoardView( c fiber.Ctx ) ( err error ) {
+	principal , board , err := handlers.requireBoard( c , access.View )
+	if board == nil { return }
+	var body myViewRequest
+	if ok , bind_err := bindBody( c , &body ); ok == false { return bind_err }
+	if set_err := models.SetBoardPlainIcons( handlers.Store , principal.UserID , board.ID , body.PlainIcons ); set_err != nil {
+		err = modelError( c , set_err )
+		return
+	}
+	err = c.JSON( fiber.Map{ "plain_icons": body.PlainIcons } )
 	return
 }
 

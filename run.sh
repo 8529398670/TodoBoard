@@ -17,12 +17,14 @@ eval "$SERVER_CONFIG"
 
 BINARY="${build_output_dir}/${build_binary_name}"
 
-VERSION="$( git describe --tags --always --dirty 2>/dev/null || echo "dev" )"
-COMMIT="$( git rev-parse --short HEAD 2>/dev/null || echo "unknown" )"
+# The version is when it was built -- 2026.10.23-1430 -- and nothing from
+# git, so it reads the same whatever state the checkout is in.
+VERSION="$( date +%Y.%m.%d-%H%M )"
+BUILD_DATE="$( date -u +%Y-%m-%dT%H:%M:%SZ )"
 
 mkdir -p "$build_output_dir"
 echo "Building ${BINARY} ${VERSION}"
-go build -ldflags="-X main.version=${VERSION} -X main.commit=${COMMIT}" -o "$BINARY" .
+go build -ldflags="-X main.version=${VERSION} -X main.buildDate=${BUILD_DATE}" -o "$BINARY" .
 
 # Matched on the full path, so only this checkout's dev binary is stopped.
 BINARY_PATH="$( pwd )/${BINARY}"

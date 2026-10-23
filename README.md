@@ -11,6 +11,18 @@ image or as one self-contained binary.
 - **Three views of the same board**: Kanban, Todo (each list as a checklist),
   and Timeline (Gantt-style bars you drag to move or resize; unscheduled
   cards sit in a tray you drag onto a day).
+- **New boards start as three columns** (To do / Doing / Done), and each card
+  there has *Doing* and *Done* tick boxes that move it between them.
+- **Card numbers**: each column numbered 1..n; type a new number and press
+  Enter to move the card there. On or off per board, or left to each
+  person's account default.
+- **Copy a column** as a Markdown bullet or numbered list of its card titles.
+- **Undo / redo** every board change from the tab (Ctrl+Z / Ctrl+Y, ⌘Z /
+  ⇧⌘Z, or the arrows in the header) -- deleted cards, lists and labels
+  included.
+- **Home page folders and search**: your own folders (other members of a
+  shared board file it however they like), drag boards between them, and a
+  search box over board and folder names.
 - **Checklists inside cards**, reorderable.
 - **Markdown with math**: `$H_2O$` inline, and
   ```
@@ -23,11 +35,13 @@ image or as one self-contained binary.
 - **Sharing**
   - add existing accounts to a board as *editor* or *viewer*;
   - share a single card with an account (*view* or *edit*);
-  - share links for a whole board or a single card, *view* or *edit*,
+  - share links for a whole board, a single column, or a single card, *view*
+    or *edit*,
     optional expiry, revocable -- no account needed. Guests with an edit link
     are asked for a name, and their changes show as "Name (guest)".
 - **Export**: a card as PNG (copy to clipboard or download) or Markdown (copy
-  or download); a board as Markdown or as a print layout you save as PDF.
+  or download); a board as Markdown, as a spreadsheet (formatted .xlsx or
+  .csv, one row per card), or as a print layout you save as PDF.
 - **Pushover notifications**: due-date reminders (your lead times, your
   timezone), overdue, assigned to you, shared with you, and changes to cards
   you follow. Everyone sets defaults on the account page and can override
@@ -68,6 +82,7 @@ For plain `http://localhost`, set `server.secure_cookies: false` in
 |---|---|
 | `server/models/board.go`, `card.go` | boards, lists, labels, cards, checklists |
 | `server/models/share_link.go` | share links (sha256-hashed `<id>.<secret>` credentials) |
+| `server/models/folder.go` | each person's home page folders |
 | `server/models/prefs.go` | notification preferences and per-board/per-card subscriptions |
 | `server/access/` | the one place that decides who may view, edit or manage what |
 | `server/notify/` | Pushover client, event worker, due-date scheduler |
@@ -75,8 +90,10 @@ For plain `http://localhost`, set `server.secure_cookies: false` in
 | `static/js/board.js` | board page controller (members and guests) |
 | `static/js/view_*.js` | Kanban, Todo, Timeline |
 | `static/js/card_modal.js` | card editor |
+| `static/js/history.js` | undo / redo |
 | `static/js/markdown.js` | Markdown + KaTeX pipeline |
 | `static/js/card_export.js`, `print.js` | exports |
+| `server/sheet/`, `server/routes/export.go` | the .xlsx / .csv board export |
 | `language.yaml` | every string the UI or a notification shows |
 
 ## Known limits

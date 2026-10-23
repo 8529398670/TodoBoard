@@ -29,10 +29,19 @@ const (
 )
 
 // Layouts. Free is any number of lists; Three pins the board to its first
-// three lists (to do / doing / done), shown as equal columns.
+// three lists (to do / doing / done), shown as equal columns. New boards
+// start as Three.
 const (
 	LayoutFree  = ""
 	LayoutThree = "three"
+)
+
+// Card numbering. Default leaves it to each viewer's account setting; On and
+// Off decide it for everyone on the board.
+const (
+	NumberingDefault = ""
+	NumberingOn      = "on"
+	NumberingOff     = "off"
 )
 
 var (
@@ -55,6 +64,7 @@ type Board struct {
 	Title       string            `json:"title"`
 	Slug        string            `json:"slug"`
 	Layout      string            `json:"layout"`
+	Numbering   string            `json:"numbering"`
 	OwnerID     uint64            `json:"owner_id"`
 	Members     map[uint64]string `json:"members"`
 	Lists       []*List           `json:"lists"`
@@ -179,6 +189,7 @@ func CreateBoard( store *db.Store , owner_id uint64 , title string , list_titles
 			Members:     map[uint64]string{},
 			Lists:       []*List{},
 			Labels:      []*Label{},
+			Layout:      LayoutThree,
 			DefaultView: ViewKanban,
 			Rev:         1,
 			CreatedAt:   now,
@@ -189,6 +200,8 @@ func CreateBoard( store *db.Store , owner_id uint64 , title string , list_titles
 			if list_ok == false || index >= 20 { continue }
 			board.Lists = append( board.Lists , &List{ ID: board.nextID() , Title: list_title , Position: float64( index + 1 ) * positionStep } )
 		}
+		// A caller that named fewer than three lists still gets three.
+		if tx_err = ensureThreeLists( board , list_titles ); tx_err != nil { return }
 		if tx_err = claimFreeSlugTx( tx , board , Slugify( clean ) ); tx_err != nil { return }
 		if tx_err = tx.Put( db.BucketBoards , boardKey( id ) , board ); tx_err != nil { return }
 		tx_err = tx.Put( db.BucketUserBoards , db.Key( owner_id , id ) , &BoardRef{ Role: BoardRoleOwner } )
@@ -269,6 +282,7 @@ type BoardSettings struct {
 	Color       *string  `json:"color"`
 	Slug        *string  `json:"slug"`
 	Layout      *string  `json:"layout"`
+	Numbering   *string  `json:"numbering"`
 	ListTitles  []string `json:"list_titles"`
 }
 
@@ -313,6 +327,11 @@ func ( settings *BoardSettings ) Apply( board *Board ) ( err error ) {
 		if *settings.Layout != LayoutFree && *settings.Layout != LayoutThree { return ErrBadInput }
 		board.Layout = *settings.Layout
 		if board.Layout == LayoutThree { err = ensureThreeLists( board , settings.ListTitles ) }
+	}
+	if settings.Numbering != nil {
+		value := *settings.Numbering
+		if value != NumberingDefault && value != NumberingOn && value != NumberingOff { return ErrBadInput }
+		board.Numbering = value
 	}
 	return
 }
@@ -437,7 +456,8 @@ func DeleteLabel( store *db.Store , board_id uint64 , label_id uint64 ) ( err er
 	return
 }
 
-// DeleteList removes a list together with every card on it.
+// DeleteList removes a list together with every card on it and its share
+// links.
 func DeleteList( store *db.Store , board_id uint64 , list_id uint64 ) ( err error ) {
 	err = store.Write( func( tx *db.Tx ) ( tx_err error ) {
 		board , tx_err := getBoardTx( tx , board_id )
@@ -460,6 +480,12 @@ func DeleteList( store *db.Store , board_id uint64 , list_id uint64 ) ( err erro
 		for _ , card := range doomed {
 			if tx_err = deleteCardTx( tx , card ); tx_err != nil { return }
 		}
+		_ , tx_err = tx.DeleteWhere( db.BucketShareLinks , func() any { return &ShareLink{} } ,
+			func( key []byte , item any ) bool {
+				link := item.( *ShareLink )
+				return link.BoardID == board_id && link.ListID == list_id
+			} )
+		if tx_err != nil { return }
 		tx_err = putBoardTx( tx , board )
 		return
 	} )
@@ -470,8 +496,43 @@ func DeleteList( store *db.Store , board_id uint64 , list_id uint64 ) ( err erro
 // as what. The board's own OwnerID/Members are the source of truth; this is
 // kept in step with them in the same transaction so listing "my boards" is a
 // prefix scan instead of a read of every board.
+//
+// Folder is where this person files the board on their home page (0: not
+// filed). It is the one thing here that is theirs rather than the board's,
+// which is why it lives on this per-user row -- see folder.go.
+//
+// PlainIcons is this person's choice for this board's Doing / Done icons --
+// greyscale or colour -- also theirs alone, so also here. nil follows their
+// account default (UserPrefs.PlainIcons).
 type BoardRef struct {
-	Role string `json:"role"`
+	Role       string `json:"role"`
+	Folder     uint64 `json:"folder"`
+	PlainIcons *bool  `json:"plain_icons"`
+}
+
+// GetBoardRef is one person's row for one board, or nil when they are not on
+// it.
+func GetBoardRef( store *db.Store , user_id uint64 , board_id uint64 ) ( ref *BoardRef ) {
+	found := &BoardRef{}
+	if store.Get( db.BucketUserBoards , db.Key( user_id , board_id ) , found ) != nil { return }
+	ref = found
+	return
+}
+
+// SetBoardPlainIcons stores whether this person sees the board's status
+// icons in greyscale; nil goes back to their account default.
+func SetBoardPlainIcons( store *db.Store , user_id uint64 , board_id uint64 , plain *bool ) ( err error ) {
+	err = store.Write( func( tx *db.Tx ) ( tx_err error ) {
+		ref := &BoardRef{}
+		if tx_err = tx.Get( db.BucketUserBoards , db.Key( user_id , board_id ) , ref ); tx_err != nil {
+			if errors.Is( tx_err , db.ErrNotFound ) { tx_err = ErrBoardNotFound }
+			return
+		}
+		ref.PlainIcons = plain
+		tx_err = tx.Put( db.BucketUserBoards , db.Key( user_id , board_id ) , ref )
+		return
+	} )
+	return
 }
 
 // SetMember adds, changes, or (role "") removes a member.
@@ -494,7 +555,11 @@ func SetMember( store *db.Store , board_id uint64 , user_id uint64 , role string
 			user := &User{}
 			if tx_err = tx.Get( db.BucketUsers , encryption.Uint64ToBytes( user_id ) , user ); tx_err != nil { return }
 			board.Members[ user_id ] = role
-			if tx_err = tx.Put( db.BucketUserBoards , db.Key( user_id , board_id ) , &BoardRef{ Role: role } ); tx_err != nil { return }
+			// A change of role keeps where they filed the board.
+			ref := &BoardRef{}
+			tx.Get( db.BucketUserBoards , db.Key( user_id , board_id ) , ref )
+			ref.Role = role
+			if tx_err = tx.Put( db.BucketUserBoards , db.Key( user_id , board_id ) , ref ); tx_err != nil { return }
 		}
 		tx_err = putBoardTx( tx , board )
 		return
@@ -511,6 +576,7 @@ type BoardSummary struct {
 	Role    string    `json:"role"`
 	Color   string    `json:"color"`
 	OwnerID uint64    `json:"owner_id"`
+	Folder  uint64    `json:"folder_id"`
 	Updated time.Time `json:"updated_at"`
 }
 
@@ -528,20 +594,20 @@ type SharedCardSummary struct {
 func ListBoardsForUser( store *db.Store , user_id uint64 ) ( boards []*BoardSummary , cards []*SharedCardSummary , err error ) {
 	boards = []*BoardSummary{}
 	cards = []*SharedCardSummary{}
-	refs := map[uint64]string{}
+	refs := map[uint64]*BoardRef{}
 	err = store.ForEachPrefix( db.BucketUserBoards , db.Key( user_id ) ,
 		func() any { return &BoardRef{} } ,
 		func( key []byte , item any ) bool {
-			refs[ encryption.BytesToUint64( key[ 8:16 ] ) ] = item.( *BoardRef ).Role
+			refs[ encryption.BytesToUint64( key[ 8:16 ] ) ] = item.( *BoardRef )
 			return true
 		} )
 	if err != nil { return }
-	for board_id := range refs {
+	for board_id , ref := range refs {
 		board , get_err := GetBoard( store , board_id )
 		if get_err != nil { continue }
 		role := board.RoleOf( user_id )
 		if role == "" { continue }
-		boards = append( boards , &BoardSummary{ ID: board.ID , Title: board.Title , Slug: board.Slug , Role: role , Color: board.Color , OwnerID: board.OwnerID , Updated: board.UpdatedAt } )
+		boards = append( boards , &BoardSummary{ ID: board.ID , Title: board.Title , Slug: board.Slug , Role: role , Color: board.Color , OwnerID: board.OwnerID , Folder: ref.Folder , Updated: board.UpdatedAt } )
 	}
 	sort.Slice( boards , func( i int , j int ) bool { return boards[ i ].Updated.After( boards[ j ].Updated ) } )
 
@@ -653,6 +719,7 @@ func removeBoardAccessTx( tx *db.Tx , user_id uint64 , heir_id uint64 ) ( err er
 		if err = tx.Put( db.BucketCards , card_key , card ); err != nil { return }
 	}
 	if _ , err = tx.DeletePrefix( db.BucketUserCards , db.Key( user_id ) ); err != nil { return }
+	if _ , err = tx.DeletePrefix( db.BucketFolders , db.Key( user_id ) ); err != nil { return }
 	if _ , err = tx.DeletePrefix( db.BucketSubscriptions , db.Key( user_id ) ); err != nil { return }
 	err = tx.Delete( db.BucketUserPrefs , encryption.Uint64ToBytes( user_id ) )
 	return

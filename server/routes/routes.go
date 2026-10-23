@@ -107,6 +107,8 @@ func ( handlers *Handlers ) Register( app *fiber.App ) {
 	boards.Post( "" , handlers.CreateBoard )
 	handlers.registerBoardContent( boards )
 	boards.Post( "/:board_id/leave" , handlers.LeaveBoard )
+	boards.Post( "/:board_id/folder" , handlers.SetBoardFolder )
+	boards.Post( "/:board_id/my-view" , handlers.SetMyBoardView )
 	boards.Post( "/:board_id/delete" , handlers.Guard.RequireSession , handlers.DeleteBoard )
 	boards.Post( "/:board_id/members" , handlers.SetBoardMember )
 	boards.Post( "/:board_id/cards/:card_id/share-user" , handlers.ShareCardWithUser )
@@ -118,6 +120,13 @@ func ( handlers *Handlers ) Register( app *fiber.App ) {
 	boards.Post( "/:board_id/subscription" , handlers.SetBoardSubscription )
 	boards.Get( "/:board_id/cards/:card_id/subscription" , handlers.GetCardSubscription )
 	boards.Post( "/:board_id/cards/:card_id/subscription" , handlers.SetCardSubscription )
+
+	// Home page folders: each person's own. MemberPrincipal is here for its
+	// CSRF check on writes.
+	folders := app.Group( "/api/folders" , handlers.Guard.RequireLogin , handlers.MemberPrincipal )
+	folders.Post( "" , handlers.CreateFolder )
+	folders.Post( "/:folder_id" , handlers.RenameFolder )
+	folders.Post( "/:folder_id/delete" , handlers.DeleteFolder )
 
 	// API keys: any signed-in user manages their own.
 	//
@@ -189,10 +198,12 @@ func ( handlers *Handlers ) Register( app *fiber.App ) {
 func ( handlers *Handlers ) registerBoardContent( group fiber.Router ) {
 	group.Get( "/:board_id" , handlers.GetBoard )
 	group.Get( "/:board_id/stamp" , handlers.GetBoardStamp )
+	group.Get( "/:board_id/export" , handlers.ExportBoard )
 	group.Post( "/:board_id" , handlers.UpdateBoard )
 	group.Post( "/:board_id/lists" , handlers.CreateList )
 	group.Post( "/:board_id/lists/:list_id" , handlers.UpdateList )
 	group.Post( "/:board_id/lists/:list_id/delete" , handlers.DeleteList )
+	group.Post( "/:board_id/lists/:list_id/archive-cards" , handlers.ArchiveListCards )
 	group.Post( "/:board_id/labels" , handlers.CreateLabel )
 	group.Post( "/:board_id/labels/:label_id" , handlers.UpdateLabel )
 	group.Post( "/:board_id/labels/:label_id/delete" , handlers.DeleteLabel )

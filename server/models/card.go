@@ -481,6 +481,33 @@ func DeleteChecklistItem( card *Card , item_id uint64 ) ( err error ) {
 	return
 }
 
+// ArchiveListCards archives open cards in one list -- every one, or with
+// card_ids only those (ids on other lists are ignored) -- in one transaction,
+// and returns which cards it archived: what an undo needs to bring exactly
+// those back.
+func ArchiveListCards( store *db.Store , board_id uint64 , list_id uint64 , card_ids []uint64 , actor_name string ) ( ids []uint64 , err error ) {
+	ids = []uint64{}
+	err = store.Write( func( tx *db.Tx ) ( tx_err error ) {
+		board , tx_err := getBoardTx( tx , board_id )
+		if tx_err != nil { return }
+		if board.List( list_id ) == nil { return ErrListNotFound }
+		now := time.Now().UTC()
+		tx_err = eachCardTx( tx , board_id , func( card *Card ) ( changed bool ) {
+			if card.ListID != list_id || card.Archived { return }
+			if card_ids != nil && containsID( card_ids , card.ID ) == false { return }
+			card.Archived , card.UpdatedAt , card.UpdatedBy = true , now , actor_name
+			ids = append( ids , card.ID )
+			changed = true
+			return
+		} )
+		if tx_err != nil { return }
+		tx_err = putBoardTx( tx , board )
+		return
+	} )
+	if err != nil { ids = nil }
+	return
+}
+
 func DeleteCard( store *db.Store , board_id uint64 , card_id uint64 ) ( err error ) {
 	err = store.Write( func( tx *db.Tx ) ( tx_err error ) {
 		card , tx_err := getCardTx( tx , board_id , card_id )

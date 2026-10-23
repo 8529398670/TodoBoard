@@ -22,6 +22,7 @@ type cardShareRequest struct {
 
 type shareLinkRequest struct {
 	CardID uint64 `json:"card_id"`
+	ListID uint64 `json:"list_id"`
 	Mode   string `json:"mode"`
 	Label  string `json:"label"`
 	Days   int    `json:"days"`
@@ -91,6 +92,7 @@ func shareLinkPayload( link *models.ShareLink ) ( payload fiber.Map ) {
 	payload = fiber.Map{
 		"id":           link.ID,
 		"card_id":      link.CardID,
+		"list_id":      link.ListID,
 		"mode":         link.Mode,
 		"label":        link.Label,
 		"created_at":   link.CreatedAt,
@@ -124,7 +126,7 @@ func ( handlers *Handlers ) CreateShareLink( c fiber.Ctx ) ( err error ) {
 	if board == nil { return }
 	var body shareLinkRequest
 	if ok , bind_err := bindBody( c , &body ); ok == false { return bind_err }
-	credential , link , issue_err := models.IssueShareLink( handlers.Store , board.ID , body.CardID , body.Mode , body.Label , body.Days , principal.UserID )
+	credential , link , issue_err := models.IssueShareLink( handlers.Store , board.ID , body.CardID , body.ListID , body.Mode , body.Label , body.Days , principal.UserID )
 	if issue_err != nil {
 		err = modelError( c , issue_err )
 		return
@@ -181,10 +183,14 @@ func ( handlers *Handlers ) SharedInfo( c fiber.Ctx ) ( err error ) {
 		err = notFound( c , "share_link_invalid" )
 		return
 	}
+	list_title := ""
+	if list := board.List( link.ListID ); list != nil { list_title = list.Title }
 	err = c.JSON( fiber.Map{
 		"board_id":    link.BoardID,
 		"board_title": board.Title,
 		"card_id":     link.CardID,
+		"list_id":     link.ListID,
+		"list_title":  list_title,
 		"mode":        link.Mode,
 		"label":       link.Label,
 	} )

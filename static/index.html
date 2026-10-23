@@ -24,10 +24,9 @@
     <div class="header-side">
       <nav id="app-nav" class="app-nav" hidden>
         <a href="/" data-i18n="nav.boards"></a>
-        <a href="/account" data-i18n="nav.account"></a>
+        <!-- Your account and settings, behind the usual profile icon. -->
+        <a href="/account" class="profile-link" data-i18n-attr="aria-label:nav.account,title:nav.account"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="8.5" r="4"/><path d="M4 20.5c0-4.1 3.6-6.5 8-6.5s8 2.4 8 6.5"/></svg></a>
       </nav>
-      <div id="who-am-i" class="who"></div>
-      <button type="button" class="secondary small" data-user-settings data-i18n="nav.settings"></button>
     </div>
   </header>
 
@@ -103,9 +102,14 @@
           <button type="submit" data-i18n="home.create_button"></button>
         </form>
       </div>
-      <h2 class="section-title" data-i18n="home.boards_heading"></h2>
-      <div id="boards-grid" class="boards-grid"></div>
+      <div class="home-toolbar">
+        <h2 class="section-title" data-i18n="home.boards_heading"></h2>
+        <input id="board-search" type="search" autocomplete="off" data-i18n-attr="placeholder:home.search_placeholder,aria-label:home.search_label" />
+        <button type="button" id="new-folder-button" class="secondary small" data-i18n="home.new_folder"></button>
+      </div>
+      <div id="board-folders" class="board-folders"></div>
       <p id="no-boards" class="muted" data-i18n="home.no_boards" hidden></p>
+      <p id="no-matches" class="muted" data-i18n="home.no_matches" hidden></p>
       <div id="shared-cards-section" hidden>
         <h2 class="section-title" data-i18n="home.shared_cards_heading"></h2>
         <ul id="shared-cards" class="link-list card"></ul>
@@ -125,6 +129,13 @@
         </form>
         <p id="rename-saved" class="notice notice-ok" data-i18n="account.saved_notice" hidden></p>
         <button id="logout-button" class="secondary" data-i18n="account.logout_button"></button>
+      </div>
+
+      <!-- Theme, dates and times, card numbering: every personal setting in
+           one place. See user_settings.js. -->
+      <div class="card" id="display-settings">
+        <h2 data-i18n="user_settings.account_heading"></h2>
+        <div id="user-settings-root"></div>
       </div>
 
       <!-- Push notifications through Pushover; see notify_settings.js. -->
@@ -339,6 +350,7 @@
   -->
   <script src="/vendor/marked/marked.min.js"></script>
   <script src="/vendor/dompurify/purify.min.js"></script>
+  <script src="/vendor/sortable/Sortable.min.js"></script>
   <script src="/js/dom.js"></script>
   <script src="/js/i18n.js"></script>
   <script src="/js/api.js"></script>

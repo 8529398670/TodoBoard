@@ -60,7 +60,24 @@
 a { color: var(--accent); }
 
 .header-side { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; }
-.app-nav { display: flex; gap: 1rem; font-weight: 600; }
+.app-nav { display: flex; align-items: center; gap: 1rem; font-weight: 600; }
+
+/* The profile icon that opens the Account page, on every signed-in header. */
+.profile-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  color: var(--fg-muted);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  text-decoration: none;
+}
+.profile-link:hover, .profile-link:focus-visible { color: var(--accent); border-color: var(--accent); }
+.profile-link svg { width: 22px; height: 22px; fill: currentColor; }
+.profile-link svg path { fill: currentColor; }
 .app-nav a { text-decoration: none; }
 
 .section-title { margin: 0.5rem 0 0; }
@@ -649,6 +666,120 @@ dialog::backdrop { background: rgba(10, 14, 20, 0.45); }
 .export-card .avatars { margin-left: 0; }
 .export-card .description { margin-bottom: 1rem; }
 .export-box { font-family: ui-monospace, Menlo, monospace; margin-right: 0.4rem; }
+
+/* ------------------------------------------------------------------ */
+/* numbering, Doing/Done, settings tiles, folders                      */
+/* ------------------------------------------------------------------ */
+
+/* A card's place in its column; an input when it can be retyped. */
+.card-number {
+  display: inline-block;
+  width: 2.2rem;
+  min-height: 0;
+  margin-right: 0.4rem;
+  padding: 0 0.2rem;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-align: center;
+  color: var(--fg-muted);
+  background: var(--column-bg);
+  border: 1px solid transparent;
+  border-radius: 6px;
+  vertical-align: baseline;
+}
+input.card-number:hover { border-color: var(--border); }
+input.card-number:focus { color: var(--fg); background: var(--bg); border-color: var(--accent); outline: none; }
+.todo-row > .card-number { margin: 0.5rem 0 0; flex: 0 0 auto; }
+
+/* Doing / Done icons in a card's top-right corner; on a todo row, at the
+   end. Lit when the card is in that column (or, on a free board, done). */
+.status-icons { display: flex; gap: 0.25rem; }
+.card-face.has-status { position: relative; padding-right: 4.1rem; }
+.card-face.has-status:has(> .status-icons > :only-child) { padding-right: 2.6rem; }
+.card-face > .status-icons { position: absolute; top: 0.45rem; right: 0.45rem; }
+.status-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  min-height: 0;
+  min-width: 0;
+  padding: 0;
+  font-size: 0.85rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--fg-muted);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+.status-icon:hover:not(:disabled) { color: var(--fg); border-color: var(--accent); }
+.status-icon:disabled { cursor: default; opacity: 0.7; }
+.status-doing[aria-pressed="true"] { color: var(--accent-fg); background: var(--accent); border-color: var(--accent); }
+.status-done[aria-pressed="true"] { color: var(--c-green); background: var(--c-green-bg); border-color: var(--c-green); }
+/* "Grey Doing / Done icons" (Board settings, per person): lit icons in
+   greyscale, so state still shows without the colour. */
+.plain-status .status-doing[aria-pressed="true"],
+.plain-status .status-done[aria-pressed="true"] { color: var(--face-bg); background: var(--fg-muted); border-color: var(--fg-muted); }
+.todo-row > .status-icons { flex: 0 0 auto; padding-top: 0.45rem; }
+
+.archive-pick-all { margin-bottom: 0.4rem; font-weight: 600; }
+.archive-pick-list { list-style: none; margin: 0 0 0.75rem; padding: 0; display: flex; flex-direction: column; gap: 0.35rem; max-height: 50vh; overflow-y: auto; }
+.card-placement .status-icons { align-self: flex-end; padding-bottom: 0.4rem; }
+
+/* Archived cards, shown with "Show archived": faded, after the open ones. */
+.card-face.is-archived, .todo-row.is-archived { opacity: 0.55; }
+.card-face.is-archived { cursor: pointer; border-style: dashed; }
+.card-face.is-archived:hover, .todo-row.is-archived:hover { opacity: 0.85; }
+
+.settings-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr)); gap: 0.5rem; }
+.settings-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+  min-height: 4.5rem;
+  padding: 0.7rem 0.8rem;
+  text-align: left;
+  color: var(--fg);
+  background: var(--face-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--face-shadow);
+}
+.settings-tile:hover { border-color: var(--accent); }
+.settings-tile-title { font-weight: 700; }
+.settings-tile-hint { font-size: 0.8rem; font-weight: 400; color: var(--fg-muted); }
+.panel-back { margin-bottom: 0.9rem; }
+
+
+/* Home: search, folders, and tiles with a move-to-folder button. */
+.home-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem; margin: 0.5rem 0 0.75rem; }
+.home-toolbar .section-title { flex: 1 1 auto; margin: 0; }
+.home-toolbar input[type="search"] { flex: 1 1 12rem; max-width: 20rem; width: auto; }
+.board-folders { display: flex; flex-direction: column; gap: 1rem; }
+.folder-head { display: flex; align-items: center; gap: 0.25rem; margin-bottom: 0.5rem; }
+.folder-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 36px;
+  padding: 0.2rem 0.4rem;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--fg);
+  background: transparent;
+  border: 1px solid transparent;
+}
+.folder-toggle:hover { border-color: var(--border); }
+.folder-count { font-size: 0.8rem; font-weight: 400; color: var(--fg-muted); }
+.board-folders .boards-grid { min-height: 3rem; }
+.folder.is-empty .boards-grid { border: 1px dashed var(--border); border-radius: var(--radius); }
+.board-tile-wrap { position: relative; }
+.board-tile-wrap .board-tile { height: 100%; padding-right: 2.5rem; }
+.board-tile-wrap .tile-menu { position: absolute; top: 0.35rem; right: 0.35rem; }
 
 /* ------------------------------------------------------------------ */
 /* wider screens                                                       */

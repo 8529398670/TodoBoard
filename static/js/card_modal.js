@@ -101,14 +101,14 @@ const CardModal = {
     Dom.clear( body );
 
     body.appendChild( this.header( card , canEdit ) );
-    body.appendChild( this.placement( card , canEdit , canMove ) );
-    const labels = this.labels( card , canEdit );
-    if ( labels ) body.appendChild( labels );
+    body.appendChild( this.description( card , canEdit ) );
+    body.appendChild( this.checklist( card , canEdit ) );
     body.appendChild( this.dates( card , canEdit ) );
     const people = this.assignees( card , canEdit );
     if ( people ) body.appendChild( people );
-    body.appendChild( this.description( card , canEdit ) );
-    body.appendChild( this.checklist( card , canEdit ) );
+    body.appendChild( this.placement( card , canEdit , canMove ) );
+    const labels = this.labels( card , canEdit );
+    if ( labels ) body.appendChild( labels );
     body.appendChild( this.actions( card , canEdit , canMove ) );
     body.appendChild( Dom.el( "p" , { class: "muted card-updated" , text: I18n.fill( "card.updated_by" , {
       name: CardBits.actorName( card.updated_by ),
@@ -142,6 +142,8 @@ const CardModal = {
     return header;
   },
 
+  // Where the card is: its list, and the same Doing / Done icons as its
+  // face on the board.
   placement( card , canEdit , canMove ) {
     const row = Dom.el( "div" , { class: "card-placement row-actions" } );
     const lists = this.ctx.lists();
@@ -162,9 +164,7 @@ const CardModal = {
         row.appendChild( where );
       }
     }
-    const done = Ui.checkbox( "card.done_label" , card.done , ( checked ) => this.save( { done: checked } ) );
-    done.querySelector( "input" ).disabled = !canEdit;
-    row.appendChild( done );
+    if ( !card.archived ) row.appendChild( CardBits.statusIcons( card , this.ctx ) );
     return row;
   },
 

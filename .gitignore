@@ -2,7 +2,7 @@
 config.yaml
 data/
 *.db
-
+.DS_Store
 # Compiled output. Built by the Dockerfile, build.sh, or `go build`.
 #
 # The trailing negations matter: a bare "/server" also matches the server/

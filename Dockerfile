@@ -24,7 +24,6 @@ COPY . .
 # `docker exec <name> /app/server version` is as informative as a portable
 # binary built by build.sh.
 ARG VERSION=dev
-ARG COMMIT=unknown
 ARG BUILD_DATE=unknown
 
 # One binary. The frontend is compiled into it by go:embed (see embed.go),
@@ -36,7 +35,7 @@ ARG BUILD_DATE=unknown
 # /app/data. That is what replaces setting them through ENV, and it is why
 # `docker exec <name> /app/server manage ...` needs nothing extra.
 RUN CGO_ENABLED=0 GOOS=linux go build -tags container -trimpath \
-      -ldflags="-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.buildDate=${BUILD_DATE}" \
+      -ldflags="-s -w -X main.version=${VERSION} -X main.buildDate=${BUILD_DATE}" \
       -o /out/server .
 
 # --- runtime stage ---------------------------------------------------------

@@ -7,7 +7,7 @@ const KanbanView = {
     const scroller = Dom.el( "div" , { class: "kanban scroll-x" + ( three ? " three" : "" ) } );
     const lists = ctx.lists();
     lists.forEach( ( list ) => scroller.appendChild( this.column( list , ctx ) ) );
-    if ( ctx.canEdit && !three ) scroller.appendChild( this.addListColumn( ctx ) );
+    if ( ctx.canEdit && !three && !ctx.listOnly ) scroller.appendChild( this.addListColumn( ctx ) );
     root.appendChild( scroller );
 
     if ( !ctx.canEdit || typeof Sortable === "undefined" ) return;
@@ -20,6 +20,11 @@ const KanbanView = {
         delay: 150,
         delayOnTouchOnly: true,
         ghostClass: "drag-ghost",
+        // Archived cards stay where they are shown; the number field and
+        // status icons are for typing and clicking, not for picking a card up.
+        draggable: ".card-face:not(.is-archived)",
+        filter: ".card-number, .status-icons",
+        preventOnFilter: false,
         onStart: function () { ctx.setDragging( true ); },
         onEnd: function ( event ) {
           ctx.setDragging( false );
@@ -28,8 +33,9 @@ const KanbanView = {
       } );
     } );
 
-    // A three-column board's columns are fixed in place.
-    if ( three ) return;
+    // A three-column board's columns are fixed in place, and a single
+    // shared column has nowhere to go.
+    if ( three || ctx.listOnly ) return;
     Sortable.create( scroller , {
       animation: 150,
       forceFallback: true,
@@ -57,8 +63,13 @@ const KanbanView = {
     const cardId = Number( item.getAttribute( "data-card-id" ) );
     const listId = Number( event.to.getAttribute( "data-list-id" ) );
     if ( event.from === event.to && event.oldIndex === event.newIndex ) return;
+    // Neighbours are the open cards either side; archived ones shown at the
+    // end of a column do not count.
+    const open = function ( node ) {
+      return node && node.hasAttribute( "data-card-id" ) && !node.classList.contains( "is-archived" );
+    };
     const neighbour = function ( node ) {
-      return node && node.hasAttribute( "data-card-id" ) ? Number( node.getAttribute( "data-position" ) ) : null;
+      return open( node ) ? Number( node.getAttribute( "data-position" ) ) : null;
     };
     const position = CardBits.positionBetween( neighbour( item.previousElementSibling ) , neighbour( item.nextElementSibling ) );
     ctx.mutate( function () { return ctx.client.patchCard( cardId , { list_id: listId , position: position } ); } );
@@ -73,11 +84,11 @@ const KanbanView = {
     Markdown.renderInline( list.title , title );
     header.appendChild( title );
     header.appendChild( Dom.el( "span" , { class: "count" , text: String( cards.length ) } ) );
-    if ( ctx.canEdit ) header.appendChild( ListMenu.button( list , ctx ) );
+    header.appendChild( ListMenu.button( list , ctx ) );
     column.appendChild( header );
 
     const container = Dom.el( "div" , { class: "kanban-cards" , attrs: { "data-list-id": list.id } } );
-    cards.forEach( ( card ) => container.appendChild( this.face( card , ctx ) ) );
+    ctx.shownIn( list.id ).forEach( ( card ) => container.appendChild( this.face( card , ctx , cards ) ) );
     column.appendChild( container );
 
     if ( ctx.canEdit ) column.appendChild( QuickAdd.build( "card-" + list.id , "board.add_card" , "board.card_title_placeholder" , function ( title ) {
@@ -86,20 +97,22 @@ const KanbanView = {
     return column;
   },
 
-  face( card , ctx ) {
+  // cards is the card's column (open cards), for its number.
+  face( card , ctx , cards ) {
     const face = Dom.el( "article" , {
-      class: "card-face" + ( card.done ? " is-done" : "" ),
+      class: "card-face has-status" + ( card.done ? " is-done" : "" ) + ( card.archived ? " is-archived" : "" ),
       attrs: { "data-card-id": card.id , "data-position": card.position , tabindex: "0" , role: "button" },
       on: {
         click: function () { ctx.openCard( card.id ); },
         keydown: function ( event ) { if ( event.key === "Enter" ) ctx.openCard( card.id ); },
       },
     } );
+    face.appendChild( card.archived ? CardBits.restoreIcon( card , ctx ) : CardBits.statusIcons( card , ctx ) );
     const labels = CardBits.labels( card , ctx.board );
     if ( labels ) face.appendChild( labels );
 
     const title = Dom.el( "div" , { class: "card-title" } );
-    if ( card.done ) title.appendChild( Dom.el( "span" , { class: "done-tick" , text: T( "card.done_symbol" ) , attrs: { title: T( "card.done_label" ) } } ) );
+    if ( cards && !card.archived && ctx.numbered() ) title.appendChild( CardBits.numberField( card , cards , ctx ) );
     const text = Dom.el( "span" );
     Markdown.renderInline( card.title , text );
     title.appendChild( text );
@@ -172,7 +185,9 @@ const QuickAdd = {
   },
 };
 
-// A list's menu: rename, archive, delete.
+// A list's menu: copy its card titles as a Markdown list (anyone), archive
+// every card on it (editors, a column link's included), share it (the
+// owner), and rename, archive or delete it (board editors).
 const ListMenu = {
   button( list , ctx ) {
     return Dom.el( "button" , {
@@ -186,8 +201,89 @@ const ListMenu = {
     } );
   },
 
+  // The column's open card titles, in order, as "- Title" or "1. Title".
+  // A title is one line of Markdown already, so it goes in as written.
+  markdownList( list , ctx , numbered ) {
+    return ctx.cardsIn( list.id ).map( function ( card , index ) {
+      return ( numbered ? ( index + 1 ) + ". " : "- " ) + card.title.replace( /\s*\n\s*/g , " " );
+    } ).join( "\n" );
+  },
+
+  // Tick the cards to archive from one column. Nothing is ticked to start
+  // with; "Select all" ticks the lot.
+  pickToArchive( list , ctx ) {
+    const cards = ctx.cardsIn( list.id );
+    Panel.open( "board.archive_pick_title" , function ( body ) {
+      const form = Dom.el( "form" , { class: "archive-pick" , attrs: { autocomplete: "off" } } );
+      const boxes = [];
+      const submit = Dom.el( "button" , { attrs: { type: "submit" } } );
+      const update = function () {
+        const picked = boxes.filter( function ( box ) { return box.checked; } ).length;
+        Dom.text( submit , I18n.fill( "board.archive_picked" , { n: picked } ) );
+        submit.disabled = picked === 0;
+        all.querySelector( "input" ).checked = picked === boxes.length;
+      };
+      const all = Ui.checkbox( "board.select_all" , false , function ( checked ) {
+        boxes.forEach( function ( box ) { box.checked = checked; } );
+        update();
+      } );
+      all.classList.add( "archive-pick-all" );
+      form.appendChild( all );
+      const items = Dom.el( "ul" , { class: "archive-pick-list" } );
+      cards.forEach( function ( card ) {
+        const box = Dom.el( "input" , { attrs: { type: "checkbox" , value: String( card.id ) } } );
+        box.addEventListener( "change" , update );
+        boxes.push( box );
+        const title = Dom.el( "span" );
+        Markdown.renderInline( card.title , title );
+        items.appendChild( Dom.el( "li" , { children: [ Dom.el( "label" , { class: "check" , children: [ box , title ] } ) ] } ) );
+      } );
+      form.appendChild( items );
+      form.appendChild( submit );
+      form.addEventListener( "submit" , async function ( event ) {
+        event.preventDefault();
+        const ids = boxes.filter( function ( box ) { return box.checked; } ).map( function ( box ) { return Number( box.value ); } );
+        if ( !ids.length ) return;
+        Panel.close();
+        await ctx.mutate( function () { return ctx.client.archiveCards( list.id , ids ); } );
+      } );
+      body.appendChild( form );
+      update();
+    } , function () { ListMenu.open( list , BoardPage.context() ); } );
+  },
+
   open( list , ctx ) {
     Panel.open( "board.list_menu" , function ( body ) {
+      const copy = Dom.el( "section" , { class: "panel-section" } );
+      copy.appendChild( Dom.el( "h3" , { text: T( "board.copy_heading" ) } ) );
+      copy.appendChild( Dom.el( "div" , { class: "row-actions" , children: [
+        Ui.button( "board.copy_bullets" , function () { Ui.copyText( ListMenu.markdownList( list , ctx , false ) ); } ),
+        Ui.button( "board.copy_numbered" , function () { Ui.copyText( ListMenu.markdownList( list , ctx , true ) ); } ),
+      ] } ) );
+      body.appendChild( copy );
+      // Clearing out a column -- Done, usually. Archived cards come back with
+      // "Show archived", undo, or Board settings.
+      const open = ctx.cardsIn( list.id );
+      if ( ctx.canEdit && open.length ) {
+        body.appendChild( Dom.el( "section" , { class: "panel-section" , children: [
+          Dom.el( "div" , { class: "row-actions" , children: [
+            Ui.button( "board.archive_cards" , async function () {
+              if ( !window.confirm( I18n.fill( "board.archive_cards_confirm" , { n: open.length , list: list.title } ) ) ) return;
+              Panel.close();
+              await ctx.mutate( function () { return ctx.client.archiveCards( list.id ); } );
+            } ),
+            Ui.button( "board.archive_pick" , function () { ListMenu.pickToArchive( list , ctx ); } ),
+          ] } ),
+        ] } ) );
+      }
+      if ( ctx.canManage && !ctx.isGuest ) {
+        body.appendChild( Dom.el( "section" , { class: "panel-section" , children: [
+          Ui.button( "board.share_list" , function () { Sharing.openList( ctx , list ); } ),
+        ] } ) );
+      }
+      // Renaming, archiving and deleting change the board, which a column
+      // link cannot.
+      if ( !ctx.canEdit || ctx.listOnly ) return;
       const form = Dom.el( "form" , { attrs: { autocomplete: "off" } } );
       const input = Dom.el( "input" , { attrs: { maxlength: "120" , required: "" } } );
       input.value = list.title;

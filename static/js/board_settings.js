@@ -1,13 +1,40 @@
-// Board settings: name, default view, colour, labels, archived lists and
-// cards, and leaving or deleting the board.
+// Board settings: everything about the board in one panel. It opens on
+// tiles for sharing, notifications and export (each its own panel, with a
+// way back here), then name, default view, colour, numbering, labels,
+// archived lists and cards, and leaving or deleting the board.
 const BoardSettings = {
   open( ctx ) {
     Panel.open( "settings.title" , ( body ) => {
-      if ( ctx.canEdit ) body.appendChild( this.general( ctx ) );
-      if ( ctx.canEdit ) body.appendChild( this.labelsSection( ctx ) );
-      if ( ctx.canEdit ) body.appendChild( this.archived( ctx ) );
+      body.appendChild( this.tiles( ctx ) );
+      // A guest edits cards, not the board's own setup.
+      const member = ctx.canEdit && !ctx.isGuest;
+      if ( member ) body.appendChild( this.general( ctx ) );
+      if ( member ) body.appendChild( this.labelsSection( ctx ) );
+      if ( member ) body.appendChild( this.archived( ctx ) );
+      if ( !ctx.isGuest && ctx.data.me.role ) body.appendChild( this.personal( ctx ) );
       body.appendChild( this.danger( ctx ) );
     } );
+  },
+
+  tiles( ctx ) {
+    const back = function () { BoardSettings.open( BoardPage.context() ); };
+    const tiles = [];
+    if ( ctx.canManage ) tiles.push( [ "board.share_button" , "board.share_hint" , function () { Sharing.open( ctx , back ); } ] );
+    if ( !ctx.isGuest ) tiles.push( [ "board.notify_button" , "board.notify_hint" , function () { Subscribe.openBoard( ctx , back ); } ] );
+    tiles.push( [ "board.export_button" , "board.export_hint" , function () { BoardExport.open( ctx , back ); } ] );
+    const section = Dom.el( "section" , { class: "panel-section settings-tiles" } );
+    tiles.forEach( function ( tile ) {
+      section.appendChild( Dom.el( "button" , {
+        class: "settings-tile",
+        attrs: { type: "button" },
+        on: { click: tile[ 2 ] },
+        children: [
+          Dom.el( "span" , { class: "settings-tile-title" , text: T( tile[ 0 ] ) } ),
+          Dom.el( "span" , { class: "settings-tile-hint" , text: T( tile[ 1 ] ) } ),
+        ],
+      } ) );
+    } );
+    return section;
   },
 
   openLabels( ctx ) {
@@ -45,6 +72,11 @@ const BoardSettings = {
       { value: "" , text: T( "settings.layout_free" ) },
       { value: "three" , text: T( "settings.layout_three" ) },
     ] , ctx.board.layout || "" );
+    const numbering = Ui.select( [
+      { value: "" , text: T( "settings.numbering_default" ) },
+      { value: "on" , text: T( "settings.numbering_on" ) },
+      { value: "off" , text: T( "settings.numbering_off" ) },
+    ] , ctx.board.numbering || "" );
 
     const names = Dom.el( "div" , { class: "form-row" } );
     names.appendChild( Ui.field( "settings.board_title_label" , title ) );
@@ -57,10 +89,11 @@ const BoardSettings = {
     options.appendChild( Ui.field( "settings.layout_label" , layout ) );
     form.appendChild( options );
     form.appendChild( Dom.el( "p" , { class: "muted small-print" , text: T( "settings.layout_hint" ) } ) );
+    form.appendChild( Ui.field( "settings.numbering_label" , numbering ) );
     form.appendChild( Dom.el( "button" , { text: T( "board.save" ) , attrs: { type: "submit" } } ) );
     form.addEventListener( "submit" , async function ( event ) {
       event.preventDefault();
-      const changes = { title: title.value , default_view: view.value , color: color.value , layout: layout.value };
+      const changes = { title: title.value , default_view: view.value , color: color.value , layout: layout.value , numbering: numbering.value };
       if ( slug.value !== ( ctx.board.slug || "" ) ) changes.slug = slug.value.replace( /^-+|-+$/g , "" );
       // Lists to add if the three-column layout finds fewer than three.
       if ( layout.value === "three" ) changes.list_titles = T( "home.default_lists" ).split( "," ).map( function ( name ) { return name.trim(); } );
@@ -68,6 +101,27 @@ const BoardSettings = {
       if ( result ) Ui.toast( T( "settings.saved" ) , "ok" );
     } );
     section.appendChild( form );
+    return section;
+  },
+
+  // How this board looks to you alone; nobody else on it is affected.
+  personal( ctx ) {
+    const section = Dom.el( "section" , { class: "panel-section" } );
+    section.appendChild( Dom.el( "h3" , { text: T( "settings.personal_heading" ) } ) );
+    const mine = ctx.data.me.plain_icons;
+    const fallback = !!( ctx.me && ctx.me.display && ctx.me.display.plain_icons );
+    const icons = Ui.select( [
+      { value: "" , text: I18n.fill( "settings.plain_icons_default" , { choice: T( fallback ? "settings.plain_icons_grey" : "settings.plain_icons_colour" ) } ) },
+      { value: "grey" , text: T( "settings.plain_icons_grey" ) },
+      { value: "colour" , text: T( "settings.plain_icons_colour" ) },
+    ] , typeof mine === "boolean" ? ( mine ? "grey" : "colour" ) : "" );
+    icons.addEventListener( "change" , async function () {
+      const value = icons.value === "" ? null : icons.value === "grey";
+      const result = await ctx.mutate( function () { return ctx.client.setMyView( { plain_icons: value } ); } );
+      if ( result ) Ui.toast( T( "settings.saved" ) , "ok" );
+    } );
+    section.appendChild( Ui.field( "settings.plain_icons" , icons ) );
+    section.appendChild( Dom.el( "p" , { class: "muted small-print" , text: T( "settings.plain_icons_hint" ) } ) );
     return section;
   },
 

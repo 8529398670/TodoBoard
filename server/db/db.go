@@ -45,12 +45,13 @@ const (
 	BucketSubscriptions = "subscriptions"  // userID|kind|boardID[|cardID]
 	BucketNotifySent    = "notify_sent"    // reminder ledger, see server/notify
 	BucketBoardSlugs    = "board_slugs"    // LookupKey(slug) -> board id
+	BucketFolders       = "folders"        // userID|folderID: one person's home page folders
 )
 
 var bucketNames = []string{
 	BucketUsers , BucketSessions , BucketLoginTokens , BucketAPIKeys , BucketInviteLinks , BucketMeta ,
 	BucketBoards , BucketCards , BucketUserBoards , BucketUserCards , BucketShareLinks ,
-	BucketUserPrefs , BucketSubscriptions , BucketNotifySent , BucketBoardSlugs ,
+	BucketUserPrefs , BucketSubscriptions , BucketNotifySent , BucketBoardSlugs , BucketFolders ,
 }
 
 // Key joins big-endian uint64s into one composite key.

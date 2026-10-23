@@ -15,7 +15,6 @@ const App = {
 
   async init() {
     Panel.bind();
-    UserSettings.bind( () => App.currentUser || { authenticated: false } );
     try {
       await I18n.load();
       I18n.apply();
@@ -113,7 +112,6 @@ const App = {
 
   async renderSignedIn( me ) {
     Dom.show( Dom.get( "app-nav" ) , true );
-    Dom.text( Dom.get( "who-am-i" ) , me.display_name + " (" + me.role + ")" );
 
     // "/" is the boards home; the account and admin screen lives at /account.
     if ( window.location.pathname.indexOf( "/account" ) !== 0 ) {
@@ -121,6 +119,7 @@ const App = {
       return;
     }
     Dom.show( Dom.get( "signed-in" ) , true );
+    UserSettings.render( Dom.get( "user-settings-root" ) , me );
     await NotifySettings.init( me );
     Dom.get( "display-name" ).value = me.display_name;
 
@@ -147,7 +146,6 @@ const App = {
     try {
       await Api.rename( value );
       this.currentUser.display_name = value;
-      Dom.text( Dom.get( "who-am-i" ) , value + " (" + this.currentUser.role + ")" );
       Dom.flash( Dom.get( "rename-saved" ) );
     } catch ( error ) {
       this.showError( error.message );

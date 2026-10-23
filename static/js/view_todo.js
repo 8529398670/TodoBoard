@@ -1,7 +1,7 @@
 // Todo: the same lists and cards, read as checklists. Each list is a section,
-// each card a row with a done checkbox; ticking it marks the card done, the
-// same flag the kanban view shows. Rows drag between sections like cards
-// between columns.
+// each card a row with the same Doing / Done icons as a kanban card (see
+// CardBits.statusIcons). Rows drag between sections like cards between
+// columns.
 const TodoView = {
   hideDone() {
     try { return window.localStorage.getItem( "todo_hide_done" ) === "1"; } catch ( error ) { return false; }
@@ -30,7 +30,7 @@ const TodoView = {
     wrap.appendChild( toolbar );
 
     ctx.lists().forEach( ( list ) => wrap.appendChild( this.section( list , ctx ) ) );
-    if ( ctx.canEdit && !ctx.isThree() ) {
+    if ( ctx.canEdit && !ctx.isThree() && !ctx.listOnly ) {
       wrap.appendChild( QuickAdd.build( "list" , "board.add_list" , "board.list_title_placeholder" , function ( title ) {
         return ctx.mutate( function () { return ctx.client.createList( title ); } );
       } ) );
@@ -44,6 +44,7 @@ const TodoView = {
         animation: 150,
         forceFallback: true,
         handle: ".todo-handle",
+        draggable: ".todo-row:not(.is-archived)",
         ghostClass: "drag-ghost",
         onStart: function () { ctx.setDragging( true ); },
         onEnd: function ( event ) {
@@ -56,7 +57,8 @@ const TodoView = {
 
   section( list , ctx ) {
     const all = ctx.cardsIn( list.id );
-    const cards = this.hideDone() ? all.filter( function ( card ) { return !card.done; } ) : all;
+    const shown = ctx.shownIn( list.id );
+    const cards = this.hideDone() ? shown.filter( function ( card ) { return !card.done; } ) : shown;
     const done = all.filter( function ( card ) { return card.done; } ).length;
 
     const section = Dom.el( "section" , { class: "todo-section card" } );
@@ -65,7 +67,7 @@ const TodoView = {
     Markdown.renderInline( list.title , title );
     header.appendChild( title );
     header.appendChild( Dom.el( "span" , { class: "count" , text: I18n.fill( "todo.progress" , { done: done , total: all.length } ) } ) );
-    if ( ctx.canEdit ) header.appendChild( ListMenu.button( list , ctx ) );
+    header.appendChild( ListMenu.button( list , ctx ) );
     section.appendChild( header );
 
     if ( all.length ) {
@@ -77,7 +79,7 @@ const TodoView = {
     }
 
     const items = Dom.el( "ul" , { class: "todo-items" , attrs: { "data-list-id": list.id } } );
-    cards.forEach( ( card ) => items.appendChild( this.row( card , ctx ) ) );
+    cards.forEach( ( card ) => items.appendChild( this.row( card , ctx , all ) ) );
     section.appendChild( items );
 
     if ( ctx.canEdit ) section.appendChild( QuickAdd.build( "card-" + list.id , "todo.add_item" , "board.card_title_placeholder" , function ( text ) {
@@ -86,18 +88,11 @@ const TodoView = {
     return section;
   },
 
-  row( card , ctx ) {
-    const canEditCard = card.access === "edit";
-    const row = Dom.el( "li" , { class: "todo-row" + ( card.done ? " is-done" : "" ) , attrs: { "data-card-id": card.id , "data-position": card.position } } );
-    if ( ctx.canEdit ) row.appendChild( Dom.el( "span" , { class: "todo-handle" , text: T( "todo.drag_symbol" ) , attrs: { "aria-hidden": "true" } } ) );
-
-    const box = Dom.el( "input" , { attrs: { type: "checkbox" , "aria-label": T( "card.done_label" ) } } );
-    box.checked = card.done;
-    box.disabled = !canEditCard;
-    box.addEventListener( "change" , function () {
-      ctx.mutate( function () { return ctx.client.patchCard( card.id , { done: box.checked } ); } );
-    } );
-    row.appendChild( box );
+  // cards is the row's column (open cards), for its number.
+  row( card , ctx , cards ) {
+    const row = Dom.el( "li" , { class: "todo-row" + ( card.done ? " is-done" : "" ) + ( card.archived ? " is-archived" : "" ) , attrs: { "data-card-id": card.id , "data-position": card.position } } );
+    if ( ctx.canEdit && !card.archived ) row.appendChild( Dom.el( "span" , { class: "todo-handle" , text: T( "todo.drag_symbol" ) , attrs: { "aria-hidden": "true" } } ) );
+    if ( ctx.numbered() && !card.archived ) row.appendChild( CardBits.numberField( card , cards , ctx ) );
 
     const body = Dom.el( "button" , { class: "todo-body" , attrs: { type: "button" } , on: { click: function () { ctx.openCard( card.id ); } } } );
     const title = Dom.el( "span" , { class: "todo-title" } );
@@ -108,6 +103,7 @@ const TodoView = {
       .filter( Boolean ).forEach( function ( node ) { meta.appendChild( node ); } );
     if ( meta.childNodes.length ) body.appendChild( meta );
     row.appendChild( body );
+    row.appendChild( card.archived ? CardBits.restoreIcon( card , ctx ) : CardBits.statusIcons( card , ctx ) );
 
     // A card with a body gets a disclosure toggle; open, the body shows
     // rendered under the row.

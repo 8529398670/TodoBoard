@@ -115,7 +115,7 @@ func ( handlers *Handlers ) boardFor( c fiber.Ctx ) ( principal *access.Principa
 
 func ( handlers *Handlers ) canSeeAnyCard( principal *access.Principal , board *models.Board ) ( result bool ) {
 	if principal.Share != nil {
-		result = principal.Share.BoardID == board.ID && principal.Share.CardID != 0
+		result = principal.Share.BoardID == board.ID && ( principal.Share.CardID != 0 || principal.Share.ListID != 0 )
 		return
 	}
 	found := false
@@ -197,6 +197,8 @@ func modelError( c fiber.Ctx , model_err error ) ( err error ) {
 		err = notFound( c , "item_not_found" )
 	case errors.Is( model_err , models.ErrShareLinkNotFound ):
 		err = notFound( c , "share_link_not_found" )
+	case errors.Is( model_err , models.ErrFolderNotFound ):
+		err = notFound( c , "folder_not_found" )
 	case errors.Is( model_err , db.ErrNotFound ):
 		err = notFound( c , "not_found" )
 	default:

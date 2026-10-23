@@ -12,14 +12,25 @@ const Sharing = {
     return this.team;
   },
 
-  open( ctx ) {
+  open( ctx , back ) {
     Panel.open( "share.board_title" , async ( body ) => {
       const members = Dom.el( "section" , { class: "panel-section" } );
       const links = Dom.el( "section" , { class: "panel-section" } );
       body.appendChild( members );
       body.appendChild( links );
       await this.renderMembers( members , ctx );
-      await this.renderLinks( links , ctx , 0 );
+      await this.renderLinks( links , ctx , {} );
+    } , back );
+  },
+
+  // Links to one column: whoever holds one sees that column as a board of
+  // its own.
+  openList( ctx , list ) {
+    Panel.open( "share.list_title" , async ( body ) => {
+      body.appendChild( Dom.el( "p" , { class: "muted" , text: I18n.fill( "share.list_intro" , { list: list.title } ) } ) );
+      const links = Dom.el( "section" , { class: "panel-section" } );
+      body.appendChild( links );
+      await this.renderLinks( links , ctx , { list_id: list.id } );
     } );
   },
 
@@ -31,7 +42,7 @@ const Sharing = {
       body.appendChild( people );
       body.appendChild( links );
       await this.renderCardPeople( people , ctx , card );
-      await this.renderLinks( links , ctx , card.id );
+      await this.renderLinks( links , ctx , { card_id: card.id } );
     } );
   },
 
@@ -133,10 +144,12 @@ const Sharing = {
     section.appendChild( form );
   },
 
-  // Share links for the board (cardId 0) or for one card.
-  async renderLinks( section , ctx , cardId ) {
+  // Share links for the board (scope {}), one card ({ card_id }) or one
+  // column ({ list_id }).
+  async renderLinks( section , ctx , scope ) {
     Dom.clear( section );
-    section.appendChild( Dom.el( "h3" , { text: T( cardId ? "share.card_links_heading" : "share.links_heading" ) } ) );
+    const heading = scope.card_id ? "share.card_links_heading" : scope.list_id ? "share.list_links_heading" : "share.links_heading";
+    section.appendChild( Dom.el( "h3" , { text: T( heading ) } ) );
     section.appendChild( Dom.el( "p" , { class: "muted" , text: T( "share.links_intro" ) } ) );
 
     const form = Dom.el( "form" , { attrs: { autocomplete: "off" } } );
@@ -156,7 +169,7 @@ const Sharing = {
     form.addEventListener( "submit" , async ( event ) => {
       event.preventDefault();
       try {
-        const link = await ctx.client.createShareLink( { card_id: cardId , mode: mode.value , label: label.value , days: Number( days.value ) || 0 } );
+        const link = await ctx.client.createShareLink( { card_id: scope.card_id || 0 , list_id: scope.list_id || 0 , mode: mode.value , label: label.value , days: Number( days.value ) || 0 } );
         Dom.clear( created );
         const url = Dom.el( "code" , { text: window.location.origin + link.share_path } );
         const notice = Dom.el( "span" , { class: "muted" , text: T( "share.copied" ) } );
@@ -167,7 +180,7 @@ const Sharing = {
         created.appendChild( notice );
         created.hidden = false;
         label.value = "";
-        await this.renderLinkList( list , ctx , cardId );
+        await this.renderLinkList( list , ctx , scope );
       } catch ( error ) {
         Ui.error( error );
       }
@@ -175,36 +188,51 @@ const Sharing = {
 
     const list = Dom.el( "ul" , { class: "link-list" } );
     section.appendChild( list );
-    await this.renderLinkList( list , ctx , cardId );
+    await this.renderLinkList( list , ctx , scope );
   },
 
-  async renderLinkList( list , ctx , cardId ) {
+  scopeText( ctx , link ) {
+    if ( link.card_id ) {
+      const card = ctx.card( link.card_id );
+      return I18n.fill( "share.scope_card" , { card: card ? card.title : "#" + link.card_id } );
+    }
+    if ( link.list_id ) {
+      const column = ctx.board.lists.find( function ( item ) { return item.id === link.list_id; } );
+      return I18n.fill( "share.scope_list" , { list: column ? column.title : "#" + link.list_id } );
+    }
+    return T( "share.scope_board" );
+  },
+
+  async renderLinkList( list , ctx , scope ) {
     Dom.clear( list );
     let links = [];
     try { links = await ctx.client.shareLinks(); } catch ( error ) { Ui.error( error ); return; }
-    links = links.filter( function ( link ) { return cardId ? link.card_id === cardId : true; } );
+    links = links.filter( function ( link ) {
+      if ( scope.card_id ) return link.card_id === scope.card_id;
+      if ( scope.list_id ) return link.list_id === scope.list_id;
+      return true;
+    } );
     if ( !links.length ) {
       list.appendChild( Dom.el( "li" , { class: "muted" , text: T( "share.no_links" ) } ) );
       return;
     }
     links.forEach( ( link ) => {
-      const card = link.card_id ? ctx.card( link.card_id ) : null;
-      const scope = link.card_id ? I18n.fill( "share.scope_card" , { card: card ? card.title : "#" + link.card_id } ) : T( "share.scope_board" );
+      const where = this.scopeText( ctx , link );
       const status = link.live ? ( link.expires_at ? I18n.fill( "share.expires" , { when: Dates.format( link.expires_at ) } ) : T( "share.never_expires" ) ) : T( link.revoked_at ? "share.revoked" : "share.expired" );
       const row = Dom.el( "li" , { class: "link-row" + ( link.live ? "" : " is-dead" ) } );
       row.appendChild( Dom.el( "div" , { children: [
         Dom.el( "strong" , { text: link.label || T( "share.unlabelled" ) } ),
-        Dom.el( "div" , { class: "muted" , text: [ scope , T( "share.mode_" + link.mode ) , status ].join( " · " ) } ),
+        Dom.el( "div" , { class: "muted" , text: [ where , T( "share.mode_" + link.mode ) , status ].join( " · " ) } ),
         Dom.el( "div" , { class: "muted" , text: link.last_used_at ? I18n.fill( "share.last_used" , { when: Dates.format( link.last_used_at ) } ) : T( "share.never_used" ) } ),
       ] } ) );
       const actions = Dom.el( "div" , { class: "row-actions" } );
       if ( link.live ) actions.appendChild( Ui.button( "share.revoke" , async () => {
         try { await ctx.client.revokeShareLink( link.id ); } catch ( error ) { Ui.error( error ); }
-        this.renderLinkList( list , ctx , cardId );
+        this.renderLinkList( list , ctx , scope );
       } ) );
       actions.appendChild( Ui.button( "share.delete_link" , async () => {
         try { await ctx.client.deleteShareLink( link.id ); } catch ( error ) { Ui.error( error ); }
-        this.renderLinkList( list , ctx , cardId );
+        this.renderLinkList( list , ctx , scope );
       } , "secondary small danger" ) );
       row.appendChild( actions );
       list.appendChild( row );

@@ -10,7 +10,7 @@
 //     owner and member list and from cards shared with them directly, and
 //   - a guest holding a share link, whose rights are exactly what the link
 //     says and never more: a link can be "view" or "edit", for the whole
-//     board or for one card, and it can never manage the board.
+//     board, one column, or one card, and it can never manage the board.
 //
 // App admins get nothing extra. Admin rights in this app decide who may sign
 // in, not whose boards they may read.
@@ -68,13 +68,13 @@ func modeLevel( mode string ) ( level Level ) {
 }
 
 // Board is the principal's level on the board as a whole: lists, every card,
-// board settings. Someone with access to a single card only gets None here --
-// see Card.
+// board settings. Someone with access to a single column or card only gets
+// None here -- see List and Card.
 func Board( principal *Principal , board *models.Board ) ( level Level ) {
 	if principal == nil || board == nil { return }
 	if principal.Share != nil {
 		link := principal.Share
-		if link.BoardID != board.ID || link.CardID != 0 || link.Live() == false { return }
+		if link.BoardID != board.ID || link.CardID != 0 || link.ListID != 0 || link.Live() == false { return }
 		level = modeLevel( link.Mode )
 		return
 	}
@@ -89,9 +89,23 @@ func Board( principal *Principal , board *models.Board ) ( level Level ) {
 	return
 }
 
+// List is the principal's level on one column: their board-wide level (capped
+// at Edit), or what a column link grants on its own column. Edit here means
+// adding, editing, reordering, archiving and deleting cards in that column --
+// not renaming or removing the column itself, which stays a board edit.
+func List( principal *Principal , board *models.Board , list_id uint64 ) ( level Level ) {
+	if principal == nil || board == nil || board.List( list_id ) == nil { return }
+	level = Board( principal , board )
+	if level > Edit { level = Edit }
+	if link := principal.Share; link != nil && link.BoardID == board.ID && link.ListID == list_id && link.Live() {
+		if direct := modeLevel( link.Mode ); direct > level { level = direct }
+	}
+	return
+}
+
 // Card is the principal's level on one card: the better of their board-wide
-// level (capped at Edit -- managing is a board thing) and anything granted on
-// this card alone.
+// level (capped at Edit -- managing is a board thing), anything a column link
+// grants on the card's column, and anything granted on this card alone.
 func Card( principal *Principal , board *models.Board , card *models.Card ) ( level Level ) {
 	if principal == nil || board == nil || card == nil || card.BoardID != board.ID { return }
 	level = Board( principal , board )
@@ -99,7 +113,9 @@ func Card( principal *Principal , board *models.Board , card *models.Card ) ( le
 	var direct Level
 	if principal.Share != nil {
 		link := principal.Share
-		if link.BoardID == board.ID && link.CardID == card.ID && link.Live() { direct = modeLevel( link.Mode ) }
+		if link.BoardID == board.ID && link.Live() && ( link.CardID == card.ID || ( link.ListID != 0 && link.ListID == card.ListID ) ) {
+			direct = modeLevel( link.Mode )
+		}
 	} else {
 		direct = modeLevel( card.SharedWith[ principal.UserID ] )
 	}
@@ -111,6 +127,15 @@ func Card( principal *Principal , board *models.Board , card *models.Card ) ( le
 // or more individual cards, which decides how much of the board they are
 // shown.
 func CardOnly( principal *Principal , board *models.Board ) ( result bool ) {
-	result = Board( principal , board ) == None
+	result = Board( principal , board ) == None && ListOnly( principal , board ) == 0
+	return
+}
+
+// ListOnly is the column a column link confines its holder to, or 0.
+func ListOnly( principal *Principal , board *models.Board ) ( list_id uint64 ) {
+	if principal == nil || principal.Share == nil || board == nil { return }
+	link := principal.Share
+	if link.BoardID != board.ID || link.ListID == 0 || link.Live() == false || board.List( link.ListID ) == nil { return }
+	list_id = link.ListID
 	return
 }

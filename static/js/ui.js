@@ -81,13 +81,23 @@ const Ui = {
 };
 
 // One dialog reused for every side panel (sharing, notifications, export,
-// board settings). build( body ) fills it.
+// board settings). build( body ) fills it. back, when given, is where the
+// panel came from -- Board settings, for the panels opened from its tiles --
+// and puts a button above the body that returns there.
 const Panel = {
-  open( titleKey , build ) {
+  open( titleKey , build , back ) {
     const dialog = Dom.get( "panel-dialog" );
     Dom.text( Dom.get( "panel-title" ) , T( titleKey ) );
     const body = Dom.get( "panel-body" );
     Dom.clear( body );
+    if ( back ) {
+      body.appendChild( Dom.el( "button" , {
+        class: "secondary small panel-back",
+        text: T( "ui.back" ),
+        attrs: { type: "button" },
+        on: { click: back },
+      } ) );
+    }
     build( body );
     if ( !dialog.open ) dialog.showModal();
   },
@@ -419,6 +429,108 @@ const CardBits = {
     if ( before == null ) return after / 2;
     if ( after == null ) return before + 1024;
     return ( before + after ) / 2;
+  },
+
+  // Keeps a click or key inside a card face's own controls from also
+  // opening the card.
+  inert( node ) {
+    [ "click" , "keydown" ].forEach( function ( name ) {
+      node.addEventListener( name , function ( event ) { event.stopPropagation(); } );
+    } );
+    return node;
+  },
+
+  // A card's place in its column, 1-based. Typing another number and
+  // pressing Enter moves the card there; Escape puts it back. cards is the
+  // whole column in order (ctx.cardsIn), done cards and all.
+  numberField( card , cards , ctx ) {
+    const index = cards.indexOf( card );
+    const label = String( index + 1 );
+    const title = I18n.fill( "board.number_label" , { n: label } );
+    if ( !ctx.canEdit ) return Dom.el( "span" , { class: "card-number" , text: label , attrs: { title: title } } );
+    const input = Dom.el( "input" , { class: "card-number" , attrs: { type: "text" , inputmode: "numeric" , maxlength: "4" , "aria-label": title , title: title } } );
+    input.value = label;
+    this.inert( input );
+    input.addEventListener( "focus" , function () { input.select(); } );
+    input.addEventListener( "blur" , function () { input.value = label; } );
+    input.addEventListener( "keydown" , function ( event ) {
+      if ( event.key === "Escape" ) {
+        input.value = label;
+        input.blur();
+        return;
+      }
+      if ( event.key !== "Enter" ) return;
+      event.preventDefault();
+      const wanted = parseInt( input.value , 10 );
+      if ( isNaN( wanted ) ) {
+        input.value = label;
+        return;
+      }
+      const target = Math.min( Math.max( wanted , 1 ) , cards.length );
+      if ( target === index + 1 ) {
+        input.value = label;
+        input.blur();
+        return;
+      }
+      const others = cards.filter( function ( other ) { return other.id !== card.id; } );
+      const before = others[ target - 2 ];
+      const after = others[ target - 1 ];
+      const position = CardBits.positionBetween( before ? before.position : null , after ? after.position : null );
+      ctx.mutate( function () { return ctx.client.patchCard( card.id , { position: position } ); } );
+    } );
+    return input;
+  },
+
+  // Doing / Done icons, top right of a card. On a three-column board they
+  // move the card to the second or third column, and pressing the lit one
+  // sends it back to the first; they never touch the done flag. On any other
+  // board there is just Done, which ticks the card's done flag.
+  statusIcons( card , ctx ) {
+    const wrap = this.inert( Dom.el( "div" , { class: "status-icons" } ) );
+    const icon = function ( kind , pressed , enabled , onClick ) {
+      const label = T( "board.status_" + kind );
+      const button = Dom.el( "button" , {
+        class: "status-icon status-" + kind,
+        text: T( "board.status_" + kind + "_symbol" ),
+        attrs: { type: "button" , "aria-pressed": pressed ? "true" : "false" , "aria-label": label , title: label },
+        on: { click: onClick },
+      } );
+      button.disabled = !enabled;
+      wrap.appendChild( button );
+    };
+    const lists = ctx.lists();
+    if ( ctx.isThree() && lists.length >= 3 ) {
+      [ [ "doing" , lists[ 1 ] ] , [ "done" , lists[ 2 ] ] ].forEach( function ( pair ) {
+        const column = pair[ 1 ];
+        const here = card.list_id === column.id;
+        icon( pair[ 0 ] , here , ctx.canEdit , function () {
+          const target = here ? lists[ 0 ] : column;
+          const there = ctx.cardsIn( target.id ).filter( function ( other ) { return other.id !== card.id; } );
+          const last = there[ there.length - 1 ];
+          const position = CardBits.positionBetween( last ? last.position : null , null );
+          ctx.mutate( function () { return ctx.client.patchCard( card.id , { list_id: target.id , position: position } ); } );
+        } );
+      } );
+    } else {
+      icon( "done" , card.done , card.access === "edit" , function () {
+        ctx.mutate( function () { return ctx.client.patchCard( card.id , { done: !card.done } ); } );
+      } );
+    }
+    return wrap;
+  },
+
+  // An archived card's one control, where the status icons would be.
+  restoreIcon( card , ctx ) {
+    const wrap = this.inert( Dom.el( "div" , { class: "status-icons" } ) );
+    const button = Dom.el( "button" , {
+      class: "status-icon status-restore",
+      text: T( "card.restore_symbol" ),
+      attrs: { type: "button" , "aria-label": T( "card.unarchive" ) , title: T( "card.unarchive" ) },
+      on: { click: function () { ctx.mutate( function () { return ctx.client.patchCard( card.id , { archived: false } ); } ); } },
+    } );
+    button.disabled = !ctx.canEdit;
+    wrap.appendChild( button );
+    return wrap;
   },
 };
 

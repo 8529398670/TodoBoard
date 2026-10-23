@@ -41,11 +41,11 @@ import (
 	static "todoboard/server/static"
 )
 
-// Stamped by build.sh via -ldflags. The defaults are what you get from a
-// plain `go build`, which is a useful signal in itself.
+// Stamped by run.sh, build.sh and the Docker build via -ldflags: the version
+// is the build's date and time. The defaults are what you get from a plain
+// `go build`, which is a useful signal in itself.
 var (
 	version   = "dev"
-	commit    = "unknown"
 	buildDate = "unknown"
 )
 
@@ -73,8 +73,8 @@ func main() {
 			}
 			return
 		case "version" , "-version" , "--version":
-			fmt.Printf( "TodoBoard %s (commit %s, built %s, %s/%s, %s)\n" ,
-				version , commit , buildDate , runtime.GOOS , runtime.GOARCH , runtime.Version() )
+			fmt.Printf( "TodoBoard %s (built %s, %s/%s, %s)\n" ,
+				version , buildDate , runtime.GOOS , runtime.GOARCH , runtime.Version() )
 			return
 		case "-h" , "--help" , "help":
 			fmt.Printf( "TodoBoard %s\n\nUsage:\n  todoboard                 run the web server\n  todoboard manage <cmd>    account administration\n  todoboard config <cmd>    create, check, or read config.yaml\n  todoboard health          exit 0 if the local server answers\n  todoboard version         build information\n\n" , version )
