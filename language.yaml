@@ -13,8 +13,8 @@
 # the signed-out page needs text too. Never put anything secret in it.
 
 app:
-  title: "TodoBoard"
-  tagline: "Boards, lists and cards for your team."
+  title: "TodoBoards"
+  tagline: ""
 
 signed_out:
   heading: "You are not signed in"
@@ -172,7 +172,7 @@ admin_keys:
 errors:
   generic: "Something went wrong. Please try again."
   network: "Could not reach the server."
-  invalid_theme: "That theme has a colour that is not a #rrggbb code."
+  invalid_theme: "That theme has a color that is not a #rrggbb code."
   # Error codes the invite link and PIN routes answer with, by name.
   invite_link_invalid: "This invite link is invalid, expired, or has been switched off."
   invite_link_full: "This link has no places left."
@@ -265,7 +265,7 @@ user_settings:
   number_cards: "Number cards in each column"
   number_cards_hint: "Applies to boards left on \"Each person's choice\". A board's own setting overrides it."
   plain_icons: "Grey Doing / Done icons"
-  plain_icons_hint: "Shows the Doing and Done icons without colour on every board. Each board's settings can override this for you."
+  plain_icons_hint: "Shows the Doing and Done icons without color on every board. Each board's settings can override this for you."
   guest_hint: "Signed in through a share link, times follow this device."
   saved: "Saved."
 
@@ -277,7 +277,7 @@ ui:
 home:
   create_heading: "New board"
   board_title_label: "Board name"
-  board_title_placeholder: "e.g. Lab work, Q4 launch"
+  board_title_placeholder: ""
   create_button: "Create board"
   # Lists every new board starts with, comma separated.
   default_lists: "To do, Doing, Done"
@@ -509,17 +509,17 @@ settings:
   plain_icons: "Doing / Done icons"
   plain_icons_default: "My account default ({choice})"
   plain_icons_grey: "Grey"
-  plain_icons_colour: "Colour"
+  plain_icons_color: "Color"
   plain_icons_hint: "How the Doing and Done icons look on this board. Only you see the change; your account default is on the Account page."
   danger_heading: "Danger zone"
   default_view_label: "Opens in"
-  color_label: "Colour"
+  color_label: "Color"
   color_none: "Default"
   saved: "Saved."
   labels_heading: "Labels"
   label_name: "Label name"
   label_name_placeholder: "e.g. Urgent"
-  label_color: "Colour"
+  label_color: "Color"
   add_label: "Add label"
   delete_label: "Delete"
   delete_label_confirm: "Delete the label \"{name}\"? It is removed from every card."
@@ -554,7 +554,7 @@ theme:
   field_surface: "Header and panels"
   field_column: "Columns"
   field_card: "Cards"
-  reset: "Reset colours"
+  reset: "Reset colors"
   board_heading: "Theme"
   board_hint: "Everyone on this board sees its theme, unless they have chosen to always use their own."
   board_choice: "Board theme"
@@ -563,9 +563,9 @@ theme:
 
 color_picker:
   default: "Default"
-  custom: "Custom colour…"
-  hex_label: "Colour code"
-  low_contrast: "Text may be hard to read on this colour. Try the other mode, or a lighter or darker shade."
+  custom: "Custom color…"
+  hex_label: "Color code"
+  low_contrast: "Text may be hard to read on this color. Try the other mode, or a lighter or darker shade."
 
 colors:
   blue: "Blue"
