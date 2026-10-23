@@ -22,6 +22,11 @@ import (
 	runtime "runtime"
 	syscall "syscall"
 	time "time"
+	// The IANA timezone database, built in. The Docker image (Alpine, no
+	// tzdata package) and a bare server may have none on disk, and then
+	// every named timezone -- reminders, display settings, exports -- fails
+	// to load. Costs about 450 KB.
+	_ "time/tzdata"
 
 	fiber "github.com/gofiber/fiber/v3"
 

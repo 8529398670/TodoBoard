@@ -72,6 +72,7 @@ func ( handlers *Handlers ) SaveNotifyPrefs( c fiber.Ctx ) ( err error ) {
 	prefs := body.UserPrefs
 	// Display settings have their own endpoint; this form does not send them.
 	prefs.DisplayTimezone , prefs.Hour12 = current.DisplayTimezone , current.Hour12
+	prefs.NumberCards , prefs.PlainIcons = current.NumberCards , current.PlainIcons
 	switch prefs.PushoverUserKey {
 	case "":
 		prefs.PushoverUserKey = current.PushoverUserKey
