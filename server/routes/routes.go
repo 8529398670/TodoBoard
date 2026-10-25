@@ -124,6 +124,11 @@ func ( handlers *Handlers ) Register( app *fiber.App ) {
 	boards.Get( "/:board_id/cards/:card_id/subscription" , handlers.GetCardSubscription )
 	boards.Post( "/:board_id/cards/:card_id/subscription" , handlers.SetCardSubscription )
 
+	// Backups: every board you are on as one file, and boards back from it.
+	backup := app.Group( "/api/backup" , handlers.Guard.RequireLogin , handlers.MemberPrincipal )
+	backup.Get( "" , handlers.ExportBackup )
+	backup.Post( "/board" , handlers.ImportBoard )
+
 	// Home page folders: each person's own. MemberPrincipal is here for its
 	// CSRF check on writes.
 	folders := app.Group( "/api/folders" , handlers.Guard.RequireLogin , handlers.MemberPrincipal )
@@ -207,6 +212,8 @@ func ( handlers *Handlers ) registerBoardContent( group fiber.Router ) {
 	group.Post( "/:board_id/lists/:list_id" , handlers.UpdateList )
 	group.Post( "/:board_id/lists/:list_id/delete" , handlers.DeleteList )
 	group.Post( "/:board_id/lists/:list_id/archive-cards" , handlers.ArchiveListCards )
+	group.Get( "/:board_id/lists/:list_id/export" , handlers.ExportColumn )
+	group.Post( "/:board_id/lists/:list_id/import" , handlers.ImportColumn )
 	group.Post( "/:board_id/labels" , handlers.CreateLabel )
 	group.Post( "/:board_id/labels/:label_id" , handlers.UpdateLabel )
 	group.Post( "/:board_id/labels/:label_id/delete" , handlers.DeleteLabel )

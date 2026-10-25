@@ -18,7 +18,7 @@
   -->
   <header class="board-header">
     <div class="board-header-main">
-      <a id="home-link" class="home-link" href="/" data-i18n="nav.boards"></a>
+      <a id="home-link" class="home-link" href="/" data-i18n="app.title"></a>
       <h1 id="board-title" class="board-title"></h1>
     </div>
     <div id="view-switch" class="view-switch" role="group" data-i18n-attr="aria-label:views.label">
@@ -31,8 +31,8 @@
          settings live on the Account page. A guest has no account, so they
          get the one personal setting they can use (the theme) here. -->
     <div class="board-actions row-actions">
-      <button type="button" id="undo-button" class="icon-button" data-i18n="board.undo_symbol" data-i18n-attr="aria-label:board.undo,title:board.undo_hint" hidden disabled></button>
-      <button type="button" id="redo-button" class="icon-button" data-i18n="board.redo_symbol" data-i18n-attr="aria-label:board.redo,title:board.redo_hint" hidden disabled></button>
+      <button type="button" id="undo-button" class="icon-button history-button" data-i18n-attr="aria-label:board.undo,title:board.undo_hint" hidden disabled><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
+      <button type="button" id="redo-button" class="icon-button history-button" data-i18n-attr="aria-label:board.redo,title:board.redo_hint" hidden disabled><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg></button>
       <button type="button" id="settings-button" class="secondary small" data-i18n="settings.title" hidden></button>
       <a id="account-link" class="profile-link" href="/account" data-i18n-attr="aria-label:nav.account,title:nav.account" hidden><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="8.5" r="4"/><path d="M4 20.5c0-4.1 3.6-6.5 8-6.5s8 2.4 8 6.5"/></svg></a>
       <button type="button" id="guest-settings-button" class="secondary small" data-user-settings data-i18n="nav.settings" hidden></button>
@@ -94,6 +94,7 @@
   <script src="/js/view_timeline.js"></script>
   <script src="/js/card_modal.js"></script>
   <script src="/js/card_export.js"></script>
+  <script src="/js/backup.js"></script>
   <script src="/js/sharing.js"></script>
   <script src="/js/subscribe.js"></script>
   <script src="/js/board_settings.js"></script>

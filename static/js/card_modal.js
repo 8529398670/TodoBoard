@@ -8,7 +8,13 @@ const CardModal = {
   editingDescription: false,
   draft: "",
   previewing: false,
+  // The title has the same write/preview editor as the description.
+  editingTitle: false,
+  titleDraft: "",
+  titlePreviewing: false,
+  titleRev: 0,
   conflict: null,
+  titleConflict: null,
   pendingRefresh: false,
 
   dialog() {
@@ -23,7 +29,9 @@ const CardModal = {
     dialog.addEventListener( "close" , () => {
       this.cardId = null;
       this.editingDescription = false;
+      this.editingTitle = false;
       this.conflict = null;
+      this.titleConflict = null;
       const url = new URL( window.location.href );
       url.searchParams.delete( "card" );
       window.history.replaceState( null , "" , url.pathname + url.search );
@@ -47,7 +55,9 @@ const CardModal = {
     }
     this.cardId = cardId;
     this.editingDescription = false;
+    this.editingTitle = false;
     this.conflict = null;
+    this.titleConflict = null;
     const url = new URL( window.location.href );
     url.searchParams.set( "card" , String( cardId ) );
     window.history.replaceState( null , "" , url.pathname + url.search );
@@ -120,14 +130,7 @@ const CardModal = {
   header( card , canEdit ) {
     const header = Dom.el( "header" , { class: "card-dialog-head" } );
     if ( canEdit ) {
-      const title = Dom.el( "h2" , { class: "card-dialog-title" } );
-      title.appendChild( InlineEdit.build( card.title , {
-        label: T( "card.title_label" ),
-        maxlength: 300,
-        className: "title-inline",
-        onSave: ( value ) => this.save( { title: value , rev: card.rev } ),
-      } ) );
-      header.appendChild( title );
+      header.appendChild( this.titleEditor( card ) );
     } else {
       const title = Dom.el( "h2" , { class: "card-dialog-title" } );
       Markdown.renderInline( card.title , title );
@@ -294,6 +297,122 @@ const CardModal = {
       }
     }
     return section;
+  },
+
+  // The title: rendered until clicked, then a write/preview editor like the
+  // description's. Titles render inline, so Enter saves rather than adding a
+  // line, and pasted line breaks become spaces.
+  titleEditor( card ) {
+    const wrap = Dom.el( "div" , { class: "card-dialog-title-wrap" } );
+    if ( this.titleConflict ) wrap.appendChild( this.titleConflictBox() );
+    if ( !this.editingTitle ) {
+      const title = Dom.el( "h2" , { class: "card-dialog-title editable" , attrs: { tabindex: "0" , role: "button" , "aria-label": T( "card.title_label" ) , title: T( "card.title_label" ) } } );
+      Markdown.renderInline( card.title , title );
+      const startEditing = () => {
+        this.editingTitle = true;
+        this.titlePreviewing = false;
+        this.titleDraft = card.title;
+        this.titleRev = card.rev;
+        this.render();
+        const area = this.dialog().querySelector( ".title-input" );
+        if ( area ) {
+          area.focus();
+          area.select();
+        }
+      };
+      title.addEventListener( "click" , ( event ) => {
+        if ( event.target.closest( "a" ) ) return;
+        startEditing();
+      } );
+      title.addEventListener( "keydown" , ( event ) => {
+        if ( event.key === "Enter" || event.key === " " ) {
+          event.preventDefault();
+          startEditing();
+        }
+      } );
+      wrap.appendChild( title );
+      return wrap;
+    }
+
+    const tabs = Dom.el( "div" , { class: "tabs" , attrs: { role: "tablist" } } );
+    tabs.appendChild( Ui.button( "card.write_tab" , () => { this.titlePreviewing = false; this.render(); } , "secondary small" + ( this.titlePreviewing ? "" : " active" ) ) );
+    tabs.appendChild( Ui.button( "card.preview_tab" , () => { this.titlePreviewing = true; this.render(); } , "secondary small" + ( this.titlePreviewing ? " active" : "" ) ) );
+    wrap.appendChild( tabs );
+    const cancel = () => {
+      this.editingTitle = false;
+      this.titleConflict = null;
+      this.render();
+    };
+    if ( this.titlePreviewing ) {
+      const rendered = Dom.el( "h2" , { class: "card-dialog-title preview" } );
+      Markdown.renderInline( this.titleDraft , rendered );
+      wrap.appendChild( rendered );
+    } else {
+      const area = Dom.el( "textarea" , { class: "title-input" , attrs: { rows: "1" , "aria-label": T( "card.title_label" ) } } );
+      area.value = this.titleDraft;
+      area.addEventListener( "input" , () => {
+        this.titleDraft = Ui.oneLine( area.value );
+        Ui.autoGrow( area );
+      } );
+      area.addEventListener( "keydown" , ( event ) => {
+        if ( event.key === "Enter" ) {
+          event.preventDefault();
+          this.saveTitle( this.titleRev );
+        } else if ( event.key === "Escape" ) {
+          event.preventDefault();
+          event.stopPropagation();
+          cancel();
+        }
+      } );
+      wrap.appendChild( area );
+      window.requestAnimationFrame( function () { Ui.autoGrow( area ); } );
+      wrap.appendChild( Dom.el( "p" , { class: "muted small-print" , text: T( "card.markdown_hint" ) } ) );
+    }
+    wrap.appendChild( Dom.el( "div" , { class: "row-actions" , children: [
+      Dom.el( "button" , { class: "small" , text: T( "board.save" ) , attrs: { type: "button" } , on: { click: () => this.saveTitle( this.titleRev ) } } ),
+      Ui.button( "board.cancel" , cancel ),
+    ] } ) );
+    return wrap;
+  },
+
+  // Like saveDescription: checked against the revision editing started from.
+  async saveTitle( rev ) {
+    const title = this.titleDraft.trim();
+    if ( !title ) return;
+    const card = this.card();
+    if ( card && title === card.title ) {
+      this.editingTitle = false;
+      this.render();
+      return;
+    }
+    try {
+      await this.ctx.client.patchCard( this.cardId , { title: title , rev: rev } );
+      this.editingTitle = false;
+      this.titleConflict = null;
+      await this.ctx.reload();
+    } catch ( error ) {
+      if ( error.status === 409 && error.payload && error.payload.card ) {
+        this.titleConflict = error.payload.card;
+        this.render();
+        return;
+      }
+      Ui.error( error );
+    }
+  },
+
+  titleConflictBox() {
+    const theirs = this.titleConflict;
+    const box = Dom.el( "div" , { class: "notice notice-warn conflict" } );
+    box.appendChild( Dom.el( "p" , { text: I18n.fill( "card.title_conflict" , { name: CardBits.actorName( theirs.updated_by ) } ) } ) );
+    box.appendChild( Dom.el( "div" , { class: "row-actions" , children: [
+      Ui.button( "card.conflict_keep_mine" , () => this.saveTitle( theirs.rev ) ),
+      Ui.button( "card.conflict_take_theirs" , async () => {
+        this.titleConflict = null;
+        this.editingTitle = false;
+        await this.ctx.reload();
+      } ),
+    ] } ) );
+    return box;
   },
 
   description( card , canEdit ) {
@@ -468,7 +587,7 @@ const CardModal = {
 
     if ( canEdit ) section.appendChild( QuickAdd.build( "item-" + cardId , "card.add_item" , "card.item_placeholder" , function ( text ) {
       return ctx.mutate( function () { return ctx.client.addItem( cardId , text ); } );
-    } ) );
+    } , 500 ) );
     return section;
   },
 

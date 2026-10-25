@@ -133,6 +133,7 @@ const App = {
     // that knows the API keys screen exists.
     Pin.init( me );
     LoginLink.init( me );
+    Backup.initAccount( me );
     await Keys.init( me );
 
     if ( me.role !== "admin" ) return;

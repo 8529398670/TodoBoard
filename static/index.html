@@ -18,7 +18,7 @@
   -->
   <header class="app-header">
     <div>
-      <h1 data-i18n="app.title"></h1>
+      <h1><a href="/" class="brand-link" data-i18n="app.title"></a></h1>
       <p class="muted" data-i18n="app.tagline"></p>
     </div>
     <div class="header-side">
@@ -181,6 +181,18 @@
           <button type="button" id="own-login-copy" class="secondary" data-i18n="own_login.copy_button"></button>
           <span id="own-login-copied" class="muted" data-i18n="own_login.copied_notice" hidden></span>
         </div>
+      </div>
+
+      <!-- Every board you are on as one file, and boards back from one; see
+           backup.js. -->
+      <div class="card" id="backup-panel" hidden>
+        <h2 data-i18n="backup.heading"></h2>
+        <p class="muted" data-i18n="backup.description"></p>
+        <div class="row-actions">
+          <button type="button" id="backup-download" class="secondary" data-i18n="backup.download_button"></button>
+          <button type="button" id="backup-import" class="secondary" data-i18n="backup.import_button"></button>
+        </div>
+        <p id="backup-status" class="notice" role="status" hidden></p>
       </div>
 
       <!-- Only for non-admin accounts; see pin.js. -->
@@ -403,6 +415,7 @@
   <script src="/js/theme_editor.js"></script>
   <script src="/js/markdown.js"></script>
   <script src="/js/home.js"></script>
+  <script src="/js/backup.js"></script>
   <script src="/js/notify_settings.js"></script>
   <script src="/js/user_settings.js"></script>
   <script src="/js/app.js"></script>

@@ -70,6 +70,27 @@ const Ui = {
     return slug || "card";
   },
 
+  // A textarea that grows with what is typed instead of scrolling.
+  autoGrow( area ) {
+    area.style.height = "auto";
+    area.style.height = area.scrollHeight + 2 + "px";
+  },
+
+  // Card titles render on one line: line breaks become single spaces.
+  oneLine( text ) {
+    return String( text || "" ).replace( /\s*[\r\n]+\s*/g , " " );
+  },
+
+  // Asks for one file and resolves with it, or with null if none was picked.
+  pickFile( accept ) {
+    return new Promise( function ( resolve ) {
+      const input = Dom.el( "input" , { attrs: { type: "file" , accept: accept || "" } } );
+      input.addEventListener( "change" , function () { resolve( input.files && input.files[ 0 ] ? input.files[ 0 ] : null ); } );
+      input.addEventListener( "cancel" , function () { resolve( null ); } );
+      input.click();
+    } );
+  },
+
   async copyText( text ) {
     try {
       await navigator.clipboard.writeText( text );
@@ -77,6 +98,87 @@ const Ui = {
     } catch ( error ) {
       this.toast( T( "export.copy_failed" ) , "error" );
     }
+  },
+};
+
+// A right-click menu: a short list of actions at the pointer. Closes on a
+// pick, Escape, a click elsewhere, scrolling or resizing.
+//
+//   items: [ { key , action , danger } ] -- key is the language.yaml text.
+const ContextMenu = {
+  node: null,
+
+  open( event , items ) {
+    event.preventDefault();
+    this.close();
+    const menu = Dom.el( "div" , { class: "context-menu" , attrs: { role: "menu" } } );
+    items.forEach( ( item ) => {
+      menu.appendChild( Dom.el( "button" , {
+        class: "context-menu-item" + ( item.danger ? " danger" : "" ),
+        text: T( item.key ),
+        attrs: { type: "button" , role: "menuitem" },
+        on: { click: () => {
+          this.close();
+          item.action();
+        } },
+      } ) );
+    } );
+    menu.addEventListener( "keydown" , ( key ) => {
+      const buttons = Array.from( menu.querySelectorAll( "button" ) );
+      const at = buttons.indexOf( document.activeElement );
+      if ( key.key === "ArrowDown" || key.key === "ArrowUp" ) {
+        key.preventDefault();
+        const step = key.key === "ArrowDown" ? 1 : -1;
+        buttons[ ( at + step + buttons.length ) % buttons.length ].focus();
+      } else if ( key.key === "Escape" || key.key === "Tab" ) {
+        key.preventDefault();
+        key.stopPropagation();
+        this.close();
+      }
+    } );
+    // Inside an open dialog the menu has to live in the dialog to be on top.
+    const host = event.currentTarget && event.currentTarget.closest ? event.currentTarget.closest( "dialog[open]" ) : null;
+    ( host || document.body ).appendChild( menu );
+    this.node = menu;
+    this.returnFocus = event.currentTarget;
+
+    // At the pointer; from the keyboard (menu key) at the element itself.
+    let x = event.clientX;
+    let y = event.clientY;
+    if ( !x && !y && event.currentTarget && event.currentTarget.getBoundingClientRect ) {
+      const box = event.currentTarget.getBoundingClientRect();
+      x = box.left + 12;
+      y = box.top + 12;
+    }
+    const width = menu.offsetWidth;
+    const height = menu.offsetHeight;
+    menu.style.left = Math.max( 4 , Math.min( x , window.innerWidth - width - 4 ) ) + "px";
+    menu.style.top = Math.max( 4 , Math.min( y , window.innerHeight - height - 4 ) ) + "px";
+    const first = menu.querySelector( "button" );
+    if ( first ) first.focus();
+
+    this.dismiss = ( other ) => {
+      if ( other.type === "pointerdown" && menu.contains( other.target ) ) return;
+      this.close();
+    };
+    window.setTimeout( () => {
+      document.addEventListener( "pointerdown" , this.dismiss , true );
+      window.addEventListener( "scroll" , this.dismiss , true );
+      window.addEventListener( "resize" , this.dismiss );
+      window.addEventListener( "blur" , this.dismiss );
+    } , 0 );
+  },
+
+  close() {
+    if ( !this.node ) return;
+    const hadFocus = this.node.contains( document.activeElement );
+    this.node.remove();
+    this.node = null;
+    document.removeEventListener( "pointerdown" , this.dismiss , true );
+    window.removeEventListener( "scroll" , this.dismiss , true );
+    window.removeEventListener( "resize" , this.dismiss );
+    window.removeEventListener( "blur" , this.dismiss );
+    if ( hadFocus && this.returnFocus && this.returnFocus.isConnected ) this.returnFocus.focus();
   },
 };
 

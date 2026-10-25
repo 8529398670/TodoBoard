@@ -105,6 +105,7 @@ const KanbanView = {
       on: {
         click: function () { ctx.openCard( card.id ); },
         keydown: function ( event ) { if ( event.key === "Enter" ) ctx.openCard( card.id ); },
+        contextmenu: function ( event ) { CardMenu.open( event , card , ctx ); },
       },
     } );
     face.appendChild( card.archived ? CardBits.restoreIcon( card , ctx ) : CardBits.statusIcons( card , ctx ) );
@@ -138,7 +139,7 @@ const KanbanView = {
     const column = Dom.el( "section" , { class: "kanban-column add-column" } );
     column.appendChild( QuickAdd.build( "list" , "board.add_list" , "board.list_title_placeholder" , function ( title ) {
       return ctx.mutate( function () { return ctx.client.createList( title ); } );
-    } ) );
+    } , 120 ) );
     return column;
   },
 };
@@ -149,12 +150,21 @@ const KanbanView = {
 const QuickAdd = {
   // key identifies this form across re-renders ("card-12", "list"), so after
   // an add -- which re-renders the board -- the new copy can be reopened.
-  build( key , buttonKey , placeholderKey , submit ) {
+  // maxlength is for lists and checklist items; card titles have none.
+  build( key , buttonKey , placeholderKey , submit , maxlength ) {
     const wrap = Dom.el( "div" , { class: "quick-add" , attrs: { "data-quick-key": key } } );
     const opener = Dom.el( "button" , { class: "secondary small quick-add-open" , text: T( buttonKey ) , attrs: { type: "button" } } );
     const form = Dom.el( "form" , { class: "quick-add-form" , attrs: { autocomplete: "off" } } );
     form.hidden = true;
-    const input = Dom.el( "input" , { attrs: { maxlength: "300" , placeholder: T( placeholderKey ) , "aria-label": T( placeholderKey ) } } );
+    // Card titles have no practical length limit, so the box grows with
+    // them; Enter still adds (titles are one line).
+    const input = Dom.el( "textarea" , { class: "quick-add-input" , attrs: { rows: "1" , placeholder: T( placeholderKey ) , "aria-label": T( placeholderKey ) } } );
+    input.addEventListener( "input" , function () {
+      const flat = Ui.oneLine( input.value );
+      if ( flat !== input.value ) input.value = flat;
+      Ui.autoGrow( input );
+    } );
+    if ( maxlength ) input.setAttribute( "maxlength" , String( maxlength ) );
     const cancel = Ui.button( "board.cancel" , function () { form.hidden = true; opener.hidden = false; } );
     form.appendChild( input );
     form.appendChild( Dom.el( "div" , { class: "row-actions" , children: [
@@ -171,6 +181,7 @@ const QuickAdd = {
       const value = input.value.trim();
       if ( !value ) return;
       input.value = "";
+      Ui.autoGrow( input );
       await submit( value );
       const fresh = document.querySelector( "[data-quick-key=\"" + key + "\"] .quick-add-open" );
       if ( fresh && fresh !== opener ) fresh.click();
@@ -178,10 +189,38 @@ const QuickAdd = {
     } );
     input.addEventListener( "keydown" , function ( event ) {
       if ( event.key === "Escape" ) cancel.click();
+      if ( event.key === "Enter" && !event.isComposing ) {
+        event.preventDefault();
+        form.requestSubmit();
+      }
     } );
     wrap.appendChild( opener );
     wrap.appendChild( form );
     return wrap;
+  },
+};
+
+// A card's right-click menu: the card editor's everyday actions without
+// opening it. Delete is undoable like any other (see history.js).
+const CardMenu = {
+  open( event , card , ctx ) {
+    const items = [ { key: "board.card_menu_open" , action: function () { ctx.openCard( card.id ); } } ];
+    if ( card.access === "edit" && !card.archived ) {
+      items.push( { key: card.done ? "board.card_menu_undone" : "board.card_menu_done" , action: function () {
+        ctx.mutate( function () { return ctx.client.patchCard( card.id , { done: !card.done } ); } );
+      } } );
+    }
+    items.push( { key: "export.card_button" , action: function () { CardExport.open( ctx , card ); } } );
+    if ( ctx.canEdit ) {
+      items.push( { key: card.archived ? "card.unarchive" : "card.archive" , action: function () {
+        ctx.mutate( function () { return ctx.client.patchCard( card.id , { archived: !card.archived } ); } );
+      } } );
+      items.push( { key: "card.delete" , danger: true , action: function () {
+        if ( !window.confirm( I18n.fill( "card.delete_confirm" , { name: card.title } ) ) ) return;
+        ctx.mutate( function () { return ctx.client.deleteCard( card.id ); } );
+      } } );
+    }
+    ContextMenu.open( event , items );
   },
 };
 
@@ -261,6 +300,14 @@ const ListMenu = {
         Ui.button( "board.copy_numbered" , function () { Ui.copyText( ListMenu.markdownList( list , ctx , true ) ); } ),
       ] } ) );
       body.appendChild( copy );
+      // The column as a file, and cards back from one (appended).
+      const file = Dom.el( "section" , { class: "panel-section" } );
+      file.appendChild( Dom.el( "h3" , { text: T( "backup.column_heading" ) } ) );
+      const fileActions = Dom.el( "div" , { class: "row-actions" } );
+      fileActions.appendChild( Ui.button( "backup.column_export" , function () { Backup.exportColumn( ctx , list ); } ) );
+      if ( ctx.canEdit ) fileActions.appendChild( Ui.button( "backup.column_import" , function () { Backup.importColumn( ctx , list ); } ) );
+      file.appendChild( fileActions );
+      body.appendChild( file );
       // Clearing out a column -- Done, usually. Archived cards come back with
       // "Show archived", undo, or Board settings.
       const open = ctx.cardsIn( list.id );

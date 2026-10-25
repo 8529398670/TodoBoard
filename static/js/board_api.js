@@ -84,6 +84,10 @@ class BoardClient {
   updateList( listId , fields )    { return this.post( "/" + this.boardId + "/lists/" + listId , fields ); }
   deleteList( listId )             { return this.post( "/" + this.boardId + "/lists/" + listId + "/delete" ); }
   // Every open card in the list, or only cardIds.
+  exportColumn( listId )           { return this.get( "/" + this.boardId + "/lists/" + listId + "/export" ); }
+  importColumn( listId , labels , cards ) {
+    return this.post( "/" + this.boardId + "/lists/" + listId + "/import" , { labels: labels , cards: cards } );
+  }
   archiveCards( listId , cardIds ) { return this.post( "/" + this.boardId + "/lists/" + listId + "/archive-cards" , { card_ids: cardIds } ); }
 
   createLabel( name , color )      { return this.post( "/" + this.boardId + "/labels" , { name: name , color: color } ); }

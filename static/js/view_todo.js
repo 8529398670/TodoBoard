@@ -33,7 +33,7 @@ const TodoView = {
     if ( ctx.canEdit && !ctx.isThree() && !ctx.listOnly ) {
       wrap.appendChild( QuickAdd.build( "list" , "board.add_list" , "board.list_title_placeholder" , function ( title ) {
         return ctx.mutate( function () { return ctx.client.createList( title ); } );
-      } ) );
+      } , 120 ) );
     }
     root.appendChild( wrap );
 
@@ -91,6 +91,7 @@ const TodoView = {
   // cards is the row's column (open cards), for its number.
   row( card , ctx , cards ) {
     const row = Dom.el( "li" , { class: "todo-row" + ( card.done ? " is-done" : "" ) + ( card.archived ? " is-archived" : "" ) , attrs: { "data-card-id": card.id , "data-position": card.position } } );
+    row.addEventListener( "contextmenu" , function ( event ) { CardMenu.open( event , card , ctx ); } );
     if ( ctx.canEdit && !card.archived ) row.appendChild( Dom.el( "span" , { class: "todo-handle" , text: T( "todo.drag_symbol" ) , attrs: { "aria-hidden": "true" } } ) );
     if ( ctx.numbered() && !card.archived ) row.appendChild( CardBits.numberField( card , cards , ctx ) );
 

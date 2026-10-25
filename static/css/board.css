@@ -94,6 +94,9 @@ a { color: var(--accent); }
 }
 .icon-button:hover { color: var(--fg); border-color: var(--border); }
 .icon-button.small { min-height: 28px; min-width: 28px; font-size: 0.95rem; }
+.history-button { display: inline-flex; align-items: center; justify-content: center; }
+.history-button svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.history-button:disabled { opacity: 0.4; cursor: default; }
 
 .row-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
 
@@ -285,7 +288,8 @@ p.due-chip { margin: 0.5rem 0; }
   border-bottom: 3px solid var(--tone, var(--accent));
 }
 .board-header-main { display: flex; align-items: baseline; gap: 0.75rem; min-width: 0; }
-.home-link { font-size: 0.9rem; font-weight: 600; text-decoration: none; white-space: nowrap; }
+.home-link { font-size: 1.15rem; font-weight: 700; color: inherit; text-decoration: none; white-space: nowrap; }
+.home-link:hover, .home-link:focus-visible { color: var(--accent); }
 .board-title { font-size: 1.15rem; overflow-wrap: anywhere; }
 .view-switch { display: flex; gap: 0.3rem; }
 .view-switch button { flex: 1 1 0; }
@@ -349,6 +353,42 @@ main.board-root.view-todo, main.board-root.view-cards { padding: 0.75rem 1rem; m
 .card-face:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .card-face.is-done .card-title { color: var(--fg-muted); }
 .card-title { font-size: 0.95rem; overflow-wrap: anywhere; }
+/* A very long title is cut on the face; the card itself shows all of it. */
+.card-face .card-title {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 6;
+  line-clamp: 6;
+}
+
+/* The right-click menu on cards. */
+.context-menu {
+  position: fixed;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  min-width: 11rem;
+  padding: 0.25rem;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgba( 0 , 0 , 0 , 0.18 );
+}
+.context-menu-item {
+  justify-content: flex-start;
+  text-align: left;
+  min-height: 32px;
+  padding: 0.3rem 0.6rem;
+  font-weight: 400;
+  color: var(--fg);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+}
+.context-menu-item:hover, .context-menu-item:focus-visible { background: var(--bg); outline: none; }
+.context-menu-item.danger { color: var(--danger); }
+.quick-add-input { display: block; width: 100%; resize: none; overflow: hidden; line-height: 1.35; }
 .done-tick { color: var(--ok-fg); font-weight: 700; margin-right: 0.3rem; }
 .has-notes { font-size: 0.85rem; }
 
@@ -422,6 +462,8 @@ main.board-root.view-todo, main.board-root.view-cards { padding: 0.75rem 1rem; m
 .todo-row-body { flex: 1 0 100%; margin: 0 0 0.4rem 2.5rem; padding: 0.4rem 0.6rem; border-left: 2px solid var(--border); overflow-wrap: anywhere; }
 .todo-row-body > :first-child { margin-top: 0; }
 .todo-row-body > :last-child { margin-bottom: 0; }
+/* Like the kanban face: a very long title is cut here, whole in the card. */
+.todo-title { overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow-wrap: anywhere; }
 .todo-row.is-done .todo-title { text-decoration: line-through; color: var(--fg-muted); }
 
 /* Timeline */
@@ -584,7 +626,13 @@ dialog::backdrop { background: rgba(10, 14, 20, 0.45); }
   overflow: hidden;
 }
 .title-input:hover, .title-input:focus { border-color: var(--border); background: var(--bg); }
-.card-dialog-title { flex: 1 1 auto; margin: 0.4rem 0; font-size: 1.15rem; }
+.card-dialog-title-wrap { flex: 1 1 auto; min-width: 0; }
+.card-dialog-title-wrap .title-input { display: block; width: 100%; padding: 0.35rem 0.5rem; border-color: var(--border); background: var(--bg); line-height: 1.35; }
+.card-dialog-title-wrap .row-actions { margin-top: 0.5rem; }
+.card-dialog-title { flex: 1 1 auto; margin: 0.4rem 0; font-size: 1.15rem; overflow-wrap: anywhere; }
+.card-dialog-title.editable { cursor: text; padding: 0.35rem 0.5rem; margin: 0.05rem 0; border: 1px solid transparent; border-radius: 6px; }
+.card-dialog-title.editable:hover, .card-dialog-title.editable:focus-visible { border-color: var(--border); background: var(--bg); }
+.card-dialog-title.preview { padding: 0.35rem 0.5rem; border: 1px dashed var(--border); border-radius: 6px; min-height: 2.2rem; }
 .card-placement { align-items: end; margin: 0.5rem 0 0.75rem; }
 .card-placement .field { flex: 0 1 14rem; }
 .card-section { padding: 0.75rem 0; border-top: 1px solid var(--border); }

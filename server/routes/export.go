@@ -97,14 +97,7 @@ func ( handlers *Handlers ) exportTable( principal *access.Principal , board *mo
 		if name == "" { name = label.Color }
 		labels[ label.ID ] = name
 	}
-	people := map[uint64]string{}
-	person := func( id uint64 ) string {
-		if name , known := people[ id ]; known { return name }
-		name := "?"
-		if user , get_err := models.GetUser( handlers.Store , id ); get_err == nil { name = user.DisplayName }
-		people[ id ] = name
-		return name
-	}
+	person := handlers.personNamer()
 
 	for _ , list := range board.SortedLists() {
 		if list_only != 0 && list.ID != list_only { continue }

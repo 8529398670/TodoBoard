@@ -28,6 +28,9 @@ const (
 	// list is respaced. Far above float64's precision limit on purpose.
 	minPositionGap = 1e-6
 
+	// Titles render inline but may be as long as people like; the cap only
+	// stops a runaway paste.
+	maxCardTitleChars   = 10000
 	maxDescriptionBytes = 100 * 1024
 	maxChecklistItems   = 200
 )
@@ -152,7 +155,7 @@ func eachCardTx( tx *db.Tx , board_id uint64 , visit func( card *Card ) bool ) (
 
 // CreateCard puts a new card at the end of list_id, or at position if given.
 func CreateCard( store *db.Store , board_id uint64 , list_id uint64 , title string , position *float64 , created_by uint64 , actor_name string ) ( card *Card , err error ) {
-	clean , ok := cleanTitle( title , 300 )
+	clean , ok := cleanTitle( title , maxCardTitleChars )
 	if ok == false {
 		err = ErrBadInput
 		return
@@ -297,7 +300,7 @@ func ( patch *CardPatch ) apply( board *Board , card *Card ) ( change CardChange
 		return
 	}
 	if patch.Title != nil {
-		clean , ok := cleanTitle( *patch.Title , 300 )
+		clean , ok := cleanTitle( *patch.Title , maxCardTitleChars )
 		if ok == false { return change , ErrBadInput }
 		change.Edited = change.Edited || clean != card.Title
 		card.Title = clean
