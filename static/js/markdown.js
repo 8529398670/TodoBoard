@@ -130,9 +130,9 @@ const Markdown = {
   },
 
   // One-line text -- titles, list names, checklist items: inline markdown
-  // (bold, italics, code, links, strikethrough) and inline math, but no
-  // blocks, so a title cannot grow headings or lists on a card face.
-  inlineTags: [ "b" , "strong" , "i" , "em" , "code" , "a" , "del" , "s" , "span" ],
+  // (bold, italics, code, links, strikethrough), line breaks and inline math,
+  // but no blocks, so a title cannot grow headings or lists on a card face.
+  inlineTags: [ "br" , "b" , "strong" , "i" , "em" , "code" , "a" , "del" , "s" , "span" ],
 
   renderInline( text , container ) {
     this.init();

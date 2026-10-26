@@ -300,8 +300,8 @@ const CardModal = {
   },
 
   // The title: rendered until clicked, then a write/preview editor like the
-  // description's. Titles render inline, so Enter saves rather than adding a
-  // line, and pasted line breaks become spaces.
+  // description's. Enter saves; Shift+Enter adds a line, which the title
+  // keeps wherever it is shown.
   titleEditor( card ) {
     const wrap = Dom.el( "div" , { class: "card-dialog-title-wrap" } );
     if ( this.titleConflict ) wrap.appendChild( this.titleConflictBox() );
@@ -351,11 +351,11 @@ const CardModal = {
       const area = Dom.el( "textarea" , { class: "title-input" , attrs: { rows: "1" , "aria-label": T( "card.title_label" ) } } );
       area.value = this.titleDraft;
       area.addEventListener( "input" , () => {
-        this.titleDraft = Ui.oneLine( area.value );
+        this.titleDraft = area.value;
         Ui.autoGrow( area );
       } );
       area.addEventListener( "keydown" , ( event ) => {
-        if ( event.key === "Enter" ) {
+        if ( event.key === "Enter" && !event.shiftKey && !event.isComposing ) {
           event.preventDefault();
           this.saveTitle( this.titleRev );
         } else if ( event.key === "Escape" ) {

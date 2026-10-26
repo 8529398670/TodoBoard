@@ -157,10 +157,11 @@ const QuickAdd = {
     const form = Dom.el( "form" , { class: "quick-add-form" , attrs: { autocomplete: "off" } } );
     form.hidden = true;
     // Card titles have no practical length limit, so the box grows with
-    // them; Enter still adds (titles are one line).
+    // them; Enter adds, and for card titles Shift+Enter adds a line. Lists
+    // and checklist items (the ones with a maxlength) stay on one line.
     const input = Dom.el( "textarea" , { class: "quick-add-input" , attrs: { rows: "1" , placeholder: T( placeholderKey ) , "aria-label": T( placeholderKey ) } } );
     input.addEventListener( "input" , function () {
-      const flat = Ui.oneLine( input.value );
+      const flat = maxlength ? Ui.oneLine( input.value ) : input.value;
       if ( flat !== input.value ) input.value = flat;
       Ui.autoGrow( input );
     } );
@@ -189,7 +190,7 @@ const QuickAdd = {
     } );
     input.addEventListener( "keydown" , function ( event ) {
       if ( event.key === "Escape" ) cancel.click();
-      if ( event.key === "Enter" && !event.isComposing ) {
+      if ( event.key === "Enter" && !event.isComposing && !( event.shiftKey && !maxlength ) ) {
         event.preventDefault();
         form.requestSubmit();
       }

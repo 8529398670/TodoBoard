@@ -76,7 +76,8 @@ const Ui = {
     area.style.height = area.scrollHeight + 2 + "px";
   },
 
-  // Card titles render on one line: line breaks become single spaces.
+  // List titles and checklist items stay on one line: line breaks become
+  // single spaces.
   oneLine( text ) {
     return String( text || "" ).replace( /\s*[\r\n]+\s*/g , " " );
   },
