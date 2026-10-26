@@ -69,9 +69,13 @@ const CardModal = {
     if ( this.dialog().open ) this.dialog().close();
   },
 
+  // An empty add-item box has nothing to lose, so it does not hold a refresh
+  // back: after Enter adds an item the list redraws and the box reopens.
   typing() {
     const active = document.activeElement;
-    return !!active && this.dialog().contains( active ) && ( active.tagName === "TEXTAREA" || ( active.tagName === "INPUT" && active.type === "text" ) );
+    if ( !active || !this.dialog().contains( active ) ) return false;
+    if ( active.classList.contains( "quick-add-input" ) && active.value === "" ) return false;
+    return active.tagName === "TEXTAREA" || ( active.tagName === "INPUT" && active.type === "text" );
   },
 
   refresh( ctx ) {

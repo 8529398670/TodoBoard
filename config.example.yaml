@@ -111,6 +111,12 @@ server:
   # notifications are sent without a link.
   public_url: ""
 
+  # POST /mcp: the Model Context Protocol, so an agent (Claude Code, any MCP
+  # client that can send a header) can use this app with an API key, at that
+  # key's role. Only keys are accepted there, never a browser session. Needs
+  # auth.api_keys; false removes /mcp.
+  mcp: true
+
 auth:
   session_ttl_seconds: 1209600     # 14 days
   login_token_ttl_seconds: 1800    # 30 minutes

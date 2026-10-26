@@ -136,7 +136,7 @@ func run() ( err error ) {
 	notifier.Start()
 	defer notifier.Stop()
 
-	handlers := routes.New( store , cfg , guard , lang , static_server , notifier )
+	handlers := routes.New( store , cfg , guard , lang , static_server , notifier , version )
 
 	app := fiber.New( fiber.Config{
 		AppName: cfg.ProjectName,

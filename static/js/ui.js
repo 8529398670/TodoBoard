@@ -498,6 +498,21 @@ const CardBits = {
     } );
   },
 
+  // The checklist itself on a card face, under the body; only when it has items.
+  checklistItems( card ) {
+    if ( !card.checklist.length ) return null;
+    const list = Dom.el( "ul" , { class: "card-checklist" } );
+    card.checklist.forEach( function ( item ) {
+      const row = Dom.el( "li" , { class: item.done ? "is-done" : "" } );
+      row.appendChild( Dom.el( "span" , { class: "card-checklist-box" , text: item.done ? "\u2611" : "\u2610" , attrs: { "aria-hidden": "true" } } ) );
+      const text = Dom.el( "span" , { class: "card-checklist-text" } );
+      Markdown.renderInline( item.text , text );
+      row.appendChild( text );
+      list.appendChild( row );
+    } );
+    return list;
+  },
+
   initials( name ) {
     return String( name || "?" ).trim().split( /\s+/ ).slice( 0 , 2 ).map( function ( part ) { return part.charAt( 0 ).toUpperCase(); } ).join( "" );
   },

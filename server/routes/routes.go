@@ -14,6 +14,7 @@ import (
 	config "todoboard/server/config"
 	db "todoboard/server/db"
 	language "todoboard/server/language"
+	mcp "todoboard/server/mcp"
 	models "todoboard/server/models"
 	notify "todoboard/server/notify"
 	security "todoboard/server/security"
@@ -31,9 +32,11 @@ type Handlers struct {
 	Static   *static.Server
 	Pins     *models.PinGuard
 	Notify   *notify.Service
+	// Version is reported to MCP clients as serverInfo.version.
+	Version string
 }
 
-func New( store *db.Store , cfg *config.Config , guard *security.Guard , lang *language.Language , static_server *static.Server , notifier *notify.Service ) ( handlers *Handlers ) {
+func New( store *db.Store , cfg *config.Config , guard *security.Guard , lang *language.Language , static_server *static.Server , notifier *notify.Service , version string ) ( handlers *Handlers ) {
 	handlers = &Handlers{
 		Store:    store,
 		Config:   cfg,
@@ -42,6 +45,7 @@ func New( store *db.Store , cfg *config.Config , guard *security.Guard , lang *l
 		Static:   static_server,
 		Pins:     models.NewPinGuard(),
 		Notify:   notifier,
+		Version:  version,
 	}
 	return
 }
@@ -194,6 +198,20 @@ func ( handlers *Handlers ) Register( app *fiber.App ) {
 	admin_keys.Get( "" , handlers.ListAllAPIKeys )
 	admin_keys.Post( "/:key_id/revoke" , handlers.RevokeAnyAPIKey )
 	admin_keys.Post( "/:key_id/delete" , handlers.DeleteAnyAPIKey )
+
+	// MCP: agents calling the app with an API key (see server/mcp and
+	// mcp_tools.go). Keys only -- RequireAPIKey turns a browser session away
+	// -- and every tool runs at the key's effective role and through
+	// server/access, so this is the API above in another shape, not a wider
+	// one. One exact path, not a group: a group on "/mcp" would also catch
+	// any later "/mcp..." route.
+	if handlers.Config.MCPEnabled && handlers.Config.APIKeysEnabled {
+		mcp_server := mcp.New( handlers.Config.ProjectName , handlers.Version )
+		handlers.registerMCPTools( mcp_server )
+		app.Post( "/mcp" , handlers.Guard.RequireAPIKey , mcp_server.Handle )
+		app.Get( "/mcp" , mcp_server.MethodNotAllowed )
+		app.Delete( "/mcp" , mcp_server.MethodNotAllowed )
+	}
 
 	// Catch-all static serving. Must be registered last -- it matches every
 	// remaining path, so anything added after this line never runs.

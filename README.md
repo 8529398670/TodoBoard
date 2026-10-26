@@ -76,6 +76,27 @@ For plain `http://localhost`, set `server.secure_cookies: false` in
 3. Each person pastes their Pushover *user key* on the Account page and
    presses "Send a test".
 
+### Claude Code and other agents (MCP)
+
+`POST /mcp` speaks the Model Context Protocol with an API key, so an agent can
+read and edit your boards as you. Make a key on the Account page, then:
+
+```bash
+claude mcp add --transport http todoboard http://localhost:8080/mcp --header "Authorization: Bearer <key>"
+```
+
+Tools: `whoami`, `list_team`, `list_boards`, `get_board`, `get_card`,
+`find_cards`, `create_board`, `create_list`, `update_list`, `create_label`,
+`create_card`, `update_card`, `add_checklist_item`, `update_checklist_item`,
+plus the `admin_*` account tools for an admin-scoped key. Every board tool
+goes through `server/access`, so a key sees and changes exactly what its
+account can on the web -- app admin rights grant nothing on boards.
+
+Left out on purpose: deleting anything (archive a card with `update_card`
+instead), share links, board membership, backup import, and anything that
+mints a credential. Only keys are accepted -- a browser session gets 403.
+`server.mcp: false` (or `auth.api_keys: false`) removes the endpoint.
+
 ## Where things are
 
 | | |
@@ -94,6 +115,7 @@ For plain `http://localhost`, set `server.secure_cookies: false` in
 | `static/js/markdown.js` | Markdown + KaTeX pipeline |
 | `static/js/card_export.js`, `print.js` | exports |
 | `server/sheet/`, `server/routes/export.go` | the .xlsx / .csv board export |
+| `server/mcp/`, `server/routes/mcp_tools*.go` | the `/mcp` protocol and its tools |
 | `language.yaml` | every string the UI or a notification shows |
 
 ## Known limits

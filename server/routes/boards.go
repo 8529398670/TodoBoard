@@ -28,18 +28,22 @@ type labelRequest struct {
 // ListMyBoards is the home page: boards I own or am a member of, the folders
 // I sort them into, and single cards shared with me from boards I am not on.
 func ( handlers *Handlers ) ListMyBoards( c fiber.Ctx ) ( err error ) {
-	user := security.UserFrom( c )
-	boards , cards , list_err := models.ListBoardsForUser( handlers.Store , user.ID )
+	payload , list_err := handlers.myBoards( security.UserFrom( c ).ID )
 	if list_err != nil {
 		err = serverError( c )
 		return
 	}
-	folders , folder_err := models.ListFolders( handlers.Store , user.ID )
-	if folder_err != nil {
-		err = serverError( c )
-		return
-	}
-	err = c.JSON( fiber.Map{ "boards": boards , "folders": folders , "shared_cards": cards } )
+	err = c.JSON( payload )
+	return
+}
+
+// myBoards is shared with the MCP list_boards tool.
+func ( handlers *Handlers ) myBoards( user_id uint64 ) ( payload fiber.Map , err error ) {
+	boards , cards , err := models.ListBoardsForUser( handlers.Store , user_id )
+	if err != nil { return }
+	folders , err := models.ListFolders( handlers.Store , user_id )
+	if err != nil { return }
+	payload = fiber.Map{ "boards": boards , "folders": folders , "shared_cards": cards }
 	return
 }
 
@@ -265,16 +269,40 @@ func ( handlers *Handlers ) CreateList( c fiber.Ctx ) ( err error ) {
 	if board == nil { return }
 	var body listRequest
 	if ok , bind_err := bindBody( c , &body ); ok == false { return bind_err }
-	var created *models.List
-	_ , update_err := models.MutateBoard( handlers.Store , board.ID , func( target *models.Board ) ( mutate_err error ) {
-		created , mutate_err = models.AddList( target , body.Title , body.Position )
-		return
-	} )
-	if update_err != nil {
-		err = modelError( c , update_err )
+	created , refused := handlers.createList( board , body.Title , body.Position )
+	if refused != nil {
+		err = refused.send( c )
 		return
 	}
 	err = c.JSON( created )
+	return
+}
+
+// createList, updateList and createLabel are shared with the MCP tools of
+// the same name. The board has already passed loadBoardAt at Edit.
+func ( handlers *Handlers ) createList( board *models.Board , title string , position *float64 ) ( created *models.List , refused *refusal ) {
+	_ , update_err := models.MutateBoard( handlers.Store , board.ID , func( target *models.Board ) ( mutate_err error ) {
+		created , mutate_err = models.AddList( target , title , position )
+		return
+	} )
+	if update_err != nil { refused = modelRefusal( update_err ) }
+	return
+}
+
+func ( handlers *Handlers ) updateList( board *models.Board , list_id uint64 , update *models.ListUpdate ) ( refused *refusal ) {
+	_ , update_err := models.MutateBoard( handlers.Store , board.ID , func( target *models.Board ) error {
+		return update.Apply( target , list_id )
+	} )
+	if update_err != nil { refused = modelRefusal( update_err ) }
+	return
+}
+
+func ( handlers *Handlers ) createLabel( board *models.Board , name string , color string ) ( created *models.Label , refused *refusal ) {
+	_ , update_err := models.MutateBoard( handlers.Store , board.ID , func( target *models.Board ) ( mutate_err error ) {
+		created , mutate_err = models.AddLabel( target , name , color )
+		return
+	} )
+	if update_err != nil { refused = modelRefusal( update_err ) }
 	return
 }
 
@@ -288,11 +316,8 @@ func ( handlers *Handlers ) UpdateList( c fiber.Ctx ) ( err error ) {
 	}
 	var body models.ListUpdate
 	if ok , bind_err := bindBody( c , &body ); ok == false { return bind_err }
-	_ , update_err := models.MutateBoard( handlers.Store , board.ID , func( target *models.Board ) error {
-		return body.Apply( target , list_id )
-	} )
-	if update_err != nil {
-		err = modelError( c , update_err )
+	if refused := handlers.updateList( board , list_id , &body ); refused != nil {
+		err = refused.send( c )
 		return
 	}
 	err = c.JSON( fiber.Map{ "ok": true } )
@@ -326,13 +351,9 @@ func ( handlers *Handlers ) CreateLabel( c fiber.Ctx ) ( err error ) {
 	}
 	name := ""
 	if body.Name != nil { name = *body.Name }
-	var created *models.Label
-	_ , update_err := models.MutateBoard( handlers.Store , board.ID , func( target *models.Board ) ( mutate_err error ) {
-		created , mutate_err = models.AddLabel( target , name , *body.Color )
-		return
-	} )
-	if update_err != nil {
-		err = modelError( c , update_err )
+	created , refused := handlers.createLabel( board , name , *body.Color )
+	if refused != nil {
+		err = refused.send( c )
 		return
 	}
 	err = c.JSON( created )

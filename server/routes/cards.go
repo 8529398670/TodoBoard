@@ -24,20 +24,25 @@ func ( handlers *Handlers ) CreateCard( c fiber.Ctx ) ( err error ) {
 	if board == nil { return }
 	var body createCardRequest
 	if ok , bind_err := bindBody( c , &body ); ok == false { return bind_err }
-	if board.List( body.ListID ) == nil {
-		err = notFound( c , "list_not_found" )
+	card , refused := handlers.createCard( principal , board , body.ListID , body.Title , body.Position )
+	err = handlers.cardReply( c , principal , board , card , refused )
+	return
+}
+
+// createCard is CreateCard's rule, shared with the MCP create_card tool.
+func ( handlers *Handlers ) createCard( principal *access.Principal , board *models.Board , list_id uint64 , title string , position *float64 ) ( card *models.Card , refused *refusal ) {
+	if board.List( list_id ) == nil {
+		refused = &refusal{ fiber.StatusNotFound , "list_not_found" }
 		return
 	}
-	if access.List( principal , board , body.ListID ) < access.Edit {
-		err = forbidden( c , "forbidden" )
+	if access.List( principal , board , list_id ) < access.Edit {
+		refused = &refusal{ fiber.StatusForbidden , "forbidden" }
 		return
 	}
-	card , create_err := models.CreateCard( handlers.Store , board.ID , body.ListID , body.Title , body.Position , principal.UserID , principal.Name )
+	card , create_err := models.CreateCard( handlers.Store , board.ID , list_id , title , position , principal.UserID , principal.Name )
 	if create_err != nil {
-		err = modelError( c , create_err )
-		return
+		refused = modelRefusal( create_err )
 	}
-	err = c.JSON( cardPayload( card , access.Card( principal , board , card ) , access.Board( principal , board ) ) )
 	return
 }
 
@@ -51,29 +56,37 @@ func ( handlers *Handlers ) PatchCard( c fiber.Ctx ) ( err error ) {
 	if card == nil { return }
 	var body models.CardPatch
 	if ok , bind_err := bindBody( c , &body ); ok == false { return bind_err }
-	if body.Moves() {
-		leaves := body.ListID != nil && *body.ListID != card.ListID
+	updated , current , refused := handlers.patchCard( principal , board , card , &body )
+	if current != nil {
+		// Hand back the current card so the client can show what changed
+		// without a second request.
+		err = c.Status( fiber.StatusConflict ).JSON( fiber.Map{ "error": "card_stale" , "card": cardPayload( current , access.Card( principal , board , current ) , access.Board( principal , board ) ) } )
+		return
+	}
+	err = handlers.cardReply( c , principal , board , updated , refused )
+	return
+}
+
+// patchCard is PatchCard's rule, shared with the MCP update_card tool. When
+// the patch named a rev that is no longer current, current is the card as it
+// now stands, alongside the card_stale refusal.
+func ( handlers *Handlers ) patchCard( principal *access.Principal , board *models.Board , card *models.Card , patch *models.CardPatch ) ( updated *models.Card , current *models.Card , refused *refusal ) {
+	if patch.Moves() {
+		leaves := patch.ListID != nil && *patch.ListID != card.ListID
 		if ( leaves && access.Board( principal , board ) < access.Edit ) || access.List( principal , board , card.ListID ) < access.Edit {
-			err = forbidden( c , "forbidden" )
+			refused = &refusal{ fiber.StatusForbidden , "forbidden" }
 			return
 		}
 	}
-	updated , change , patch_err := models.PatchCard( handlers.Store , board.ID , card.ID , &body , principal.Name )
+	updated , change , patch_err := models.PatchCard( handlers.Store , board.ID , card.ID , patch , principal.Name )
 	if patch_err != nil {
+		refused = modelRefusal( patch_err )
 		if patch_err == models.ErrStale {
-			// Hand back the current card so the client can show what changed
-			// without a second request.
-			current , _ := models.GetCard( handlers.Store , board.ID , card.ID )
-			if current != nil {
-				err = c.Status( fiber.StatusConflict ).JSON( fiber.Map{ "error": "card_stale" , "card": cardPayload( current , access.Card( principal , board , current ) , access.Board( principal , board ) ) } )
-				return
-			}
+			current , _ = models.GetCard( handlers.Store , board.ID , card.ID )
 		}
-		err = modelError( c , patch_err )
 		return
 	}
 	handlers.Notify.CardChanged( board.ID , card.ID , change , principal.UserID , principal.Name )
-	err = c.JSON( cardPayload( updated , access.Card( principal , board , updated ) , access.Board( principal , board ) ) )
 	return
 }
 
@@ -128,11 +141,27 @@ func ( handlers *Handlers ) AddChecklistItem( c fiber.Ctx ) ( err error ) {
 	if card == nil { return }
 	var body checklistAddRequest
 	if ok , bind_err := bindBody( c , &body ); ok == false { return bind_err }
-	updated , mutate_err := models.MutateCard( handlers.Store , board.ID , card.ID , principal.Name , func( _ *models.Board , target *models.Card ) ( inner error ) {
-		_ , inner = models.AddChecklistItem( target , body.Text )
+	updated , refused := handlers.addChecklistItem( principal , card , body.Text )
+	err = handlers.cardReply( c , principal , board , updated , refused )
+	return
+}
+
+// addChecklistItem and updateChecklistItem are shared with the MCP tools of
+// the same name. The card has already passed loadCard at Edit.
+func ( handlers *Handlers ) addChecklistItem( principal *access.Principal , card *models.Card , text string ) ( updated *models.Card , refused *refusal ) {
+	updated , mutate_err := models.MutateCard( handlers.Store , card.BoardID , card.ID , principal.Name , func( _ *models.Board , target *models.Card ) ( inner error ) {
+		_ , inner = models.AddChecklistItem( target , text )
 		return
 	} )
-	err = handlers.cardResult( c , principal , board , updated , mutate_err )
+	if mutate_err != nil { refused = modelRefusal( mutate_err ) }
+	return
+}
+
+func ( handlers *Handlers ) updateChecklistItem( principal *access.Principal , card *models.Card , item_id uint64 , update *models.ChecklistUpdate ) ( updated *models.Card , refused *refusal ) {
+	updated , mutate_err := models.MutateCard( handlers.Store , card.BoardID , card.ID , principal.Name , func( _ *models.Board , target *models.Card ) error {
+		return update.Apply( target , item_id )
+	} )
+	if mutate_err != nil { refused = modelRefusal( mutate_err ) }
 	return
 }
 
@@ -146,10 +175,8 @@ func ( handlers *Handlers ) UpdateChecklistItem( c fiber.Ctx ) ( err error ) {
 	}
 	var body models.ChecklistUpdate
 	if ok , bind_err := bindBody( c , &body ); ok == false { return bind_err }
-	updated , mutate_err := models.MutateCard( handlers.Store , board.ID , card.ID , principal.Name , func( _ *models.Board , target *models.Card ) error {
-		return body.Apply( target , item_id )
-	} )
-	err = handlers.cardResult( c , principal , board , updated , mutate_err )
+	updated , refused := handlers.updateChecklistItem( principal , card , item_id , &body )
+	err = handlers.cardReply( c , principal , board , updated , refused )
 	return
 }
 
@@ -171,6 +198,17 @@ func ( handlers *Handlers ) DeleteChecklistItem( c fiber.Ctx ) ( err error ) {
 func ( handlers *Handlers ) cardResult( c fiber.Ctx , principal *access.Principal , board *models.Board , card *models.Card , model_err error ) ( err error ) {
 	if model_err != nil {
 		err = modelError( c , model_err )
+		return
+	}
+	err = c.JSON( cardPayload( card , access.Card( principal , board , card ) , access.Board( principal , board ) ) )
+	return
+}
+
+// cardReply is cardResult for the helpers above, which have already turned
+// a model error into a refusal.
+func ( handlers *Handlers ) cardReply( c fiber.Ctx , principal *access.Principal , board *models.Board , card *models.Card , refused *refusal ) ( err error ) {
+	if refused != nil {
+		err = refused.send( c )
 		return
 	}
 	err = c.JSON( cardPayload( card , access.Card( principal , board , card ) , access.Board( principal , board ) ) )

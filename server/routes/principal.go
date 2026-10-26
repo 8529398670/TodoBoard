@@ -83,30 +83,56 @@ func paramID( c fiber.Ctx , name string ) ( id uint64 , ok bool ) {
 	return
 }
 
+// refusal is a rule saying no, apart from how it is delivered: an HTTP
+// handler sends it as a status and an error body, an MCP tool hands it to the
+// model as a tool error. The checks below return one so both doors refuse
+// for the same reasons in the same words.
+type refusal struct {
+	status  int
+	message string
+}
+
+func ( refused *refusal ) send( c fiber.Ctx ) ( err error ) {
+	if refused.status >= 500 {
+		err = serverError( c )
+		return
+	}
+	err = c.Status( refused.status ).JSON( fiber.Map{ "error": refused.message } )
+	return
+}
+
 // boardFor loads :board_id and refuses with 404 unless the principal can at
-// least see some of it. 404 rather than 403, so a board's existence is not
-// confirmed to someone who cannot open it.
+// least see some of it.
 func ( handlers *Handlers ) boardFor( c fiber.Ctx ) ( principal *access.Principal , board *models.Board , err error ) {
 	principal = principalFrom( c )
-	// :board_id is the numeric ID, or a board's URL slug (never all
-	// digits, so the two cannot be confused). Either way the access check
-	// below is the same, so a slug confirms nothing a number would not.
-	board_id , ok := paramID( c , "board_id" )
-	if ok == false {
-		board_id = models.BoardIDForSlug( handlers.Store , c.Params( "board_id" ) )
-		ok = board_id != 0
+	board , refused := handlers.loadBoard( principal , c.Params( "board_id" ) )
+	if refused != nil {
+		err = refused.send( c )
 	}
-	if ok == false || principal == nil {
-		err = notFound( c , "board_not_found" )
+	return
+}
+
+// loadBoard is boardFor without the request: ref is the numeric ID or a
+// board's URL slug (never all digits, so the two cannot be confused). Either
+// way the access check is the same, so a slug confirms nothing a number
+// would not. 404 rather than 403, so a board's existence is not confirmed to
+// someone who cannot open it.
+func ( handlers *Handlers ) loadBoard( principal *access.Principal , ref string ) ( board *models.Board , refused *refusal ) {
+	board_id , parse_err := strconv.ParseUint( ref , 10 , 64 )
+	if parse_err != nil || board_id == 0 {
+		board_id = models.BoardIDForSlug( handlers.Store , ref )
+	}
+	if board_id == 0 || principal == nil {
+		refused = &refusal{ fiber.StatusNotFound , "board_not_found" }
 		return
 	}
 	loaded , get_err := models.GetBoard( handlers.Store , board_id )
 	if get_err != nil {
-		err = notFound( c , "board_not_found" )
+		refused = &refusal{ fiber.StatusNotFound , "board_not_found" }
 		return
 	}
 	if access.Board( principal , loaded ) == access.None && handlers.canSeeAnyCard( principal , loaded ) == false {
-		err = notFound( c , "board_not_found" )
+		refused = &refusal{ fiber.StatusNotFound , "board_not_found" }
 		return
 	}
 	board = loaded
@@ -131,11 +157,20 @@ func ( handlers *Handlers ) canSeeAnyCard( principal *access.Principal , board *
 
 // requireBoard is boardFor plus a minimum board-wide level.
 func ( handlers *Handlers ) requireBoard( c fiber.Ctx , minimum access.Level ) ( principal *access.Principal , board *models.Board , err error ) {
-	principal , board , err = handlers.boardFor( c )
-	if board == nil { return }
+	principal = principalFrom( c )
+	board , refused := handlers.loadBoardAt( principal , c.Params( "board_id" ) , minimum )
+	if refused != nil {
+		err = refused.send( c )
+	}
+	return
+}
+
+func ( handlers *Handlers ) loadBoardAt( principal *access.Principal , ref string , minimum access.Level ) ( board *models.Board , refused *refusal ) {
+	board , refused = handlers.loadBoard( principal , ref )
+	if refused != nil { return }
 	if access.Board( principal , board ) < minimum {
 		board = nil
-		err = forbidden( c , "forbidden" )
+		refused = &refusal{ fiber.StatusForbidden , "forbidden" }
 	}
 	return
 }
@@ -145,22 +180,29 @@ func ( handlers *Handlers ) requireBoard( c fiber.Ctx , minimum access.Level ) (
 func ( handlers *Handlers ) requireCard( c fiber.Ctx , minimum access.Level ) ( principal *access.Principal , board *models.Board , card *models.Card , err error ) {
 	principal , board , err = handlers.boardFor( c )
 	if board == nil { return }
-	card_id , ok := paramID( c , "card_id" )
-	if ok == false {
+	card_id , _ := paramID( c , "card_id" )
+	card , refused := handlers.loadCard( principal , board , card_id , minimum )
+	if refused != nil {
 		board = nil
-		err = notFound( c , "card_not_found" )
+		err = refused.send( c )
+	}
+	return
+}
+
+// loadCard is requireCard on an already-loaded board, without the request.
+func ( handlers *Handlers ) loadCard( principal *access.Principal , board *models.Board , card_id uint64 , minimum access.Level ) ( card *models.Card , refused *refusal ) {
+	if card_id == 0 {
+		refused = &refusal{ fiber.StatusNotFound , "card_not_found" }
 		return
 	}
 	loaded , get_err := models.GetCard( handlers.Store , board.ID , card_id )
 	level := access.Card( principal , board , loaded )
 	if get_err != nil || level == access.None {
-		board = nil
-		err = notFound( c , "card_not_found" )
+		refused = &refusal{ fiber.StatusNotFound , "card_not_found" }
 		return
 	}
 	if level < minimum {
-		board = nil
-		err = forbidden( c , "forbidden" )
+		refused = &refusal{ fiber.StatusForbidden , "forbidden" }
 		return
 	}
 	card = loaded
@@ -180,29 +222,34 @@ func bindBody( c fiber.Ctx , body any ) ( ok bool , err error ) {
 // modelError maps the errors models return onto responses, so every handler
 // answers the same way for the same failure.
 func modelError( c fiber.Ctx , model_err error ) ( err error ) {
+	err = modelRefusal( model_err ).send( c )
+	return
+}
+
+func modelRefusal( model_err error ) ( refused *refusal ) {
 	switch {
 	case errors.Is( model_err , models.ErrBadInput ):
-		err = badRequest( c , "invalid_input" )
+		refused = &refusal{ fiber.StatusBadRequest , "invalid_input" }
 	case errors.Is( model_err , models.ErrStale ):
-		err = c.Status( fiber.StatusConflict ).JSON( fiber.Map{ "error": "card_stale" } )
+		refused = &refusal{ fiber.StatusConflict , "card_stale" }
 	case errors.Is( model_err , models.ErrBoardNotFound ):
-		err = notFound( c , "board_not_found" )
+		refused = &refusal{ fiber.StatusNotFound , "board_not_found" }
 	case errors.Is( model_err , models.ErrCardNotFound ):
-		err = notFound( c , "card_not_found" )
+		refused = &refusal{ fiber.StatusNotFound , "card_not_found" }
 	case errors.Is( model_err , models.ErrListNotFound ):
-		err = notFound( c , "list_not_found" )
+		refused = &refusal{ fiber.StatusNotFound , "list_not_found" }
 	case errors.Is( model_err , models.ErrLabelNotFound ):
-		err = notFound( c , "label_not_found" )
+		refused = &refusal{ fiber.StatusNotFound , "label_not_found" }
 	case errors.Is( model_err , models.ErrItemNotFound ):
-		err = notFound( c , "item_not_found" )
+		refused = &refusal{ fiber.StatusNotFound , "item_not_found" }
 	case errors.Is( model_err , models.ErrShareLinkNotFound ):
-		err = notFound( c , "share_link_not_found" )
+		refused = &refusal{ fiber.StatusNotFound , "share_link_not_found" }
 	case errors.Is( model_err , models.ErrFolderNotFound ):
-		err = notFound( c , "folder_not_found" )
+		refused = &refusal{ fiber.StatusNotFound , "folder_not_found" }
 	case errors.Is( model_err , db.ErrNotFound ):
-		err = notFound( c , "not_found" )
+		refused = &refusal{ fiber.StatusNotFound , "not_found" }
 	default:
-		err = serverError( c )
+		refused = &refusal{ fiber.StatusInternalServerError , "internal error" }
 	}
 	return
 }

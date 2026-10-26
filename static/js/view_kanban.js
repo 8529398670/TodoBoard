@@ -124,6 +124,8 @@ const KanbanView = {
       Markdown.render( card.description , preview );
       face.appendChild( preview );
     }
+    const checklist = CardBits.checklistItems( card );
+    if ( checklist ) face.appendChild( checklist );
 
     const meta = Dom.el( "div" , { class: "card-meta" } );
     [

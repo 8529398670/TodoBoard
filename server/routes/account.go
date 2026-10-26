@@ -30,23 +30,30 @@ type renameRequest struct {
 // as "role" would have a client believe it has permissions the server will
 // refuse to act on.
 func ( handlers *Handlers ) GetMe( c fiber.Ctx ) ( err error ) {
-	actor := security.ActorFrom( c )
+	payload , row_err := handlers.meRow( security.ActorFrom( c ) )
+	if row_err != nil {
+		err = serverError( c )
+		return
+	}
+	err = c.JSON( payload )
+	return
+}
+
+// meRow is shared with the MCP whoami tool.
+func ( handlers *Handlers ) meRow( actor *security.Actor ) ( payload fiber.Map , err error ) {
 	user := actor.User
 
 	// is_owner tells the UI which account-management buttons to offer; the
 	// server checks ownership again on every request that depends on it.
-	owner_id , owner_err := models.OwnerID( handlers.Store )
-	if owner_err != nil {
-		err = serverError( c )
-		return
-	}
+	owner_id , err := models.OwnerID( handlers.Store )
+	if err != nil { return }
 
 	display := fiber.Map{ "timezone": "" , "hour12": nil , "number_cards": false , "plain_icons": false , "theme": nil , "own_theme_on_boards": false }
 	if prefs , prefs_err := models.GetUserPrefs( handlers.Store , user.ID ); prefs_err == nil {
 		display = displayPayload( prefs )
 	}
 
-	payload := fiber.Map{
+	payload = fiber.Map{
 		"display":          display,
 		"authenticated":    true,
 		"id":               user.ID,
@@ -68,7 +75,6 @@ func ( handlers *Handlers ) GetMe( c fiber.Ctx ) ( err error ) {
 		payload[ "api_key_id" ] = actor.APIKey.ID
 		payload[ "api_key_name" ] = actor.APIKey.Name
 	}
-	err = c.JSON( payload )
 	return
 }
 

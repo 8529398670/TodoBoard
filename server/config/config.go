@@ -104,6 +104,7 @@ type ServerSection struct {
 	RateLimitWindowSeconds int    `yaml:"rate_limit_window_seconds"`
 	ControlSocket          bool   `yaml:"control_socket"`
 	PublicURL              string `yaml:"public_url"`
+	MCP                    bool   `yaml:"mcp"`
 }
 
 type AuthSection struct {
@@ -226,6 +227,11 @@ type Config struct {
 	// The default is bounded so that a forgotten key eventually stops being
 	// a live credential.
 	APIKeyTTL time.Duration
+
+	// MCPEnabled decides whether POST /mcp exists. It answers only API keys,
+	// so with APIKeysEnabled off it is not registered either -- nothing could
+	// authenticate to it.
+	MCPEnabled bool
 
 	// SecretKey encrypts session cookie payloads and, when EncryptAtRest is
 	// on, every value written to bolt. Losing it means losing the database
@@ -686,6 +692,7 @@ func Load() ( cfg *Config , err error ) {
 
 		APIKeysEnabled: file.Auth.APIKeys,
 		APIKeyTTL:      seconds( file.Auth.APIKeyTTLSeconds ),
+		MCPEnabled:     file.Server.MCP,
 
 		SecretKey:     strings.TrimSpace( file.Server.SecretKey ),
 		EncryptAtRest: file.Server.EncryptAtRest,
