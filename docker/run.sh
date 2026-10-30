@@ -154,7 +154,17 @@ fi
 EXISTING="$( docker ps -a --filter "name=^${docker_container}\$" --format '{{.Status}}' )"
 if [ -n "$EXISTING" ]; then
   echo "Replacing the existing ${docker_container} container (${EXISTING})..."
-  docker rm -f "$docker_container" >/dev/null
+  # The container can vanish between the check above and this line (it did,
+  # once, on a live server), and then rm -f fails with "No such container"
+  # and set -e stops us before the new one starts -- leaving nothing running.
+  # Gone is what we wanted, so ignore the error and check the result instead.
+  docker rm -f "$docker_container" >/dev/null 2>&1 || true
+  if [ -n "$( docker ps -a --filter "name=^${docker_container}\$" --format '{{.ID}}' )" ]; then
+    echo "" >&2
+    echo "ERROR: could not remove the existing ${docker_container} container." >&2
+    echo "       Remove it by hand (docker rm -f ${docker_container}) and re-run." >&2
+    exit 1
+  fi
 fi
 
 # With our own container gone, anything still on the host port is something
