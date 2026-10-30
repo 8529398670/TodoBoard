@@ -465,9 +465,9 @@ func DeleteLabel( store *db.Store , board_id uint64 , label_id uint64 ) ( err er
 	return
 }
 
-// DeleteList removes a list together with every card on it and its share
-// links.
-func DeleteList( store *db.Store , board_id uint64 , list_id uint64 ) ( err error ) {
+// DeleteList removes a list and its share links. Its cards go to the
+// board's trash, so they can still be restored (into another column).
+func DeleteList( store *db.Store , board_id uint64 , list_id uint64 , actor_name string ) ( err error ) {
 	err = store.Write( func( tx *db.Tx ) ( tx_err error ) {
 		board , tx_err := getBoardTx( tx , board_id )
 		if tx_err != nil { return }
@@ -487,7 +487,7 @@ func DeleteList( store *db.Store , board_id uint64 , list_id uint64 ) ( err erro
 			} )
 		if tx_err != nil { return }
 		for _ , card := range doomed {
-			if tx_err = deleteCardTx( tx , card ); tx_err != nil { return }
+			if tx_err = trashCardTx( tx , card , actor_name ); tx_err != nil { return }
 		}
 		_ , tx_err = tx.DeleteWhere( db.BucketShareLinks , func() any { return &ShareLink{} } ,
 			func( key []byte , item any ) bool {
@@ -664,6 +664,7 @@ func deleteBoardTx( tx *db.Tx , board_id uint64 ) ( err error ) {
 	for _ , card := range cards {
 		if err = deleteCardTx( tx , card ); err != nil { return }
 	}
+	if _ , err = tx.DeletePrefix( db.BucketTrash , db.Key( board_id ) ); err != nil { return }
 
 	if err = tx.Delete( db.BucketUserBoards , db.Key( board.OwnerID , board_id ) ); err != nil { return }
 	for user_id := range board.Members {

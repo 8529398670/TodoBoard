@@ -68,11 +68,11 @@ const Api = {
 
   rename( displayName )        { return this.post( "/api/account/rename" , { display_name: displayName } ); },
   setPin( pin )                { return this.post( "/api/account/pin" , { pin: pin } ); },
+  createMyLoginLink()          { return this.post( "/api/account/login-link" ); },
   logout()                     { return this.post( "/api/logout" ); },
   listTeam()                   { return this.request( "/api/team" ); },
   listUsers()                  { return this.request( "/api/admin/users" ); },
   createUser( name , role )    { return this.post( "/api/admin/users" , { display_name: name , role: role } ); },
-  ownLoginLink()               { return this.post( "/api/account/login-link" ); },
   reissueLogin( userId )       { return this.post( "/api/admin/users/" + userId + "/reissue-login" ); },
   setDisabled( userId , flag ) { return this.post( "/api/admin/users/" + userId + "/disabled" , { disabled: flag } ); },
   revokeAccess( userId )       { return this.post( "/api/admin/users/" + userId + "/revoke-access" ); },

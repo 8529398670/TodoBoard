@@ -20,22 +20,23 @@ COPY . .
 # -trimpath keeps build-machine paths out of the binary; -s -w drop the debug
 # symbol tables, which shrinks it and removes a little detail from anyone
 # poking at a compromised container.
-# Version metadata, passed by scripts/docker.sh so that
+# Version metadata, passed by docker/lib.sh so that
 # `docker exec <name> /app/server version` is as informative as a portable
-# binary built by build.sh.
+# binary built by scripts/build.sh.
 ARG VERSION=dev
+ARG COMMIT=unknown
 ARG BUILD_DATE=unknown
 
-# One binary. The frontend is compiled into it by go:embed (see embed.go),
+# One binary. The frontend is compiled into it by go:embed (see main.go),
 # and account administration is the "manage" subcommand -- so the image needs
 # no static directory, no language.yaml, and no second executable.
 #
 # -tags container pins the image's fixed layout into the binary
-# (server/config/layout_container.go): config at /app/config.yaml, state in
+# (server/config/layout_container.go): config at /app/config/config.yaml, state in
 # /app/data. That is what replaces setting them through ENV, and it is why
 # `docker exec <name> /app/server manage ...` needs nothing extra.
 RUN CGO_ENABLED=0 GOOS=linux go build -tags container -trimpath \
-      -ldflags="-s -w -X main.version=${VERSION} -X main.buildDate=${BUILD_DATE}" \
+      -ldflags="-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.buildDate=${BUILD_DATE}" \
       -o /out/server .
 
 # --- runtime stage ---------------------------------------------------------
@@ -45,7 +46,7 @@ FROM alpine:3.24 AS runtime
 # this app grows later fails with an opaque certificate error.
 #
 # The uid/gid are fixed at 10001 rather than left to Alpine's system range.
-# dockerRun.sh grants this user the host's data directory and this group read
+# docker/run.sh grants this user the host's data directory and this group read
 # access to config.yaml; a number in the low hundreds is likely to belong to a
 # real account on a Linux host, and that account would get the same access.
 RUN apk add --no-cache ca-certificates \
@@ -56,35 +57,36 @@ WORKDIR /app
 
 COPY --from=builder /out/server ./
 
-# There is no ENV here and no config.yaml in the image (.dockerignore keeps
-# it out -- it holds the secret key, and an image layer is forever).
-# dockerRun.sh mounts the project's config.yaml at /app/config.yaml at run
-# time, so one image serves any deployment and a config change needs a
-# restart, not a rebuild.
+# There is no ENV here and no config.yaml in the image
+# (docker/Dockerfile.dockerignore keeps it out -- it holds the secret key, and
+# an image layer is forever). docker/run.sh mounts the project's
+# config/config.yaml at /app/config/config.yaml at run time, so one image
+# serves any deployment and a config change needs a restart, not a rebuild.
 #
-# server.static_dir (./static, beside config.yaml) does not exist in this
+# server.static_dir (./static, i.e. /app/static) does not exist in this
 # image, so the embedded frontend is used. Mounting over it, or putting a
 # language.yaml in the data directory, is the supported way to run the shipped
 # UI with different wording:
-#   -v ./language.yaml:/app/data/language.yaml:ro
+#   -v ./config/language.yaml:/app/data/language.yaml:ro
 
 # Only the data directory is writable, and only by the app user. Everything
 # else stays owned by root and read-only to the process -- so even a bug that
 # lets someone run code in here cannot rewrite the binary or the frontend.
-# dockerRun.sh mounts /app/data as a volume and runs the container with
+# docker/run.sh mounts /app/data as a volume and runs the container with
 # --read-only, which is what makes that guarantee real rather than a
 # convention.
-RUN mkdir -p /app/data && chown app:app /app/data
+# /app/config is only a mount point for config.yaml; it stays root's.
+RUN mkdir -p /app/data /app/config && chown app:app /app/data
 
 # Note: this ownership survives into a *named* volume, but a bind mount
-# shadows it with the host's ownership. dockerRun.sh uses a bind mount, so the
+# shadows it with the host's ownership. docker/run.sh uses a bind mount, so the
 # database stays visible on the host for backups, and chowns that directory to
 # this user before starting the container. Running this image against a bind
 # mount without that step fails with "permission denied" on app.db.
 
 USER app
 
-# No EXPOSE: the port is server.port in config.yaml, and dockerRun.sh
+# No EXPOSE: the port is server.port in config.yaml, and docker/run.sh
 # publishes it from there. A hardcoded EXPOSE would be stale documentation
 # the first time someone changed it.
 #

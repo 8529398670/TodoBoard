@@ -71,8 +71,8 @@ const TodoView = {
     section.appendChild( header );
 
     if ( all.length ) {
-      const bar = Dom.el( "div" , { class: "progress" , attrs: { role: "progressbar" , "aria-valuemin": "0" , "aria-valuemax": String( all.length ) , "aria-valuenow": String( done ) } } );
-      const fill = Dom.el( "div" , { class: "progress-fill" } );
+      const bar = Dom.el( "div" , { class: "progress progress-thin" , attrs: { role: "progressbar" , "aria-valuemin": "0" , "aria-valuemax": String( all.length ) , "aria-valuenow": String( done ) } } );
+      const fill = Dom.el( "div" , { class: "progress-bar bg-success" } );
       fill.style.width = Math.round( 100 * done / all.length ) + "%";
       bar.appendChild( fill );
       section.appendChild( bar );
@@ -111,9 +111,9 @@ const TodoView = {
     if ( CardBits.hasDescription( card ) ) {
       const open = this.openBodies().indexOf( card.id ) >= 0;
       row.appendChild( Dom.el( "button" , {
-        class: "secondary small body-toggle",
-        text: T( open ? "card.body_open_symbol" : "card.body_closed_symbol" ),
+        class: "btn btn-link body-toggle",
         attrs: { type: "button" , "aria-expanded": open ? "true" : "false" , "aria-label": T( "card.body_toggle" ) , title: T( "card.body_toggle" ) },
+        children: [ Dom.el( "i" , { class: "bi " + ( open ? "bi-chevron-down" : "bi-chevron-right" ) , attrs: { "aria-hidden": "true" } } ) ],
         on: { click: () => {
           this.toggleBody( card.id );
           BoardPage.render();

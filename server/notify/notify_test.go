@@ -73,7 +73,7 @@ func setup( t *testing.T ) ( service *Service , mock *mockPushover , store *db.S
 	if err != nil { t.Fatal( err ) }
 	t.Cleanup( func() { store.Close() } )
 
-	raw , err := os.ReadFile( "../../language.yaml" )
+	raw , err := os.ReadFile( "../../config/language.yaml" )
 	if err != nil { t.Fatal( err ) }
 	lang , err := language.Parse( raw )
 	if err != nil { t.Fatal( err ) }

@@ -24,8 +24,7 @@ const BoardPage = {
       await I18n.load();
       I18n.apply();
     } catch ( error ) {
-      Dom.text( Dom.get( "toast" ) , "Could not load language file." );
-      Dom.show( Dom.get( "toast" ) , true );
+      Dom.toast( "Could not load language file." , "error" );
       return;
     }
     Panel.bind();
@@ -38,14 +37,8 @@ const BoardPage = {
       return;
     }
 
-    Dom.all( "[data-view]" ).forEach( ( button ) => {
-      button.addEventListener( "click" , () => this.setView( button.getAttribute( "data-view" ) ) );
-    } );
     Dom.get( "settings-button" ).addEventListener( "click" , () => BoardSettings.open( this.context() ) );
-    Dom.get( "archived-toggle" ).addEventListener( "click" , () => {
-      this.setShowArchived( !this.showArchived() );
-      this.render();
-    } );
+    Dom.get( "trash-button" ).addEventListener( "click" , () => Trash.open( this.context() ) );
     UserSettings.bind( () => this.me );
 
     // Every change made from this tab can be undone; see history.js.
@@ -203,6 +196,9 @@ const BoardPage = {
         if ( typeof data.me.plain_icons === "boolean" ) return data.me.plain_icons;
         return !!( page.me && page.me.display && page.me.display.plain_icons );
       },
+      swipeColumns() {
+        return !!( page.me && page.me.display && page.me.display.swipe_columns );
+      },
       lists() {
         const open = data.board.lists.filter( function ( list ) { return !list.archived; } );
         return this.isThree() ? open.slice( 0 , 3 ) : open;
@@ -248,16 +244,12 @@ const BoardPage = {
     document.title = board.title + " · " + T( "app.title" );
     Markdown.renderInline( board.title , Dom.get( "board-title" ) );
     Theme.setBoard( board.theme );
-    document.body.className = "board-page color-" + ( board.color || "none" ) + ( ctx.plainIcons() ? " plain-status" : "" );
+    document.body.className = "board-page color-" + ( board.color || "none" ) + ( ctx.plainIcons() ? " plain-status" : "" ) + ( ctx.swipeColumns() ? " swipe-columns" : "" );
 
-    Dom.all( "[data-view]" ).forEach( ( button ) => {
-      button.classList.toggle( "active" , button.getAttribute( "data-view" ) === this.view );
-      button.setAttribute( "aria-pressed" , button.getAttribute( "data-view" ) === this.view ? "true" : "false" );
-    } );
-    Dom.show( Dom.get( "view-switch" ) , !ctx.cardOnly );
     Dom.show( Dom.get( "settings-button" ) , !ctx.cardOnly );
+    // The trash is the whole board's, so it is for board editors only.
+    Dom.show( Dom.get( "trash-button" ) , ctx.canEdit && !ctx.cardOnly && !ctx.listOnly );
     Dom.show( Dom.get( "account-link" ) , !ctx.isGuest );
-    this.showArchivedToggle( ctx );
     Dom.show( Dom.get( "guest-settings-button" ) , ctx.isGuest );
     this.showHistory();
 
@@ -287,19 +279,12 @@ const BoardPage = {
     try { window.localStorage.setItem( "show_archived:" + this.data.board.id , on ? "1" : "0" ); } catch ( error ) { /* not remembered */ }
   },
 
-  // The toggle is offered in the views that show columns, when one of the
-  // visible columns has something archived -- or while it is on.
-  showArchivedToggle( ctx ) {
-    const toggle = Dom.get( "archived-toggle" );
-    const on = this.showArchived();
+  // How many archived cards the visible columns hold: what "Show archived"
+  // (Board settings, View) would bring back.
+  archivedCount( ctx ) {
     const shown = {};
     ctx.lists().forEach( function ( list ) { shown[ list.id ] = true; } );
-    const count = ctx.cards.filter( function ( card ) { return card.archived && shown[ card.list_id ]; } ).length;
-    const columns = !ctx.cardOnly && ( this.view === "kanban" || this.view === "todo" );
-    Dom.show( toggle , columns && ( count > 0 || on ) );
-    toggle.setAttribute( "aria-pressed" , on ? "true" : "false" );
-    toggle.classList.toggle( "active" , on );
-    Dom.text( toggle , on ? T( "board.hide_archived" ) : I18n.fill( "board.show_archived" , { n: count } ) );
+    return ctx.cards.filter( function ( card ) { return card.archived && shown[ card.list_id ]; } ).length;
   },
 
   // The undo and redo buttons: there for anyone who can change something,
@@ -352,7 +337,7 @@ const BoardPage = {
     const root = Dom.get( "board-root" );
     Dom.clear( root );
     const code = error && error.message ? error.message : "";
-    root.appendChild( Dom.el( "section" , { class: "card empty-state" , children: [
+    root.appendChild( Dom.el( "section" , { class: "card card-body empty-state" , children: [
       Dom.el( "h2" , { text: T( "errors." + code ) || T( "errors.board_not_found" ) } ),
       Dom.el( "a" , { text: T( "nav.boards" ) , attrs: { href: "/" } } ),
     ] } ) );

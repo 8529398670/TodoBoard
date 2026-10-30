@@ -74,6 +74,9 @@ type Card struct {
 	UpdatedBy   string            `json:"updated_by"`
 	Rev         uint64            `json:"rev"`
 	NextItemID  uint64            `json:"next_item_id"`
+	// Set only while the card is in the board's trash (see trash.go).
+	DeletedAt   *time.Time        `json:"deleted_at,omitempty"`
+	DeletedBy   string            `json:"deleted_by,omitempty"`
 }
 
 type ChecklistItem struct {
@@ -524,6 +527,14 @@ func DeleteCard( store *db.Store , board_id uint64 , card_id uint64 ) ( err erro
 
 // deleteCardTx removes a card and every row that points at it.
 func deleteCardTx( tx *db.Tx , card *Card ) ( err error ) {
+	if err = detachCardTx( tx , card ); err != nil { return }
+	err = tx.Delete( db.BucketCards , cardKey( card.BoardID , card.ID ) )
+	return
+}
+
+// detachCardTx removes every row that points at a card -- per-user shares,
+// subscriptions and share links -- but not the card itself.
+func detachCardTx( tx *db.Tx , card *Card ) ( err error ) {
 	for user_id := range card.SharedWith {
 		if err = tx.Delete( db.BucketUserCards , db.Key( user_id , card.BoardID , card.ID ) ); err != nil { return }
 	}
@@ -538,8 +549,6 @@ func deleteCardTx( tx *db.Tx , card *Card ) ( err error ) {
 			link := item.( *ShareLink )
 			return link.BoardID == card.BoardID && link.CardID == card.ID
 		} )
-	if err != nil { return }
-	err = tx.Delete( db.BucketCards , cardKey( card.BoardID , card.ID ) )
 	return
 }
 

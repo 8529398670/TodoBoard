@@ -6,6 +6,11 @@
 // they chose to keep theirs. A guest has no account, so theirs lives in this
 // browser only.
 //
+// Dark is Bootstrap's own dark mode (<html data-bs-theme="dark">), with
+// data-theme="dark" beside it for this app's own stylesheets. Light is both
+// attributes being absent, and Bootstrap's colour-mode script, which would
+// follow prefers-color-scheme, is deliberately not included.
+//
 // This file is loaded in <head>: the last theme seen for this page is kept
 // in localStorage and applied here, before first paint, then replaced by
 // the real one once the page has asked the server.
@@ -93,8 +98,13 @@ const Theme = {
   apply( theme ) {
     const root = document.documentElement;
     const dark = !!theme && theme.mode === "dark";
-    if ( dark ) root.setAttribute( "data-theme" , "dark" );
-    else root.removeAttribute( "data-theme" );
+    if ( dark ) {
+      root.setAttribute( "data-theme" , "dark" );
+      root.setAttribute( "data-bs-theme" , "dark" );
+    } else {
+      root.removeAttribute( "data-theme" );
+      root.removeAttribute( "data-bs-theme" );
+    }
     Object.keys( this.vars ).forEach( ( field ) => {
       const value = theme && this.isColor( theme[ field ] ) ? theme[ field ] : "";
       if ( value ) root.style.setProperty( this.vars[ field ] , value );

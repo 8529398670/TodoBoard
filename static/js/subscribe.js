@@ -36,11 +36,11 @@ const Subscribe = {
       Ui.error( error );
       return;
     }
-    if ( !state.push_enabled ) body.appendChild( Dom.el( "p" , { class: "notice notice-warn" , text: T( "notify.server_off" ) } ) );
+    if ( !state.push_enabled ) body.appendChild( Dom.el( "p" , { class: "alert alert-warning" , text: T( "notify.server_off" ) } ) );
     else if ( !state.has_pushover_key ) {
-      body.appendChild( Dom.el( "p" , { class: "notice notice-warn" , children: [
+      body.appendChild( Dom.el( "p" , { class: "alert alert-warning" , children: [
         Dom.el( "span" , { text: T( "notify.no_key" ) + " " } ),
-        Dom.el( "a" , { text: T( "notify.account_link" ) , attrs: { href: "/account#notifications" } } ),
+        Dom.el( "a" , { text: T( "notify.account_link" ) , attrs: { href: "/#notifications" } } ),
       ] } ) );
     }
     body.appendChild( Dom.el( "p" , { class: "muted" , text: source.intro } ) );
@@ -53,7 +53,7 @@ const Subscribe = {
     body.appendChild( fields );
     body.appendChild( Dom.el( "p" , { class: "muted" , text: T( "notify.source_" + state.source ) } ) );
     body.appendChild( Dom.el( "div" , { class: "row-actions" , children: [
-      Dom.el( "button" , { class: "small" , text: T( "board.save" ) , attrs: { type: "button" } , on: { click: async () => {
+      Dom.el( "button" , { class: Ui.buttonClass( "small" ) , text: T( "board.save" ) , attrs: { type: "button" } , on: { click: async () => {
         try {
           await source.save( events );
           Ui.toast( T( "notify.saved" ) , "ok" );

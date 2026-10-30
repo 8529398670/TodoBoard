@@ -75,7 +75,7 @@ func TestBoardCardLifecycle( t *testing.T ) {
 	}
 
 	// Deleting a list takes its cards.
-	if err = DeleteList( store , board.ID , todo ); err != nil { t.Fatal( err ) }
+	if err = DeleteList( store , board.ID , todo , "Owner" ); err != nil { t.Fatal( err ) }
 	if _ , err = GetCard( store , board.ID , second.ID ); errors.Is( err , ErrCardNotFound ) == false {
 		t.Errorf( "card on a deleted list should be gone, got %v" , err )
 	}
@@ -177,7 +177,7 @@ func TestNewBoardDefaults( t *testing.T ) {
 	if loaded := LoadShareLink( store , credential ); loaded == nil || loaded.ListID != list {
 		t.Fatalf( "a fresh column link should load" )
 	}
-	if err = DeleteList( store , board.ID , list ); err != nil { t.Fatal( err ) }
+	if err = DeleteList( store , board.ID , list , "Owner" ); err != nil { t.Fatal( err ) }
 	if LoadShareLink( store , credential ) != nil {
 		t.Errorf( "a deleted column's link must not load" )
 	}

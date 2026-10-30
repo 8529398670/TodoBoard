@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="color-scheme" content="light" />
   <title data-i18n="app.title">&nbsp;</title>
+  <!-- No theme.js: paper is always light. -->
+  <link rel="stylesheet" href="/vendor/bootstrap.min.css" />
   <link rel="stylesheet" href="/vendor/katex/katex.min.css" />
   <link rel="stylesheet" href="/css/style.css" />
   <link rel="stylesheet" href="/css/board.css" />
@@ -15,14 +17,19 @@
   <div class="print-toolbar no-print">
     <p class="muted" data-i18n="export.print_hint"></p>
     <div class="row-actions">
-      <button type="button" id="print-button" data-i18n="export.print_button"></button>
-      <label class="check"><input type="checkbox" id="print-descriptions" checked /><span data-i18n="export.print_descriptions"></span></label>
-      <label class="check"><input type="checkbox" id="print-done" checked /><span data-i18n="export.print_done"></span></label>
+      <button type="button" id="print-button" class="btn btn-primary" data-i18n="export.print_button"></button>
+      <label class="check form-check"><input type="checkbox" class="form-check-input" id="print-descriptions" checked /><span class="form-check-label" data-i18n="export.print_descriptions"></span></label>
+      <label class="check form-check"><input type="checkbox" class="form-check-input" id="print-done" checked /><span class="form-check-label" data-i18n="export.print_done"></span></label>
     </div>
   </div>
   <main id="print-root" class="print-root"></main>
-  <p id="toast" class="notice toast" role="status" hidden></p>
+  <div class="toast-container position-fixed bottom-0 end-0 p-3">
+    <div id="toast" class="toast border-0" role="status" aria-live="polite" aria-atomic="true" data-bs-delay="4000">
+      <div id="toast-body" class="toast-body"></div>
+    </div>
+  </div>
 
+  <script src="/vendor/bootstrap.bundle.min.js"></script>
   <script src="/vendor/marked/marked.min.js"></script>
   <script src="/vendor/dompurify/purify.min.js"></script>
   <script src="/vendor/katex/katex.min.js"></script>

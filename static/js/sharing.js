@@ -94,7 +94,7 @@ const Sharing = {
     ] , "editor" );
     form.appendChild( Ui.field( "share.person_label" , person ) );
     form.appendChild( Ui.field( "share.role_label" , role ) );
-    form.appendChild( Dom.el( "button" , { text: T( "share.add_member" ) , attrs: { type: "submit" } } ) );
+    form.appendChild( Dom.el( "button" , { class: "btn btn-primary" , text: T( "share.add_member" ) , attrs: { type: "submit" } } ) );
     form.addEventListener( "submit" , async ( event ) => {
       event.preventDefault();
       await ctx.mutate( function () { return ctx.client.setMember( Number( person.value ) , role.value ); } );
@@ -134,7 +134,7 @@ const Sharing = {
     const mode = Ui.select( [ { value: "edit" , text: T( "share.mode_edit" ) } , { value: "view" , text: T( "share.mode_view" ) } ] , "edit" );
     form.appendChild( Ui.field( "share.person_label" , person ) );
     form.appendChild( Ui.field( "share.mode_label" , mode ) );
-    form.appendChild( Dom.el( "button" , { text: T( "share.share_card_with" ) , attrs: { type: "submit" } } ) );
+    form.appendChild( Dom.el( "button" , { class: "btn btn-primary" , text: T( "share.share_card_with" ) , attrs: { type: "submit" } } ) );
     form.addEventListener( "submit" , async ( event ) => {
       event.preventDefault();
       await ctx.mutate( function () { return ctx.client.shareCardWithUser( card.id , Number( person.value ) , mode.value ); } );
@@ -154,15 +154,15 @@ const Sharing = {
 
     const form = Dom.el( "form" , { attrs: { autocomplete: "off" } } );
     const mode = Ui.select( [ { value: "view" , text: T( "share.mode_view" ) } , { value: "edit" , text: T( "share.mode_edit" ) } ] , "view" );
-    const label = Dom.el( "input" , { attrs: { maxlength: "80" , placeholder: T( "share.link_label_placeholder" ) } } );
-    const days = Dom.el( "input" , { attrs: { type: "number" , min: "0" , max: "3650" , value: "0" , inputmode: "numeric" } } );
+    const label = Dom.el( "input" , { class: "form-control" , attrs: { maxlength: "80" , placeholder: T( "share.link_label_placeholder" ) } } );
+    const days = Dom.el( "input" , { class: "form-control" , attrs: { type: "number" , min: "0" , max: "3650" , value: "0" , inputmode: "numeric" } } );
     form.appendChild( Ui.field( "share.mode_label" , mode ) );
     form.appendChild( Ui.field( "share.link_label" , label ) );
     form.appendChild( Ui.field( "share.link_days" , days ) );
-    form.appendChild( Dom.el( "button" , { text: T( "share.create_link" ) , attrs: { type: "submit" } } ) );
+    form.appendChild( Dom.el( "button" , { class: "btn btn-primary" , text: T( "share.create_link" ) , attrs: { type: "submit" } } ) );
     section.appendChild( form );
 
-    const created = Dom.el( "div" , { class: "notice notice-link" } );
+    const created = Dom.el( "div" , { class: "alert alert-success mb-0" } );
     created.hidden = true;
     section.appendChild( created );
 
@@ -174,9 +174,11 @@ const Sharing = {
         const url = Dom.el( "code" , { text: window.location.origin + link.share_path } );
         const notice = Dom.el( "span" , { class: "muted" , text: T( "share.copied" ) } );
         notice.hidden = true;
-        created.appendChild( Dom.el( "p" , { text: T( "share.link_created" ) } ) );
-        created.appendChild( url );
-        created.appendChild( Ui.button( "share.copy_link" , function () { Dom.copy( url , notice ); } ) );
+        created.appendChild( Dom.el( "p" , { class: "mb-2" , text: T( "share.link_created" ) } ) );
+        created.appendChild( Dom.el( "div" , { class: "link-box" , children: [
+          url,
+          Ui.button( "share.copy_link" , function () { Dom.copy( url , notice ); } ),
+        ] } ) );
         created.appendChild( notice );
         created.hidden = false;
         label.value = "";

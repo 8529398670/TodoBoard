@@ -15,6 +15,10 @@ type folderRequest struct {
 	Name string `json:"name"`
 }
 
+type folderOrderRequest struct {
+	IDs []uint64 `json:"ids"` // first to last
+}
+
 type boardFolderRequest struct {
 	FolderID uint64 `json:"folder_id"` // 0: not in a folder
 }
@@ -28,6 +32,18 @@ func ( handlers *Handlers ) CreateFolder( c fiber.Ctx ) ( err error ) {
 		return
 	}
 	err = c.JSON( folder )
+	return
+}
+
+// SetFolderOrder stores the order the caller dragged their folders into.
+func ( handlers *Handlers ) SetFolderOrder( c fiber.Ctx ) ( err error ) {
+	var body folderOrderRequest
+	if ok , bind_err := bindBody( c , &body ); ok == false { return bind_err }
+	if order_err := models.SetFolderOrder( handlers.Store , security.UserFrom( c ).ID , body.IDs ); order_err != nil {
+		err = modelError( c , order_err )
+		return
+	}
+	err = c.JSON( fiber.Map{ "ok": true } )
 	return
 }
 

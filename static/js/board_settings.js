@@ -1,11 +1,13 @@
 // Board settings: everything about the board in one panel. It opens on
 // tiles for sharing, notifications and export (each its own panel, with a
-// way back here), then name, default view, colour, numbering, theme, labels,
-// archived lists and cards, and leaving or deleting the board.
+// way back here), then which view to show, name, default view, colour,
+// numbering, theme, labels, archived lists and cards, and leaving or
+// deleting the board.
 const BoardSettings = {
   open( ctx ) {
     Panel.open( "settings.title" , ( body ) => {
       body.appendChild( this.tiles( ctx ) );
+      body.appendChild( this.views( ctx ) );
       // A guest edits cards, not the board's own setup.
       const member = ctx.canEdit && !ctx.isGuest;
       if ( member ) body.appendChild( this.general( ctx ) );
@@ -38,6 +40,39 @@ const BoardSettings = {
     return section;
   },
 
+  // Board, Todo or Timeline, and whether archived cards show, for this
+  // browser (BoardPage remembers both per board). Picking a view closes the
+  // panel onto it; the checkbox redraws the board behind the panel.
+  views( ctx ) {
+    const section = Dom.el( "section" , { class: "panel-section" } );
+    section.appendChild( Dom.el( "h3" , { text: T( "settings.view_heading" ) } ) );
+    const group = Dom.el( "div" , { class: "btn-group view-picker" , attrs: { role: "group" , "aria-label": T( "views.label" ) } } );
+    [ [ "kanban" , "kanban" ] , [ "todo" , "list-check" ] , [ "timeline" , "calendar-range" ] ].forEach( function ( view ) {
+      const active = BoardPage.view === view[ 0 ];
+      group.appendChild( Dom.el( "button" , {
+        class: Ui.buttonClass( "secondary" + ( active ? " active" : "" ) ),
+        attrs: { type: "button" , "aria-pressed": active ? "true" : "false" },
+        on: { click: function () {
+          Panel.close();
+          BoardPage.setView( view[ 0 ] );
+        } },
+        children: [
+          Dom.el( "i" , { class: "bi bi-" + view[ 1 ] , attrs: { "aria-hidden": "true" } } ),
+          Dom.el( "span" , { text: T( "views." + view[ 0 ] ) } ),
+        ],
+      } ) );
+    } );
+    section.appendChild( group );
+    section.appendChild( Dom.el( "p" , { class: "muted small-print mt-2" , text: T( ctx.canEdit && !ctx.isGuest ? "settings.view_hint" : "settings.view_hint_guest" ) } ) );
+    const archived = Ui.check( I18n.fill( "board.show_archived" , { n: BoardPage.archivedCount( ctx ) } ) , BoardPage.showArchived() , function ( checked ) {
+      BoardPage.setShowArchived( checked );
+      BoardPage.render();
+    } );
+    section.appendChild( archived );
+    section.appendChild( Dom.el( "p" , { class: "muted small-print mt-1 mb-0" , text: T( "settings.show_archived_hint" ) } ) );
+    return section;
+  },
+
   openLabels( ctx ) {
     Panel.open( "settings.labels_heading" , ( body ) => body.appendChild( this.labelsSection( ctx ) ) );
   },
@@ -46,9 +81,9 @@ const BoardSettings = {
     const section = Dom.el( "section" , { class: "panel-section" } );
     section.appendChild( Dom.el( "h3" , { text: T( "settings.general_heading" ) } ) );
     const form = Dom.el( "form" , { attrs: { autocomplete: "off" } } );
-    const title = Dom.el( "input" , { attrs: { maxlength: "120" , required: "" } } );
+    const title = Dom.el( "input" , { class: "form-control" , attrs: { maxlength: "120" , required: "" } } );
     title.value = ctx.board.title;
-    const slug = Dom.el( "input" , { attrs: { maxlength: "60" , pattern: "[a-z0-9]+(-[a-z0-9]+)*" , spellcheck: "false" , autocapitalize: "off" } } );
+    const slug = Dom.el( "input" , { class: "form-control" , attrs: { maxlength: "60" , pattern: "[a-z0-9]+(-[a-z0-9]+)*" , spellcheck: "false" , autocapitalize: "off" } } );
     slug.value = ctx.board.slug || "";
     // Typing a space or capital letter is the natural thing to do; make it
     // what the server will accept as they type.
@@ -90,7 +125,7 @@ const BoardSettings = {
     form.appendChild( BoardSettings.swatchField( "settings.color_label" , color ) );
     form.appendChild( Dom.el( "p" , { class: "muted small-print" , text: T( "settings.layout_hint" ) } ) );
     form.appendChild( Ui.field( "settings.numbering_label" , numbering ) );
-    form.appendChild( Dom.el( "button" , { text: T( "board.save" ) , attrs: { type: "submit" } } ) );
+    form.appendChild( Dom.el( "button" , { class: "btn btn-primary" , text: T( "board.save" ) , attrs: { type: "submit" } } ) );
     form.addEventListener( "submit" , async function ( event ) {
       event.preventDefault();
       const changes = { title: title.value , default_view: view.value , color: boardColor , layout: layout.value , numbering: numbering.value };
@@ -107,7 +142,7 @@ const BoardSettings = {
   // A labelled swatch row; a radiogroup has no single control to point a
   // <label for> at, so it is named by aria-label and shown with a span.
   swatchField( labelKey , picker ) {
-    return Dom.el( "div" , { class: "field" , children: [ Dom.el( "span" , { class: "field-label" , text: T( labelKey ) } ) , picker ] } );
+    return Dom.el( "div" , { class: "field" , children: [ Dom.el( "span" , { class: "form-label" , text: T( labelKey ) } ) , picker ] } );
   },
 
   // The board's theme, which everyone on it sees unless they keep their
@@ -153,7 +188,7 @@ const BoardSettings = {
       section.replaceWith( this.labelsSection( fresh ) );
     };
     ctx.board.labels.forEach( function ( label ) {
-      const name = Dom.el( "input" , { attrs: { maxlength: "40" , "aria-label": T( "settings.label_name" ) } } );
+      const name = Dom.el( "input" , { class: "form-control" , attrs: { maxlength: "40" , "aria-label": T( "settings.label_name" ) } } );
       name.value = label.name;
       let labelColor = label.color;
       const save = async function () {
@@ -177,12 +212,12 @@ const BoardSettings = {
     section.appendChild( list );
 
     const form = Dom.el( "form" , { attrs: { autocomplete: "off" } } );
-    const name = Dom.el( "input" , { attrs: { maxlength: "40" , placeholder: T( "settings.label_name_placeholder" ) } } );
+    const name = Dom.el( "input" , { class: "form-control" , attrs: { maxlength: "40" , placeholder: T( "settings.label_name_placeholder" ) } } );
     let newColor = Colors[ ctx.board.labels.length % Colors.length ];
     const color = ColorPicker.named( newColor , function ( value ) { newColor = value; } , { labelKey: "settings.label_color" } );
     form.appendChild( Ui.field( "settings.label_name" , name ) );
     form.appendChild( BoardSettings.swatchField( "settings.label_color" , color ) );
-    form.appendChild( Dom.el( "button" , { text: T( "settings.add_label" ) , attrs: { type: "submit" } } ) );
+    form.appendChild( Dom.el( "button" , { class: "btn btn-primary" , text: T( "settings.add_label" ) , attrs: { type: "submit" } } ) );
     form.addEventListener( "submit" , async function ( event ) {
       event.preventDefault();
       await ctx.mutate( function () { return ctx.client.createLabel( name.value , newColor ); } );
@@ -195,6 +230,11 @@ const BoardSettings = {
   archived( ctx ) {
     const section = Dom.el( "section" , { class: "panel-section" } );
     section.appendChild( Dom.el( "h3" , { text: T( "settings.archived_heading" ) } ) );
+    if ( ctx.canEdit && !ctx.listOnly ) {
+      section.appendChild( Dom.el( "div" , { class: "row-actions" , children: [
+        Ui.button( "trash.open_button" , function () { Trash.open( ctx , function () { BoardSettings.open( BoardPage.context() ); } ); } ),
+      ] } ) );
+    }
     const lists = ctx.board.lists.filter( function ( list ) { return list.archived; } );
     const cards = ctx.cards.filter( function ( card ) { return card.archived; } );
     if ( !lists.length && !cards.length ) {

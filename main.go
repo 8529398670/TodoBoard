@@ -9,13 +9,15 @@
 //
 //	todoboard                     run the server
 //	todoboard manage list-users   account administration
-//	todoboard config check        create, check, or read config.yaml
+//	todoboard config check        create, check, or read config/config.yaml
 //	todoboard health              the container's healthcheck
 //	todoboard version             build information
 package main
 
 import (
+	embed "embed"
 	fmt "fmt"
+	fs "io/fs"
 	log "log"
 	os "os"
 	signal "os/signal"
@@ -46,11 +48,51 @@ import (
 	static "todoboard/server/static"
 )
 
-// Stamped by run.sh, build.sh and the Docker build via -ldflags: the version
-// is the build's date and time. The defaults are what you get from a plain
-// `go build`, which is a useful signal in itself.
+// The frontend and every shipped YAML file, compiled into the binary.
+//
+// This is what makes scripts/build.sh able to produce one file that runs
+// anywhere: no ./static directory to ship alongside it, no language.yaml to
+// forget, and the defaults a missing config key falls back to always present.
+// The directives have to live in a package at the module root, because
+// go:embed cannot reference paths outside its own package directory -- which
+// is why they are here rather than in server/assets or server/config.
+//
+// "all:" includes files whose names begin with "." or "_", which a normal
+// embed pattern skips.
+var (
+	//go:embed all:static
+	embeddedStaticRoot embed.FS
+
+	//go:embed config/language.yaml
+	embeddedLanguage []byte
+
+	//go:embed config/defaults.yaml
+	embeddedDefaults []byte
+
+	//go:embed config/example_header.yaml
+	embeddedExampleHeader []byte
+)
+
+// The config package needs the defaults before anything else runs -- every
+// subcommand, including `config init`, starts from them.
+func init() {
+	config.UseEmbedded( embeddedDefaults , embeddedExampleHeader )
+}
+
+// embeddedStatic re-roots the embedded tree at ./static, so a request for
+// "css/style.css" does not have to know it lives at "static/css/style.css"
+// inside the binary. This makes it interchangeable with the os.Root
+// filesystem server/assets opens for ./static on disk.
+func embeddedStatic() ( fsys fs.FS , err error ) {
+	fsys , err = fs.Sub( embeddedStaticRoot , "static" )
+	return
+}
+
+// Stamped by scripts/build.sh via -ldflags. The defaults are what you get from a
+// plain `go build`, which is a useful signal in itself.
 var (
 	version   = "dev"
+	commit    = "unknown"
 	buildDate = "unknown"
 )
 
@@ -78,8 +120,8 @@ func main() {
 			}
 			return
 		case "version" , "-version" , "--version":
-			fmt.Printf( "TodoBoard %s (built %s, %s/%s, %s)\n" ,
-				version , buildDate , runtime.GOOS , runtime.GOARCH , runtime.Version() )
+			fmt.Printf( "TodoBoard %s (commit %s, built %s, %s/%s, %s)\n" ,
+				version , commit , buildDate , runtime.GOOS , runtime.GOARCH , runtime.Version() )
 			return
 		case "-h" , "--help" , "help":
 			fmt.Printf( "TodoBoard %s\n\nUsage:\n  todoboard                 run the web server\n  todoboard manage <cmd>    account administration\n  todoboard config <cmd>    create, check, or read config.yaml\n  todoboard health          exit 0 if the local server answers\n  todoboard version         build information\n\n" , version )
@@ -196,6 +238,7 @@ func run() ( err error ) {
 	}()
 
 	log.Printf( "[start] %s %s listening on %s (secure cookies: %v)" , cfg.ProjectName , version , cfg.ListenAddress() , cfg.SecureCookies )
+	log.Printf( "[url]    %s  (from %s)" , cfg.URL , cfg.URLSource )
 	if cfg.ConfigCreated {
 		log.Printf( "[config] %s (created, with a new secret key -- back it up)" , cfg.ConfigFile )
 	} else {

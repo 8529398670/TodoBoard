@@ -17,8 +17,10 @@ const ThemeEditor = {
     { key: "forest" , theme: { mode: "light" , accent: "#2b8a3e" , background: "#f1f6ef" , surface: "#ffffff" , column: "#e1ebdd" , card: "#ffffff" } },
     { key: "sepia" , theme: { mode: "light" , accent: "#9c5a1c" , background: "#f6f0e4" , surface: "#fbf7ef" , column: "#ece3d1" , card: "#fffaf0" } },
     { key: "grape" , theme: { mode: "light" , accent: "#7048c8" , background: "#f5f2fc" , surface: "#ffffff" , column: "#e9e2f8" , card: "#ffffff" } },
+    { key: "pink" , theme: { mode: "light" , accent: "#c2255c" , background: "#fdf0f5" , surface: "#ffffff" , column: "#f7dfe9" , card: "#ffffff" } },
     { key: "midnight" , theme: { mode: "dark" , accent: "#8c7cff" , background: "#0e1020" , surface: "#171a30" , column: "#13162a" , card: "#1c2038" } },
     { key: "slate" , theme: { mode: "dark" , accent: "#4fb3a9" , background: "#15191e" , surface: "#1d232a" , column: "#181d23" , card: "#232a32" } },
+    { key: "dark_pink" , theme: { mode: "dark" , accent: "#f06595" , background: "#1f0d16" , surface: "#2a1220" , column: "#24101a" , card: "#331828" } },
   ],
 
   // Swatches offered for each colour; the background ones depend on the mode.
@@ -93,11 +95,11 @@ const ThemeEditor = {
   },
 
   inheritChoice( current , onChange ) {
-    const group = Dom.el( "div" , { class: "segmented" , attrs: { role: "group" , "aria-label": T( "theme.board_choice" ) } } );
+    const group = Dom.el( "div" , { class: "segmented btn-group" , attrs: { role: "group" , "aria-label": T( "theme.board_choice" ) } } );
     [ [ false , "theme.board_inherit" ] , [ true , "theme.board_own" ] ].forEach( function ( pair ) {
       const pressed = !!current === pair[ 0 ];
       group.appendChild( Dom.el( "button" , {
-        class: "secondary small" + ( pressed ? " active" : "" ),
+        class: Ui.buttonClass( "secondary small" + ( pressed ? " active" : "" ) ),
         text: T( pair[ 1 ] ),
         attrs: { type: "button" , "aria-pressed": pressed ? "true" : "false" },
         on: { click: function () { if ( !pressed ) onChange( pair[ 0 ] ); } },
@@ -134,10 +136,10 @@ const ThemeEditor = {
   },
 
   modeSwitch( mode , onChange ) {
-    const group = Dom.el( "div" , { class: "segmented" , attrs: { role: "group" , "aria-label": T( "theme.mode" ) } } );
+    const group = Dom.el( "div" , { class: "segmented btn-group" , attrs: { role: "group" , "aria-label": T( "theme.mode" ) } } );
     [ "light" , "dark" ].forEach( function ( value ) {
       group.appendChild( Dom.el( "button" , {
-        class: "secondary small" + ( mode === value ? " active" : "" ),
+        class: Ui.buttonClass( "secondary small" + ( mode === value ? " active" : "" ) ),
         text: T( "theme.mode_" + value ),
         attrs: { type: "button" , "aria-pressed": mode === value ? "true" : "false" },
         on: { click: function () { if ( mode !== value ) onChange( value ); } },
@@ -164,10 +166,12 @@ const ThemeEditor = {
     return this.paint( preview , theme );
   },
 
-  // Draw an element in a theme: the mode by data-theme (so the stylesheet's
-  // dark colours apply inside it) and the picked colours as its variables.
+  // Draw an element in a theme: the mode by data-theme and data-bs-theme (so
+  // the stylesheets' dark colours apply inside it) and the picked colours as
+  // its variables.
   paint( element , theme ) {
     element.setAttribute( "data-theme" , theme.mode === "dark" ? "dark" : "light" );
+    element.setAttribute( "data-bs-theme" , theme.mode === "dark" ? "dark" : "light" );
     Object.keys( Theme.vars ).forEach( function ( field ) {
       if ( Theme.isColor( theme[ field ] ) ) element.style.setProperty( Theme.vars[ field ] , theme[ field ] );
       else element.style.removeProperty( Theme.vars[ field ] );

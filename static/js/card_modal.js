@@ -140,12 +140,7 @@ const CardModal = {
       Markdown.renderInline( card.title , title );
       header.appendChild( title );
     }
-    header.appendChild( Dom.el( "button" , {
-      class: "icon-button",
-      text: T( "ui.close_symbol" ),
-      attrs: { type: "button" , "aria-label": T( "ui.close" ) , title: T( "ui.close" ) },
-      on: { click: () => this.close() },
-    } ) );
+    header.appendChild( Ui.closeButton( T( "ui.close" ) , () => this.close() , "mt-2" ) );
     return header;
   },
 
@@ -237,8 +232,8 @@ const CardModal = {
   // means an all-day date; with a time it is an instant on the person's
   // clock (see Dates.fromInputs), sent to the server as UTC.
   datePair( value , allDay , dateKey , timeKey , save ) {
-    const day = Dom.el( "input" , { attrs: { type: "date" } } );
-    const time = Dom.el( "input" , { attrs: { type: "time" , step: "300" } } );
+    const day = Dom.el( "input" , { class: "form-control" , attrs: { type: "date" } } );
+    const time = Dom.el( "input" , { class: "form-control" , attrs: { type: "time" , step: "300" } } );
     if ( value ) {
       day.value = allDay ? Dates.isoDay( new Date( value ) , true ) : Dates.isoDay( Dates.localDay( value , false ) );
       if ( !allDay ) time.value = Dates.timeInput( value );
@@ -277,12 +272,7 @@ const CardModal = {
         Dom.el( "span" , { text: name } ),
       ] } );
       if ( editable ) {
-        chip.appendChild( Dom.el( "button" , {
-          class: "icon-button small",
-          text: T( "ui.close_symbol" ),
-          attrs: { type: "button" , "aria-label": I18n.fill( "card.unassign" , { name: name } ) },
-          on: { click: () => this.save( { assignees: card.assignees.filter( function ( other ) { return other !== id; } ) } ) },
-        } ) );
+        chip.appendChild( Ui.closeButton( I18n.fill( "card.unassign" , { name: name } ) , () => this.save( { assignees: card.assignees.filter( function ( other ) { return other !== id; } ) } ) , "btn-close-small" ) );
       }
       list.appendChild( chip );
     } );
@@ -338,7 +328,7 @@ const CardModal = {
       return wrap;
     }
 
-    const tabs = Dom.el( "div" , { class: "tabs" , attrs: { role: "tablist" } } );
+    const tabs = Dom.el( "div" , { class: "btn-group mb-2" , attrs: { role: "group" } } );
     tabs.appendChild( Ui.button( "card.write_tab" , () => { this.titlePreviewing = false; this.render(); } , "secondary small" + ( this.titlePreviewing ? "" : " active" ) ) );
     tabs.appendChild( Ui.button( "card.preview_tab" , () => { this.titlePreviewing = true; this.render(); } , "secondary small" + ( this.titlePreviewing ? " active" : "" ) ) );
     wrap.appendChild( tabs );
@@ -352,7 +342,7 @@ const CardModal = {
       Markdown.renderInline( this.titleDraft , rendered );
       wrap.appendChild( rendered );
     } else {
-      const area = Dom.el( "textarea" , { class: "title-input" , attrs: { rows: "1" , "aria-label": T( "card.title_label" ) } } );
+      const area = Dom.el( "textarea" , { class: "title-input form-control" , attrs: { rows: "1" , "aria-label": T( "card.title_label" ) } } );
       area.value = this.titleDraft;
       area.addEventListener( "input" , () => {
         this.titleDraft = area.value;
@@ -373,7 +363,7 @@ const CardModal = {
       wrap.appendChild( Dom.el( "p" , { class: "muted small-print" , text: T( "card.markdown_hint" ) } ) );
     }
     wrap.appendChild( Dom.el( "div" , { class: "row-actions" , children: [
-      Dom.el( "button" , { class: "small" , text: T( "board.save" ) , attrs: { type: "button" } , on: { click: () => this.saveTitle( this.titleRev ) } } ),
+      Dom.el( "button" , { class: Ui.buttonClass( "small" ) , text: T( "board.save" ) , attrs: { type: "button" } , on: { click: () => this.saveTitle( this.titleRev ) } } ),
       Ui.button( "board.cancel" , cancel ),
     ] } ) );
     return wrap;
@@ -406,7 +396,7 @@ const CardModal = {
 
   titleConflictBox() {
     const theirs = this.titleConflict;
-    const box = Dom.el( "div" , { class: "notice notice-warn conflict" } );
+    const box = Dom.el( "div" , { class: "alert alert-warning conflict" } );
     box.appendChild( Dom.el( "p" , { text: I18n.fill( "card.title_conflict" , { name: CardBits.actorName( theirs.updated_by ) } ) } ) );
     box.appendChild( Dom.el( "div" , { class: "row-actions" , children: [
       Ui.button( "card.conflict_keep_mine" , () => this.saveTitle( theirs.rev ) ),
@@ -456,7 +446,7 @@ const CardModal = {
       return section;
     }
 
-    const tabs = Dom.el( "div" , { class: "tabs" , attrs: { role: "tablist" } } );
+    const tabs = Dom.el( "div" , { class: "btn-group mb-2" , attrs: { role: "group" } } );
     const write = Ui.button( "card.write_tab" , () => { this.previewing = false; this.render(); } , "secondary small" + ( this.previewing ? "" : " active" ) );
     const preview = Ui.button( "card.preview_tab" , () => { this.previewing = true; this.render(); } , "secondary small" + ( this.previewing ? " active" : "" ) );
     tabs.appendChild( write );
@@ -468,7 +458,7 @@ const CardModal = {
       Markdown.render( this.draft , rendered );
       section.appendChild( rendered );
     } else {
-      const area = Dom.el( "textarea" , { class: "description-input" , attrs: { rows: "10" , "aria-label": T( "card.description_label" ) , placeholder: T( "card.description_placeholder" ) } } );
+      const area = Dom.el( "textarea" , { class: "description-input form-control" , attrs: { rows: "10" , "aria-label": T( "card.description_label" ) , placeholder: T( "card.description_placeholder" ) } } );
       area.value = this.draft;
       area.addEventListener( "input" , () => { this.draft = area.value; } );
       section.appendChild( area );
@@ -476,7 +466,7 @@ const CardModal = {
     }
 
     section.appendChild( Dom.el( "div" , { class: "row-actions" , children: [
-      Dom.el( "button" , { class: "small" , text: T( "board.save" ) , attrs: { type: "button" } , on: { click: () => this.saveDescription( this.baseRev ) } } ),
+      Dom.el( "button" , { class: Ui.buttonClass( "small" ) , text: T( "board.save" ) , attrs: { type: "button" } , on: { click: () => this.saveDescription( this.baseRev ) } } ),
       Ui.button( "board.cancel" , () => {
         this.editingDescription = false;
         this.conflict = null;
@@ -508,7 +498,7 @@ const CardModal = {
 
   conflictBox( card ) {
     const theirs = this.conflict;
-    const box = Dom.el( "div" , { class: "notice notice-warn conflict" } );
+    const box = Dom.el( "div" , { class: "alert alert-warning conflict" } );
     box.appendChild( Dom.el( "p" , { text: I18n.fill( "card.conflict" , { name: CardBits.actorName( theirs.updated_by ) } ) } ) );
     box.appendChild( Dom.el( "div" , { class: "row-actions" , children: [
       Ui.button( "card.conflict_keep_mine" , () => this.saveDescription( theirs.rev ) ),
@@ -530,8 +520,8 @@ const CardModal = {
     section.appendChild( head );
 
     if ( card.checklist.length ) {
-      const bar = Dom.el( "div" , { class: "progress" } );
-      const fill = Dom.el( "div" , { class: "progress-fill" } );
+      const bar = Dom.el( "div" , { class: "progress progress-thin" } );
+      const fill = Dom.el( "div" , { class: "progress-bar bg-success" } );
       fill.style.width = Math.round( 100 * done / card.checklist.length ) + "%";
       bar.appendChild( fill );
       section.appendChild( bar );
@@ -543,7 +533,7 @@ const CardModal = {
     card.checklist.forEach( ( item ) => {
       const row = Dom.el( "li" , { class: "checklist-item" + ( item.done ? " is-done" : "" ) , attrs: { "data-item-id": item.id , "data-position": item.position } } );
       if ( canEdit ) row.appendChild( Dom.el( "span" , { class: "todo-handle" , text: T( "todo.drag_symbol" ) , attrs: { "aria-hidden": "true" } } ) );
-      const box = Dom.el( "input" , { attrs: { type: "checkbox" , "aria-label": item.text } } );
+      const box = Dom.el( "input" , { class: "form-check-input" , attrs: { type: "checkbox" , "aria-label": item.text } } );
       box.checked = item.done;
       box.disabled = !canEdit;
       box.addEventListener( "change" , function () {
@@ -557,12 +547,7 @@ const CardModal = {
           className: "item-text",
           onSave: function ( value ) { ctx.mutate( function () { return ctx.client.updateItem( cardId , item.id , { text: value } ); } ); },
         } ) );
-        row.appendChild( Dom.el( "button" , {
-          class: "icon-button small",
-          text: T( "ui.close_symbol" ),
-          attrs: { type: "button" , "aria-label": T( "card.delete_item" ) , title: T( "card.delete_item" ) },
-          on: { click: function () { ctx.mutate( function () { return ctx.client.deleteItem( cardId , item.id ); } ); } },
-        } ) );
+        row.appendChild( Ui.closeButton( T( "card.delete_item" ) , function () { ctx.mutate( function () { return ctx.client.deleteItem( cardId , item.id ); } ); } , "btn-close-small" ) );
       } else {
         const text = Dom.el( "span" , { class: "item-text" } );
         Markdown.renderInline( item.text , text );
@@ -599,6 +584,7 @@ const CardModal = {
     const ctx = this.ctx;
     const section = Dom.el( "section" , { class: "card-section card-actions" } );
     const row = Dom.el( "div" , { class: "row-actions" } );
+    row.appendChild( Ui.button( "export.copy_card_markdown" , () => Ui.copyText( CardExport.markdown( ctx , card ) ) ) );
     row.appendChild( Ui.button( "export.card_button" , () => CardExport.open( ctx , card ) ) );
     if ( !ctx.isGuest ) row.appendChild( Ui.button( "card.notifications_button" , () => Subscribe.openCard( ctx , card ) ) );
     if ( ctx.canManage ) row.appendChild( Ui.button( "share.card_button" , () => Sharing.openCard( ctx , card ) ) );
@@ -608,9 +594,9 @@ const CardModal = {
         if ( !card.archived ) this.close();
       } ) );
       row.appendChild( Ui.button( "card.delete" , async () => {
-        if ( !window.confirm( I18n.fill( "card.delete_confirm" , { name: card.title } ) ) ) return;
         this.close();
         await ctx.mutate( function () { return ctx.client.deleteCard( card.id ); } );
+        Ui.toast( T( "trash.moved" ) , "ok" );
       } , "secondary small danger" ) );
     }
     section.appendChild( row );

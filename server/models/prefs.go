@@ -54,11 +54,21 @@ type UserPrefs struct {
 	// person has not set otherwise (BoardRef.PlainIcons).
 	PlainIcons bool `json:"plain_icons"`
 
+	// SwipeColumns shows a board one full-width column at a time on a phone
+	// held upright, swiped between.
+	SwipeColumns bool `json:"swipe_columns"`
+
+	// FolderSort is how the home page orders folders: "" by name, "manual"
+	// by the order they were dragged into (Folder.Position).
+	FolderSort string `json:"folder_sort"`
+
 	// Theme is the person's own look everywhere; nil is plain light.
 	// OwnThemeOnBoards keeps it on boards that have a theme of their own.
 	Theme            *Theme `json:"theme"`
 	OwnThemeOnBoards bool   `json:"own_theme_on_boards"`
 }
+
+const FolderSortManual = "manual"
 
 func DefaultUserPrefs() ( prefs *UserPrefs ) {
 	prefs = &UserPrefs{
@@ -100,6 +110,7 @@ func ( prefs *UserPrefs ) Validate() ( err error ) {
 	if prefs.Theme != nil {
 		if err = prefs.Theme.Validate(); err != nil { return }
 	}
+	if prefs.FolderSort != "" && prefs.FolderSort != FolderSortManual { return ErrBadInput }
 	if prefs.AllDayReminderHour < 0 || prefs.AllDayReminderHour > 23 { return ErrBadInput }
 	leads := []int{}
 	for _ , lead := range prefs.ReminderLeadMinutes {

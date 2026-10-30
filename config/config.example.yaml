@@ -1,3 +1,22 @@
+# ===========================================================================
+# config.example.yaml -- every setting with its default. Safe to commit: it
+# has no secret key. config.yaml itself is gitignored, so a fresh clone starts
+# from this file.
+#
+# To use it:
+#
+#   cp config/config.example.yaml config/config.yaml
+#   chmod 600 config/config.yaml
+#   openssl rand -hex 32        # paste the output into server.secret_key
+#
+# Or skip the copy: `todoboard config init` (or `go run . config init`)
+# writes config/config.yaml with a fresh key already in it. scripts/run.sh
+# and docker/run.sh do that for you on their first run.
+#
+# This file is generated from config/defaults.yaml. After changing a default
+# there, regenerate it with `go run . config example`.
+# ===========================================================================
+
 # TodoBoard -- the one configuration file.
 #
 # Everything is configured here: the server, the Docker container, and the
@@ -5,20 +24,21 @@
 # a key you leave out takes the value shown in this file.
 #
 # This file holds the secret key, so treat it like one: mode 0600, never
-# committed (it is in .gitignore), never baked into an image (.dockerignore).
+# committed (it is in .gitignore), never baked into an image (docker/Dockerfile.dockerignore).
 #
 # Where it is read from, first match wins:
 #
-#   ./config.yaml                      a source checkout; also what
-#                                      dockerRun.sh and build.sh read
+#   ./config/config.yaml               a source checkout; also what every
+#                                      script in scripts/ and docker/ reads
 #   ~/.config/todoboard/config.yaml   a portable binary run anywhere else
 #
 # If neither exists the server writes the second one, with a fresh secret key,
-# on first run. `todoboard config init` writes ./config.yaml the same way,
-# and `todoboard config check` validates whichever file is in use.
+# on first run. `todoboard config init` writes ./config/config.yaml the
+# same way, and `todoboard config check` validates whichever file is in use.
 #
-# Relative paths in server: resolve against the directory holding this file.
-# Relative paths in docker: and build: resolve against the project directory.
+# Relative paths resolve against the project directory: the folder that holds
+# config/ (in a checkout, and /app in the container), or the folder holding
+# this file when it is not in a config/ folder (~/.config/todoboard/).
 #
 # An unknown key is an error, not a silently ignored typo.
 
@@ -36,13 +56,24 @@ server:
   host: 127.0.0.1
   port: 8080
 
+  # The address people open this at, e.g. https://app.example.com -- just the
+  # origin, no path. Login, invite and API-key links are printed with it.
+  # Empty means the links use http://host:port above (inside the container,
+  # docker.bind_address:docker.host_port), which is right on this machine
+  # and wrong behind a reverse proxy: the server cannot see what is in front.
+  # Push notifications use it for their "open this card" link too -- a
+  # background reminder has no request to read the origin from -- and are
+  # sent without a link while it is empty.
+  public_url: ""
+
   # Where the database, the control socket and app storage live. Empty means
   # ~/.config/todoboard/. Ignored inside the container, which always
   # uses /app/data (mounted from docker.data_dir).
   app_dir: ""
 
   # Checked on disk first, embedded copy otherwise. Empty language_file means
-  # <app_dir>/language.yaml if it exists, else language.yaml beside this file.
+  # <app_dir>/language.yaml if it exists, else language.yaml beside this file
+  # (config/language.yaml in a checkout).
   static_dir: ./static
   language_file: ""
 
@@ -86,12 +117,6 @@ server:
   # server, over a unix socket in the app directory (bolt allows only one
   # process to open the file). Off means `manage` needs the server stopped.
   control_socket: true
-
-  # The address people open the app at, e.g. https://boards.example.com.
-  # Used only to put a "open this card" link inside push notifications -- a
-  # background reminder has no request to read the origin from. Empty means
-  # notifications are sent without a link.
-  public_url: ""
 
   # POST /mcp: the Model Context Protocol, so an agent (Claude Code, any MCP
   # client that can send a header) can use this app with an API key, at that
@@ -154,7 +179,7 @@ build:
   binary_name: todoboard
   output_dir: dist
 
-  # `./build.sh <os/arch> ...` overrides this list for one run.
+  # `scripts/build.sh <os/arch> ...` overrides this list for one run.
   targets:
     - darwin/amd64
     - darwin/arm64

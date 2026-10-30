@@ -70,6 +70,8 @@ const UserSettings = {
       hour12: typeof display.hour12 === "boolean" ? display.hour12 : null,
       number_cards: !!display.number_cards,
       plain_icons: !!display.plain_icons,
+      swipe_columns: !!display.swipe_columns,
+      folder_sort: display.folder_sort || "",
     } , changes );
     try {
       const saved = await Api.post( "/api/account/display" , body );
@@ -124,6 +126,10 @@ const UserSettings = {
       UserSettings.save( me , { plain_icons: checked } );
     } ) );
     section.appendChild( Dom.el( "p" , { class: "muted small-print" , text: T( "user_settings.plain_icons_hint" ) } ) );
+    section.appendChild( Ui.checkbox( "user_settings.swipe_columns" , me.display && me.display.swipe_columns , function ( checked ) {
+      UserSettings.save( me , { swipe_columns: checked } );
+    } ) );
+    section.appendChild( Dom.el( "p" , { class: "muted small-print" , text: T( "user_settings.swipe_columns_hint" ) } ) );
     return section;
   },
 

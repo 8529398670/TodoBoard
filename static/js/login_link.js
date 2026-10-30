@@ -8,14 +8,14 @@ const LoginLink = {
     Dom.show( Dom.get( "own-login-panel" ) , true );
     Dom.get( "own-login-button" ).addEventListener( "click" , this.onCreate.bind( this ) );
     Dom.get( "own-login-copy" ).addEventListener( "click" , function () {
-      Dom.copy( Dom.get( "own-login-value" ) , Dom.get( "own-login-copied" ) );
+      Dom.copy( Dom.get( "own-login-value" ) );
     } );
   },
 
   async onCreate() {
     let issued = null;
     try {
-      issued = await Api.ownLoginLink();
+      issued = await Api.createMyLoginLink();
     } catch ( error ) {
       App.showError( error.message );
       return;

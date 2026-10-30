@@ -15,9 +15,14 @@ import (
 // its members, so a folder belongs to a user, and which folder a board is in
 // is kept on that user's BoardRef. One level only; folders hold boards, not
 // other folders.
+//
+// Position is the person's own order, used when they sort folders by hand
+// (UserPrefs.FolderSort). Folders made before it existed are all 0, so they
+// keep reading A to Z until first dragged.
 type Folder struct {
 	ID        uint64    `json:"id"`
 	Name      string    `json:"name"`
+	Position  float64   `json:"position"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
@@ -30,7 +35,8 @@ func folderKey( user_id uint64 , folder_id uint64 ) ( key []byte ) {
 	return
 }
 
-// ListFolders returns a person's folders by name.
+// ListFolders returns a person's folders in their own order, ties by name.
+// Sorting A to Z instead is the page's choice.
 func ListFolders( store *db.Store , user_id uint64 ) ( folders []*Folder , err error ) {
 	folders = []*Folder{}
 	err = store.ForEachPrefix( db.BucketFolders , db.Key( user_id ) , func() any { return &Folder{} } ,
@@ -38,9 +44,25 @@ func ListFolders( store *db.Store , user_id uint64 ) ( folders []*Folder , err e
 			folders = append( folders , item.( *Folder ) )
 			return true
 		} )
+	sortFolders( folders )
+	return
+}
+
+func sortFolders( folders []*Folder ) {
 	sort.SliceStable( folders , func( i int , j int ) bool {
+		if folders[ i ].Position != folders[ j ].Position { return folders[ i ].Position < folders[ j ].Position }
 		return strings.ToLower( folders[ i ].Name ) < strings.ToLower( folders[ j ].Name )
 	} )
+}
+
+func listFoldersTx( tx *db.Tx , user_id uint64 ) ( folders []*Folder , err error ) {
+	folders = []*Folder{}
+	err = tx.ForEachPrefix( db.BucketFolders , db.Key( user_id ) , func() any { return &Folder{} } ,
+		func( key []byte , item any ) bool {
+			folders = append( folders , item.( *Folder ) )
+			return true
+		} )
+	sortFolders( folders )
 	return
 }
 
@@ -51,17 +73,17 @@ func CreateFolder( store *db.Store , user_id uint64 , name string ) ( folder *Fo
 		return
 	}
 	err = store.Write( func( tx *db.Tx ) ( tx_err error ) {
-		count := 0
-		tx_err = tx.ForEachPrefix( db.BucketFolders , db.Key( user_id ) , func() any { return &Folder{} } ,
-			func( key []byte , item any ) bool {
-				count += 1
-				return true
-			} )
+		existing , tx_err := listFoldersTx( tx , user_id )
 		if tx_err != nil { return }
-		if count >= maxFoldersPerUser { return ErrBadInput }
+		if len( existing ) >= maxFoldersPerUser { return ErrBadInput }
+		// A new folder goes last in the person's own order.
+		position := positionStep
+		for _ , other := range existing {
+			if other.Position >= position { position = other.Position + positionStep }
+		}
 		id , tx_err := tx.NextSequence( db.BucketFolders )
 		if tx_err != nil { return }
-		folder = &Folder{ ID: id , Name: clean , CreatedAt: time.Now().UTC() }
+		folder = &Folder{ ID: id , Name: clean , Position: position , CreatedAt: time.Now().UTC() }
 		tx_err = tx.Put( db.BucketFolders , folderKey( user_id , id ) , folder )
 		return
 	} )
@@ -86,6 +108,31 @@ func RenameFolder( store *db.Store , user_id uint64 , folder_id uint64 , name st
 		return
 	} )
 	if err != nil { folder = nil }
+	return
+}
+
+// SetFolderOrder writes a person's whole folder order at once: ids first to
+// last. Folders not named keep their place after the named ones.
+func SetFolderOrder( store *db.Store , user_id uint64 , ids []uint64 ) ( err error ) {
+	err = store.Write( func( tx *db.Tx ) ( tx_err error ) {
+		folders , tx_err := listFoldersTx( tx , user_id )
+		if tx_err != nil { return }
+		rank := map[uint64]int{}
+		for index , id := range ids {
+			if _ , seen := rank[ id ]; seen == false { rank[ id ] = index }
+		}
+		sort.SliceStable( folders , func( i int , j int ) bool {
+			ri , oki := rank[ folders[ i ].ID ]
+			rj , okj := rank[ folders[ j ].ID ]
+			if oki && okj { return ri < rj }
+			return oki && okj == false
+		} )
+		for index , folder := range folders {
+			folder.Position = float64( index + 1 ) * positionStep
+			if tx_err = tx.Put( db.BucketFolders , folderKey( user_id , folder.ID ) , folder ); tx_err != nil { return }
+		}
+		return
+	} )
 	return
 }
 

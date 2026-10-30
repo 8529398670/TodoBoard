@@ -43,7 +43,7 @@ const ColorPicker = {
     const native = Dom.el( "input" , { class: "swatch-native" , attrs: { type: "color" , tabindex: "-1" , "aria-hidden": "true" } } );
     const customSwatch = add( "custom" , T( "color_picker.custom" ) , " swatch-custom" );
 
-    const hexField = Dom.el( "input" , { class: "color-hex" , attrs: {
+    const hexField = Dom.el( "input" , { class: "color-hex form-control" , attrs: {
       maxlength: "7" , spellcheck: "false" , autocapitalize: "off" , placeholder: "#rrggbb" , "aria-label": T( "color_picker.hex_label" ) ,
     } } );
     const warning = Dom.el( "p" , { class: "color-warning small-print" , text: T( "color_picker.low_contrast" ) } );

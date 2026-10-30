@@ -8,7 +8,7 @@
 # because of three choices working together:
 #
 #   CGO_ENABLED=0   static linking, so there is no libc version to match
-#   go:embed        the frontend lives inside the binary (see embed.go)
+#   go:embed        the frontend lives inside the binary (see main.go)
 #   bolt            the database is one file the binary creates on first run
 #
 # Docker is still the better answer for a long-lived internet-facing
@@ -18,24 +18,32 @@
 # runtime, a Raspberry Pi, a USB stick.
 #
 # The binary name, the output directory, and the target list are the build:
-# section of config.yaml. Targets given on the command line replace the list
-# for one run:
+# section of config/config.yaml. Targets given on the command line replace
+# the list for one run:
 #
-#   ./build.sh                  build every target in build.targets
-#   ./build.sh linux/amd64      build one
-#   ./build.sh darwin/arm64 linux/arm64
+#   scripts/build.sh                  build every target in build.targets
+#   scripts/build.sh linux/amd64      build one
+#   scripts/build.sh darwin/arm64 linux/arm64
 set -euo pipefail
-cd "$( dirname "${BASH_SOURCE[0]}" )"
+cd "$( dirname "${BASH_SOURCE[0]}" )/.."
 
 # config.yaml is read through the app itself rather than parsed here, so this
 # script gets the same defaults and validation as the server -- and Go is
-# already required to build. With no config.yaml yet (a fresh clone), the
-# defaults from server/config/defaults.yaml apply.
+# already required to build. With no config/config.yaml yet (a fresh clone),
+# the defaults from config/defaults.yaml apply.
 #
 # Assigned before it is eval'd so that a config error stops the script:
 # `eval "$( failing )"` would quietly eval nothing and carry on.
-BUILD_CONFIG="$( go run . config shell -file ./config.yaml build )"
+if ! BUILD_CONFIG="$( go run . config shell -file ./config/config.yaml build )"; then
+  echo "ERROR: could not read the build: section of config/config.yaml (above)." >&2
+  exit 1
+fi
 eval "$BUILD_CONFIG"
+if [ -f ./config/config.yaml ]; then
+  CONFIG_NOTE="$( pwd )/config/config.yaml"
+else
+  CONFIG_NOTE="none yet -- the defaults in config/defaults.yaml"
+fi
 
 BINARY_NAME="$build_binary_name"
 OUTPUT_DIR="$build_output_dir"
@@ -49,21 +57,33 @@ fi
 # Version metadata, stamped into the binary and readable later with
 # `./todoboard version`. Being able to ask a binary what it is beats
 # guessing from a filename once a few copies are in circulation.
-# The version is when it was built -- 2026.10.23-1430 -- and nothing from
-# git, so it reads the same whatever state the checkout is in.
-VERSION="$( date +%Y.%m.%d-%H%M )"
-BUILD_DATE="$( date -u +%Y-%m-%dT%H:%M:%SZ )"
+# The version is the UTC build time (2026.10.23-1412): it sorts, it says
+# when, and the commit hash is stamped separately alongside it.
+VERSION="$( date -u +%Y.%m.%d-%H%M )"
+COMMIT="$( git rev-parse --short HEAD 2>/dev/null || echo "unknown" )"
+# The commit's own timestamp rather than "now", so building the same commit
+# twice produces the same bytes. Outside a git checkout there is no commit to
+# anchor to, and the current time is the honest answer. (`date -r` is BSD and
+# macOS; `date -d @` is GNU.)
+BUILD_EPOCH="$( git log -1 --format=%ct 2>/dev/null || date +%s )"
+BUILD_DATE="$( date -u -r "$BUILD_EPOCH" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
+  || date -u -d "@$BUILD_EPOCH" +%Y-%m-%dT%H:%M:%SZ )"
 
 # -s -w drop the symbol and DWARF tables (smaller, less detail for anyone
 # poking at a deployed binary). -trimpath keeps build-machine paths out of it,
 # which also makes the output reproducible across checkout locations.
 LDFLAGS="-s -w"
 LDFLAGS="$LDFLAGS -X main.version=${VERSION}"
+LDFLAGS="$LDFLAGS -X main.commit=${COMMIT}"
 LDFLAGS="$LDFLAGS -X main.buildDate=${BUILD_DATE}"
 
 mkdir -p "$OUTPUT_DIR"
+OUTPUT_ABS="$( cd "$OUTPUT_DIR" && pwd )"
 
-echo "Building ${BINARY_NAME} ${VERSION}"
+echo "Building ${BINARY_NAME} ${VERSION} (${COMMIT})"
+echo "  config   ${CONFIG_NOTE}"
+echo "  targets  ${TARGETS[*]}$( [ $# -gt 0 ] && echo "  (from the command line)" || echo "  (build.targets)" )"
+echo "  output   ${OUTPUT_ABS}/  (build.output_dir)"
 echo ""
 
 FAILED=()
@@ -110,8 +130,8 @@ To run one:
   ./${OUTPUT_DIR}/${BINARY_NAME}_${VERSION}_\$(go env GOOS)_\$(go env GOARCH)
 
 That is the whole command. No files need to sit beside it -- the frontend is
-compiled in. Its one config file is ./config.yaml if there is one in the
-directory it is started from, else ~/.config/todoboard/config.yaml,
+compiled in. Its one config file is ./config/config.yaml if there is one under
+the directory it is started from, else ~/.config/todoboard/config.yaml,
 which it creates on first run along with the rest of its state:
 
   ~/.config/todoboard/
@@ -140,8 +160,8 @@ The binary is also the admin CLI:
   ./${BINARY_NAME} manage reissue-login -user-id 1
   ./${BINARY_NAME} version
 
-If a static/ directory sits beside config.yaml, or a language.yaml in the app
-directory, those are used instead of the embedded copies -- which is what makes
+If a static/ directory sits in the project directory (the folder holding
+config/), or a language.yaml in the app directory, those are used instead of the embedded copies -- which is what makes
 editing the frontend during development work, and lets an operator reword the
 UI without a rebuild.
 NOTE

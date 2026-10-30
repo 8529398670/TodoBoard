@@ -239,9 +239,9 @@ func ( handlers *Handlers ) DeleteUser( c fiber.Ctx ) ( err error ) {
 	return
 }
 
-// setUserDisabled and revokeAccess are the rules behind their routes, shared
-// with the MCP tools of the same name so both doors refuse for the same
-// reasons in the same words.
+// setUserDisabled carries every rule for switching an account off or on, for
+// SetUserDisabled and the MCP admin_set_user_disabled tool. Its refusal type
+// lives in principal.go, where the board routes share it.
 func ( handlers *Handlers ) setUserDisabled( self_id uint64 , user_id uint64 , disabled bool ) ( refused *refusal ) {
 	if _ , get_err := models.GetUser( handlers.Store , user_id ); get_err != nil {
 		refused = &refusal{ fiber.StatusNotFound , "no such user" }
@@ -268,6 +268,8 @@ func ( handlers *Handlers ) setUserDisabled( self_id uint64 , user_id uint64 , d
 	return
 }
 
+// revokeAccess carries every rule for cutting an account's credentials off,
+// for RevokeAccess and the MCP admin_revoke_access tool.
 func ( handlers *Handlers ) revokeAccess( self_id uint64 , user_id uint64 ) ( revoked models.Revoked , refused *refusal ) {
 	if _ , get_err := models.GetUser( handlers.Store , user_id ); get_err != nil {
 		refused = &refusal{ fiber.StatusNotFound , "no such user" }

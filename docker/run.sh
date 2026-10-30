@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build (via scripts/docker.sh) and run the container.
+# Build (via docker/lib.sh) and run the container.
 #
 # There is deliberately no docker-compose here. This app is one container, so
 # compose would add a second configuration format that hides the same flags
@@ -7,14 +7,14 @@
 # to bottom is easier to audit, and every hardening choice below is visible on
 # the line where it takes effect.
 #
-# Every value below comes from config.yaml: the docker: section for how the
+# Every value below comes from config/config.yaml: the docker: section for how the
 # container runs, and server.port for the container side of the published
 # port. Nothing is read from the environment and nothing is passed in with -e
 # -- the container reads the same config.yaml, mounted read-only.
 set -euo pipefail
-cd "$( dirname "${BASH_SOURCE[0]}" )"
+cd "$( dirname "${BASH_SOURCE[0]}" )/.."
 
-source scripts/docker.sh
+source docker/lib.sh
 build_image
 
 # First run on this checkout: config.yaml is gitignored, so a fresh clone has
@@ -36,8 +36,11 @@ particular:
   docker.bind_address     127.0.0.1 keeps it reachable only from this host
   docker.host_port        the port published there
 
-Then run ./dockerRun.sh again. Back config.yaml up: its secret_key is the only
-thing that can read the database.
+It will be served at ${docker_url}
+(from ${docker_url_source}).
+
+Then run docker/run.sh again. Back config/config.yaml up: its secret_key is the
+only thing that can read the database.
 
 NOTE
   exit 0
@@ -148,18 +151,37 @@ if [ "$DATA_SHARED" != "true" ]; then
   exit 1
 fi
 
-if docker ps -a --format '{{.Names}}' | grep -qx "$docker_container"; then
-  echo "Replacing existing container $docker_container..."
+EXISTING="$( docker ps -a --filter "name=^${docker_container}\$" --format '{{.Status}}' )"
+if [ -n "$EXISTING" ]; then
+  echo "Replacing the existing ${docker_container} container (${EXISTING})..."
   docker rm -f "$docker_container" >/dev/null
 fi
 
-echo "Starting $docker_container on ${docker_bind_address}:${docker_host_port}..."
+# With our own container gone, anything still on the host port is something
+# else, and docker run would fail with a bind error after creating the
+# container. Name it instead.
+if command -v lsof >/dev/null 2>&1; then
+  PORT_PID="$( lsof -nP -iTCP:"$docker_host_port" -sTCP:LISTEN -t 2>/dev/null | head -n 1 )"
+  if [ -n "$PORT_PID" ]; then
+    PORT_OWNER="$( ps -p "$PORT_PID" -o command= 2>/dev/null | awk '{ n = split( $1 , part , "/" ); $1 = part[ n ]; print }' | cut -c1-100 )"
+    OTHER_CONTAINER="$( docker ps --filter "publish=${docker_host_port}" --format '{{.Names}}' | head -n 1 )"
+    echo "" >&2
+    echo "ERROR: host port ${docker_host_port} (docker.host_port) is already in use by" >&2
+    echo "       ${OTHER_CONTAINER:+container ${OTHER_CONTAINER}, via }${PORT_OWNER:-unknown} (pid ${PORT_PID})." >&2
+    echo "" >&2
+    echo "       If that is scripts/run.sh serving this checkout locally, stop it first." >&2
+    echo "       Otherwise pick a free docker.host_port in ${CONFIG_FILE}." >&2
+    exit 1
+  fi
+fi
+
+echo "Starting ${docker_container} on ${docker_bind_address}:${docker_host_port}..."
 docker run -d \
   --name "$docker_container" \
   --restart "$docker_restart" \
   -p "$docker_publish" \
   -v "${DATA_DIR}:/app/data" \
-  -v "${CONFIG_FILE}:/app/config.yaml:ro" \
+  -v "${CONFIG_FILE}:${CONTAINER_CONFIG}:ro" \
   --read-only \
   --tmpfs "/tmp:rw,noexec,nosuid,size=${docker_tmpfs_size}" \
   --cap-drop ALL \
@@ -169,12 +191,46 @@ docker run -d \
   --cpus "$docker_cpus" \
   "${docker_image}:latest"
 
+# Running is not the same as working. Wait for the image's own HEALTHCHECK
+# (/app/server health) to pass, and if the container dies or turns unhealthy,
+# show why instead of announcing success.
+echo "Waiting for it to answer (up to 30 seconds)..."
+STATUS="starting"
+for _ in $( seq 1 60 ); do
+  sleep 0.5
+  STATE="$( docker inspect -f '{{.State.Status}}' "$docker_container" 2>/dev/null || echo "gone" )"
+  if [ "$STATE" != "running" ]; then
+    STATUS="$STATE"
+    break
+  fi
+  if docker exec "$docker_container" /app/server health >/dev/null 2>&1; then
+    STATUS="healthy"
+    break
+  fi
+done
+
+if [ "$STATUS" != "healthy" ]; then
+  echo "" >&2
+  if [ "$STATUS" = "starting" ]; then
+    echo "ERROR: ${docker_container} is running but not answering after 30 seconds." >&2
+  else
+    echo "ERROR: ${docker_container} stopped (status: ${STATUS}, exit code $( docker inspect -f '{{.State.ExitCode}}' "$docker_container" 2>/dev/null || echo "?" ))." >&2
+  fi
+  echo "       Its last log lines:" >&2
+  echo "" >&2
+  docker logs --tail 40 "$docker_container" 2>&1 | sed 's/^/         /' >&2
+  exit 1
+fi
+
 cat <<NOTE
 
-Running. Two things on the host make up this deployment:
+Ready: ${docker_url}
+       (from ${docker_url_source})
+
+Two things on the host make up this deployment:
 
   ${CONFIG_FILE}
-      every setting, and the secret key (mounted read-only at /app/config.yaml)
+      every setting, and the secret key (mounted read-only at ${CONTAINER_CONFIG})
   ${DATA_DIR}/
       app.db and storage/ (mounted at /app/data)
 
@@ -198,7 +254,13 @@ What the flags above are doing:
 
 NOTE
 
-if [ "$server_secure_cookies" = "false" ]; then
+if [ "$server_secure_cookies" = "true" ] && [ "${docker_url#http://}" != "$docker_url" ]; then
+  echo "WARNING: server.secure_cookies is true but the address is ${docker_url}."
+  echo "         Over plain http the browser drops the session cookie and signing in"
+  echo "         silently does nothing. Put HTTPS in front and set server.public_url,"
+  echo "         or set secure_cookies: false for local use only."
+  echo ""
+elif [ "$server_secure_cookies" = "false" ]; then
   echo "Note: server.secure_cookies is false. Right for plain http://localhost; wrong"
   echo "      behind an HTTPS proxy, where it should be true."
   echo ""
@@ -210,26 +272,33 @@ if [ "$server_trust_proxy" = "false" ]; then
   echo ""
 fi
 
+# A fresh database makes the server create the owner and print their login
+# link to its log. Show it here rather than sending someone to dig for it.
+FIRST_LINK="$( docker logs "$docker_container" 2>&1 | grep -A 12 "ONE-TIME LOGIN LINK -- first-run" || true )"
+if [ -n "$FIRST_LINK" ]; then
+  echo "This is a fresh database. The owner's one-time login link:"
+  echo ""
+  echo "$FIRST_LINK"
+  echo ""
+else
+  echo "Existing database (${DATA_DIR}/app.db)."
+fi
+
 cat <<NOTE
-On a fresh database the server creates the first admin and prints a one-time
-login link. Read it with:
+A new login link for the owner any time, from this checkout:
 
-  docker logs $docker_container
+  scripts/login.sh --docker
 
-Then open https://your-host/login/<the-link> to sign in. Day to day, mint
-further logins from the admin panel in the running app -- that goes through
-the server and needs no downtime.
+Day to day, mint further logins from the admin panel in the running app. The
+CLI works against the running container over the control socket inside the
+data directory:
 
-The CLI is for when you cannot get in at all. It works against the running
-container -- the server listens on a control socket inside the data directory,
-so the CLI never has to open the database itself:
-
-  docker exec -it $docker_container /app/server manage reissue-login -user-id 1
+  docker exec -it ${docker_container} /app/server manage list-users
 
 If the container is stopped, run a one-off with the same two mounts:
 
   docker run --rm -v "${DATA_DIR}:/app/data" \\
-    -v "${CONFIG_FILE}:/app/config.yaml:ro" \\
+    -v "${CONFIG_FILE}:${CONTAINER_CONFIG}:ro" \\
     ${docker_image}:latest manage reissue-login -user-id 1
 
 NOTE

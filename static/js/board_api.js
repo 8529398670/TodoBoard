@@ -99,6 +99,11 @@ class BoardClient {
   }
   patchCard( cardId , fields )     { return this.post( "/" + this.boardId + "/cards/" + cardId , fields ); }
   deleteCard( cardId )             { return this.post( "/" + this.boardId + "/cards/" + cardId + "/delete" ); }
+  // Deleted cards wait in the board's trash (see trash.js).
+  trash()                          { return this.get( "/" + this.boardId + "/trash" ); }
+  restoreFromTrash( cardId )       { return this.post( "/" + this.boardId + "/trash/" + cardId + "/restore" ); }
+  purgeCard( cardId )              { return this.post( "/" + this.boardId + "/trash/" + cardId + "/delete" ); }
+  emptyTrash()                     { return this.post( "/" + this.boardId + "/trash/empty" ); }
 
   addItem( cardId , text )         { return this.post( "/" + this.boardId + "/cards/" + cardId + "/checklist" , { text: text } ); }
   updateItem( cardId , itemId , fields ) {

@@ -8,8 +8,9 @@
 // was just before the call, and both directions are sent to the server like
 // any other edit, so undo is shared truth, not a local illusion.
 //
-// Putting back something deleted makes it again, and the server gives the
-// new copy a new id. Entries keep the ids they were recorded with and look
+// A deleted card goes to the board's trash and keeps its id, so undoing a
+// delete restores it from there. Anything else deleted is made again, and
+// the server gives the new copy a new id. Entries keep the ids they were recorded with and look
 // them up through `ids` when they run, so older entries still find the card,
 // list, label or checklist item they meant.
 //
@@ -36,6 +37,7 @@ const History = {
   ],
 
   attach( client , getData , reload ) {
+    this.client = client;
     this.getData = getData;
     this.reload = reload;
     this.methods.forEach( ( name ) => {
@@ -188,6 +190,13 @@ const History = {
     return created.id;
   },
 
+  // Take a card back out of the trash and put it where it was: restoring
+  // lands it at the end of a column, so its old place is patched back on.
+  async untrash( cardId , listId , position ) {
+    await this.client.restoreFromTrash( cardId );
+    await this.raw.patchCard( cardId , { list_id: listId , position: position } );
+  },
+
   async addItemBack( cardId , item ) {
     const card = await this.raw.addItem( cardId , item.text );
     const newId = this.newestItem( card );
@@ -243,7 +252,7 @@ const History = {
       if ( !card ) return null;
       const copy = this.copy( card );
       return {
-        undo: () => this.restoreCard( copy ),
+        undo: () => this.untrash( this.id( "card" , copy.id ) , this.id( "list" , copy.list_id ) , copy.position ),
         redo: () => this.raw.deleteCard( this.id( "card" , copy.id ) ),
       };
     },
@@ -312,7 +321,8 @@ const History = {
       };
     },
 
-    // A list goes with its cards, so putting it back puts them back too.
+    // A list's cards go to the trash with it, so putting it back takes them
+    // out again, into the remade list.
     deleteList( before , args ) {
       const listId = args[ 0 ];
       const list = before.board.lists.find( function ( item ) { return item.id === listId; } );
@@ -325,7 +335,7 @@ const History = {
           const created = await this.raw.createList( copy.title , copy.position );
           this.remap( "list" , listId , created.id );
           if ( copy.archived ) await this.raw.updateList( created.id , { archived: true } );
-          for ( const card of cards ) await this.restoreCard( card );
+          for ( const card of cards ) await this.untrash( this.id( "card" , card.id ) , created.id , card.position );
         },
         redo: () => this.raw.deleteList( this.id( "list" , listId ) ),
       };

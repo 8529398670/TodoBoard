@@ -1,7 +1,7 @@
-// Page logic for the account + admin screen this template ships with.
+// Page logic for the home page: the boards, your account and settings, and
+// the admin screens, one sidebar screen at a time (nav.js).
 //
-// Most projects will replace much of this file. What is worth keeping is the
-// shape: load the language file, ask /api/me once, then branch on
+// The shape: load the language file, ask /api/me once, then branch on
 // authenticated/role. Do not re-check the session anywhere else -- the server
 // is the authority, and a second client-side notion of "am I logged in" is
 // how the two drift apart.
@@ -114,35 +114,41 @@ const App = {
   },
 
   async renderSignedIn( me ) {
-    Dom.show( Dom.get( "app-nav" ) , true );
-
-    // "/" is the boards home; the account and admin screen lives at /account.
-    if ( window.location.pathname.indexOf( "/account" ) !== 0 ) {
-      await Home.init( me );
-      return;
+    // The account screens used to be a page of their own at /account, and
+    // links to it are still around (/account#notifications from a board's
+    // Notifications panel): land on the same screen here.
+    if ( window.location.pathname.indexOf( "/account" ) === 0 ) {
+      window.history.replaceState( null , "" , "/" + ( window.location.hash || "#account" ) );
     }
+
     Dom.show( Dom.get( "signed-in" ) , true );
-    UserSettings.render( Dom.get( "user-settings-root" ) , me );
-    await NotifySettings.init( me );
+    Dom.show( Dom.get( "app-nav" ) , true );
+    this.labelProfile();
     Dom.get( "display-name" ).value = me.display_name;
 
     Dom.get( "rename-form" ).addEventListener( "submit" , this.onRename.bind( this ) );
     Dom.get( "logout-button" ).addEventListener( "click" , this.onLogout.bind( this ) );
 
-    // Each screen owns its own file and its own init(). This is the one line
-    // that knows the API keys screen exists.
+    // Each screen owns its own file and its own init(). The boards come
+    // first: they are what most visits are for.
+    await Home.init( me );
+    UserSettings.render( Dom.get( "user-settings-root" ) , me );
+    await NotifySettings.init( me );
     Pin.init( me );
     LoginLink.init( me );
     Backup.initAccount( me );
     await Keys.init( me );
 
-    if ( me.role !== "admin" ) return;
+    if ( me.role === "admin" ) {
+      Dom.show( Dom.get( "admin-panel" ) , true );
+      Dom.get( "create-user-form" ).addEventListener( "submit" , this.onCreateUser.bind( this ) );
+      Dom.get( "copy-link-button" ).addEventListener( "click" , this.onCopyLink.bind( this ) );
+      await this.refreshUsers();
+      await Invites.init( me );
+    }
 
-    Dom.show( Dom.get( "admin-panel" ) , true );
-    Dom.get( "create-user-form" ).addEventListener( "submit" , this.onCreateUser.bind( this ) );
-    Dom.get( "copy-link-button" ).addEventListener( "click" , this.onCopyLink.bind( this ) );
-    await this.refreshUsers();
-    await Invites.init( me );
+    // Last, so the sidebar offers exactly the screens the lines above un-hid.
+    Nav.init();
   },
 
   async onRename( event ) {
@@ -151,10 +157,22 @@ const App = {
     try {
       await Api.rename( value );
       this.currentUser.display_name = value;
-      Dom.flash( Dom.get( "rename-saved" ) );
+      this.labelProfile();
+      Dom.toast( I18n.get( "ui.saved" ) , "ok" );
     } catch ( error ) {
       this.showError( error.message );
     }
+  },
+
+  // The header's profile icon opens the Account screen; its tooltip and
+  // accessible name say who is signed in, which the header used to spell out.
+  labelProfile() {
+    const user = this.currentUser;
+    const label = I18n.get( "nav.account" );
+    const who = user.display_name + " (" + user.role + ")";
+    const link = Dom.get( "profile-link" );
+    link.setAttribute( "title" , label ? label + " · " + who : who );
+    link.setAttribute( "aria-label" , link.getAttribute( "title" ) );
   },
 
   async onLogout() {
@@ -189,7 +207,7 @@ const App = {
   },
 
   async onCopyLink() {
-    await Dom.copy( Dom.get( "login-link-value" ) , Dom.get( "copied-notice" ) );
+    await Dom.copy( Dom.get( "login-link-value" ) );
   },
 
   async refreshUsers() {
@@ -205,9 +223,10 @@ const App = {
     Dom.clear( body );
     users.forEach( function ( user ) {
       const statusKey = user.disabled ? "admin.status_disabled" : "admin.status_active";
+      const statusTone = user.disabled ? "secondary" : "success";
 
       const reissueButton = Dom.el( "button" , {
-        class: "secondary small",
+        class: "btn btn-sm btn-outline-secondary",
         text: I18n.get( "admin.reissue_button" ),
         on: { click: async function () {
           try {
@@ -228,7 +247,7 @@ const App = {
       // account enabled. Not offered on your own row -- the server refuses
       // that, since it would sign you out with no way back in.
       const revokeButton = isProtected ? null : Dom.el( "button" , {
-        class: "secondary small",
+        class: "btn btn-sm btn-outline-danger",
         text: I18n.get( "admin.revoke_button" ),
         on: { click: async function () {
           const question = I18n.get( "admin.revoke_confirm" ).replace( "{name}" , user.display_name );
@@ -241,7 +260,7 @@ const App = {
       } );
 
       const toggleButton = isProtected ? null : Dom.el( "button" , {
-        class: "secondary small",
+        class: "btn btn-sm btn-outline-secondary",
         text: I18n.get( user.disabled ? "admin.enable_button" : "admin.disable_button" ),
         on: { click: async function () {
           try {
@@ -255,7 +274,7 @@ const App = {
       // admin may delete a user; only the owner may delete another admin.
       const canDelete = !isProtected && ( user.role !== "admin" || App.currentUser.is_owner );
       const deleteButton = !canDelete ? null : Dom.el( "button" , {
-        class: "secondary small",
+        class: "btn btn-sm btn-outline-danger",
         text: I18n.get( "admin.delete_button" ),
         on: { click: async function () {
           const question = I18n.get( "admin.delete_confirm" ).replace( "{name}" , user.display_name );
@@ -276,7 +295,7 @@ const App = {
       body.appendChild( Dom.el( "tr" , { children: [
         Dom.el( "td" , { text: user.display_name } ),
         Dom.el( "td" , { text: roleText } ),
-        Dom.el( "td" , { text: I18n.get( statusKey ) } ),
+        Dom.el( "td" , { children: [ Dom.badge( I18n.get( statusKey ) , statusTone ) ] } ),
         Dom.el( "td" , { children: [
           Dom.el( "div" , { class: "row-actions" , children: [ reissueButton , revokeButton , toggleButton , deleteButton ].filter( Boolean ) } ),
         ] } ),

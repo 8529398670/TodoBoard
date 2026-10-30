@@ -39,7 +39,8 @@ func ( handlers *Handlers ) GetMe( c fiber.Ctx ) ( err error ) {
 	return
 }
 
-// meRow is shared with the MCP whoami tool.
+// meRow is GetMe's answer, shared with the MCP whoami tool so the two cannot
+// describe the same caller differently.
 func ( handlers *Handlers ) meRow( actor *security.Actor ) ( payload fiber.Map , err error ) {
 	user := actor.User
 
@@ -48,7 +49,7 @@ func ( handlers *Handlers ) meRow( actor *security.Actor ) ( payload fiber.Map ,
 	owner_id , err := models.OwnerID( handlers.Store )
 	if err != nil { return }
 
-	display := fiber.Map{ "timezone": "" , "hour12": nil , "number_cards": false , "plain_icons": false , "theme": nil , "own_theme_on_boards": false }
+	display := fiber.Map{ "timezone": "" , "hour12": nil , "number_cards": false , "plain_icons": false , "theme": nil , "own_theme_on_boards": false , "swipe_columns": false , "folder_sort": "" }
 	if prefs , prefs_err := models.GetUserPrefs( handlers.Store , user.ID ); prefs_err == nil {
 		display = displayPayload( prefs )
 	}
@@ -110,11 +111,13 @@ type displayRequest struct {
 	Theme            *models.Theme `json:"theme"`
 	ClearTheme       bool          `json:"clear_theme"`
 	OwnThemeOnBoards *bool         `json:"own_theme_on_boards"`
+	SwipeColumns     *bool         `json:"swipe_columns"`
+	FolderSort       *string       `json:"folder_sort"`
 	CSRFToken        string        `json:"csrf_token"`
 }
 
 func displayPayload( prefs *models.UserPrefs ) ( payload fiber.Map ) {
-	payload = fiber.Map{ "timezone": prefs.DisplayTimezone , "hour12": prefs.Hour12 , "number_cards": prefs.NumberCards , "plain_icons": prefs.PlainIcons , "theme": prefs.Theme , "own_theme_on_boards": prefs.OwnThemeOnBoards }
+	payload = fiber.Map{ "timezone": prefs.DisplayTimezone , "hour12": prefs.Hour12 , "number_cards": prefs.NumberCards , "plain_icons": prefs.PlainIcons , "theme": prefs.Theme , "own_theme_on_boards": prefs.OwnThemeOnBoards , "swipe_columns": prefs.SwipeColumns , "folder_sort": prefs.FolderSort }
 	return
 }
 
@@ -122,7 +125,8 @@ func displayPayload( prefs *models.UserPrefs ) ( payload fiber.Map ) {
 // the browser's own) and 12- or 24-hour clocks (null for the locale's) --
 // and, when sent, whether cards are numbered and status icons grey by
 // default, the person's theme (clear_theme back to plain light), and
-// whether boards with a theme of their own keep showing the person's.
+// whether boards with a theme of their own keep showing the person's, phone
+// swipe columns, and how home page folders are ordered.
 func ( handlers *Handlers ) SaveDisplay( c fiber.Ctx ) ( err error ) {
 	var body displayRequest
 	if ok , bind_err := bindBody( c , &body ); ok == false { return bind_err }
@@ -141,6 +145,8 @@ func ( handlers *Handlers ) SaveDisplay( c fiber.Ctx ) ( err error ) {
 	if body.NumberCards != nil { prefs.NumberCards = *body.NumberCards }
 	if body.PlainIcons != nil { prefs.PlainIcons = *body.PlainIcons }
 	if body.OwnThemeOnBoards != nil { prefs.OwnThemeOnBoards = *body.OwnThemeOnBoards }
+	if body.SwipeColumns != nil { prefs.SwipeColumns = *body.SwipeColumns }
+	if body.FolderSort != nil { prefs.FolderSort = *body.FolderSort }
 	if body.Theme != nil {
 		if body.Theme.Validate() != nil {
 			err = badRequest( c , "invalid_theme" )
@@ -182,11 +188,15 @@ func ( handlers *Handlers ) SetPin( c fiber.Ctx ) ( err error ) {
 	return
 }
 
-// IssueOwnLoginLink is ReissueLogin for yourself: a one-time link to sign in
-// on another device, or to keep for when this browser loses its cookie. Like
-// any new link it replaces one the account had not used yet; this session
-// stays signed in.
-func ( handlers *Handlers ) IssueOwnLoginLink( c fiber.Ctx ) ( err error ) {
+// CreateMyLoginLink mints a one-time login link for the caller's own
+// account: the way to sign in on another device without asking an admin.
+// It is ReissueLogin pointed at yourself, so it has the same effect: any
+// unused link the account had stops working, and existing sessions stay
+// signed in.
+//
+// Session only (see routes.go): a login link becomes a session, so an API
+// key that could call this could turn itself into one.
+func ( handlers *Handlers ) CreateMyLoginLink( c fiber.Ctx ) ( err error ) {
 	var body csrfOnlyRequest
 	if c.Bind().JSON( &body ) != nil {
 		err = badRequest( c , "malformed request body" )

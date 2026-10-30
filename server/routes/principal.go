@@ -244,6 +244,8 @@ func modelRefusal( model_err error ) ( refused *refusal ) {
 		refused = &refusal{ fiber.StatusNotFound , "item_not_found" }
 	case errors.Is( model_err , models.ErrShareLinkNotFound ):
 		refused = &refusal{ fiber.StatusNotFound , "share_link_not_found" }
+	case errors.Is( model_err , models.ErrNotInTrash ):
+		refused = &refusal{ fiber.StatusNotFound , "card_not_found" }
 	case errors.Is( model_err , models.ErrFolderNotFound ):
 		refused = &refusal{ fiber.StatusNotFound , "folder_not_found" }
 	case errors.Is( model_err , db.ErrNotFound ):

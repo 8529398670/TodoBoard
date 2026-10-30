@@ -8,6 +8,7 @@ const KanbanView = {
     const lists = ctx.lists();
     lists.forEach( ( list ) => scroller.appendChild( this.column( list , ctx ) ) );
     if ( ctx.canEdit && !three && !ctx.listOnly ) scroller.appendChild( this.addListColumn( ctx ) );
+    if ( ctx.swipeColumns() && lists.length > 1 ) root.appendChild( this.dots( scroller , lists ) );
     root.appendChild( scroller );
 
     if ( !ctx.canEdit || typeof Sortable === "undefined" ) return;
@@ -20,6 +21,10 @@ const KanbanView = {
         delay: 150,
         delayOnTouchOnly: true,
         ghostClass: "drag-ghost",
+        // Holding a card at the screen edge scrolls on to the next column,
+        // which is how a card crosses columns one screen wide.
+        scroll: true,
+        scrollSensitivity: 60,
         // Archived cards stay where they are shown; the number field and
         // status icons are for typing and clicking, not for picking a card up.
         draggable: ".card-face:not(.is-archived)",
@@ -56,6 +61,50 @@ const KanbanView = {
         ctx.mutate( function () { return ctx.client.updateList( listId , { position: position } ); } );
       },
     } );
+  },
+
+  // Where you are among full-width columns: a dot per column (tap one to go
+  // there) and the current column's name. Only drawn on a phone held upright
+  // with "one full-width column at a time" on -- CSS hides it otherwise.
+  dots( scroller , lists ) {
+    const bar = Dom.el( "nav" , { class: "column-dots" , attrs: { "aria-label": T( "board.columns_nav" ) } } );
+    const label = Dom.el( "span" , { class: "column-dots-label" } );
+    const dots = lists.map( function ( list , index ) {
+      return Dom.el( "button" , {
+        class: "column-dot",
+        attrs: { type: "button" , "aria-label": list.title , title: list.title },
+        on: { click: function () {
+          const column = scroller.children[ index ];
+          if ( column ) column.scrollIntoView( { behavior: "smooth" , block: "nearest" , inline: "start" } );
+        } },
+      } );
+    } );
+    dots.forEach( function ( dot ) { bar.appendChild( dot ); } );
+    bar.appendChild( label );
+    const update = function () {
+      // The column whose left edge is nearest the scroller's.
+      const left = scroller.getBoundingClientRect().left;
+      let index = 0;
+      let best = Infinity;
+      lists.forEach( function ( list , i ) {
+        const column = scroller.children[ i ];
+        const distance = column ? Math.abs( column.getBoundingClientRect().left - left ) : Infinity;
+        if ( distance < best ) {
+          best = distance;
+          index = i;
+        }
+      } );
+      dots.forEach( function ( dot , i ) {
+        dot.classList.toggle( "active" , i === index );
+        dot.setAttribute( "aria-current" , i === index ? "true" : "false" );
+      } );
+      Dom.text( label , ( index + 1 ) + " / " + lists.length + " · " + lists[ index ].title );
+    };
+    scroller.addEventListener( "scroll" , update , { passive: true } );
+    // After board.js restores the scroll position.
+    window.requestAnimationFrame( update );
+    update();
+    return bar;
   },
 
   dropped( event , ctx ) {
@@ -155,13 +204,13 @@ const QuickAdd = {
   // maxlength is for lists and checklist items; card titles have none.
   build( key , buttonKey , placeholderKey , submit , maxlength ) {
     const wrap = Dom.el( "div" , { class: "quick-add" , attrs: { "data-quick-key": key } } );
-    const opener = Dom.el( "button" , { class: "secondary small quick-add-open" , text: T( buttonKey ) , attrs: { type: "button" } } );
+    const opener = Dom.el( "button" , { class: Ui.buttonClass( "secondary small quick-add-open" ) , text: T( buttonKey ) , attrs: { type: "button" } } );
     const form = Dom.el( "form" , { class: "quick-add-form" , attrs: { autocomplete: "off" } } );
     form.hidden = true;
     // Card titles have no practical length limit, so the box grows with
     // them; Enter adds, and for card titles Shift+Enter adds a line. Lists
     // and checklist items (the ones with a maxlength) stay on one line.
-    const input = Dom.el( "textarea" , { class: "quick-add-input" , attrs: { rows: "1" , placeholder: T( placeholderKey ) , "aria-label": T( placeholderKey ) } } );
+    const input = Dom.el( "textarea" , { class: "quick-add-input form-control" , attrs: { rows: "1" , placeholder: T( placeholderKey ) , "aria-label": T( placeholderKey ) } } );
     input.addEventListener( "input" , function () {
       const flat = maxlength ? Ui.oneLine( input.value ) : input.value;
       if ( flat !== input.value ) input.value = flat;
@@ -171,7 +220,7 @@ const QuickAdd = {
     const cancel = Ui.button( "board.cancel" , function () { form.hidden = true; opener.hidden = false; } );
     form.appendChild( input );
     form.appendChild( Dom.el( "div" , { class: "row-actions" , children: [
-      Dom.el( "button" , { class: "small" , text: T( "board.add" ) , attrs: { type: "submit" } } ),
+      Dom.el( "button" , { class: Ui.buttonClass( "small" ) , text: T( "board.add" ) , attrs: { type: "submit" } } ),
       cancel,
     ] } ) );
     opener.addEventListener( "click" , function () {
@@ -204,7 +253,8 @@ const QuickAdd = {
 };
 
 // A card's right-click menu: the card editor's everyday actions without
-// opening it. Delete is undoable like any other (see history.js).
+// opening it. Delete moves the card to the trash, and is undoable like any
+// other (see history.js).
 const CardMenu = {
   open( event , card , ctx ) {
     const items = [ { key: "board.card_menu_open" , action: function () { ctx.openCard( card.id ); } } ];
@@ -213,34 +263,31 @@ const CardMenu = {
         ctx.mutate( function () { return ctx.client.patchCard( card.id , { done: !card.done } ); } );
       } } );
     }
+    items.push( { key: "export.copy_card_markdown" , action: function () { Ui.copyText( CardExport.markdown( ctx , card ) ); } } );
     items.push( { key: "export.card_button" , action: function () { CardExport.open( ctx , card ); } } );
     if ( ctx.canEdit ) {
       items.push( { key: card.archived ? "card.unarchive" : "card.archive" , action: function () {
         ctx.mutate( function () { return ctx.client.patchCard( card.id , { archived: !card.archived } ); } );
       } } );
-      items.push( { key: "card.delete" , danger: true , action: function () {
-        if ( !window.confirm( I18n.fill( "card.delete_confirm" , { name: card.title } ) ) ) return;
-        ctx.mutate( function () { return ctx.client.deleteCard( card.id ); } );
+      items.push( { key: "card.delete" , danger: true , action: async function () {
+        await ctx.mutate( function () { return ctx.client.deleteCard( card.id ); } );
+        Ui.toast( T( "trash.moved" ) , "ok" );
       } } );
     }
     ContextMenu.open( event , items );
   },
 };
 
-// A list's menu: copy its card titles as a Markdown list (anyone), archive
+// A list's menu: copy its card titles as a Markdown list, or every card in
+// full (anyone), archive
 // every card on it (editors, a column link's included), share it (the
 // owner), and rename, archive or delete it (board editors).
 const ListMenu = {
   button( list , ctx ) {
-    return Dom.el( "button" , {
-      class: "icon-button",
-      text: T( "board.menu_symbol" ),
-      attrs: { type: "button" , title: T( "board.list_menu" ) , "aria-label": T( "board.list_menu" ) },
-      on: { click: function ( event ) {
-        event.stopPropagation();
-        ListMenu.open( list , ctx );
-      } },
-    } );
+    return Ui.iconButton( "three-dots" , T( "board.list_menu" ) , function ( event ) {
+      event.stopPropagation();
+      ListMenu.open( list , ctx );
+    } , "list-menu-button" );
   },
 
   // The column's open card titles, in order, as "- Title" or "1. Title".
@@ -258,7 +305,7 @@ const ListMenu = {
     Panel.open( "board.archive_pick_title" , function ( body ) {
       const form = Dom.el( "form" , { class: "archive-pick" , attrs: { autocomplete: "off" } } );
       const boxes = [];
-      const submit = Dom.el( "button" , { attrs: { type: "submit" } } );
+      const submit = Dom.el( "button" , { class: "btn btn-primary" , attrs: { type: "submit" } } );
       const update = function () {
         const picked = boxes.filter( function ( box ) { return box.checked; } ).length;
         Dom.text( submit , I18n.fill( "board.archive_picked" , { n: picked } ) );
@@ -273,7 +320,7 @@ const ListMenu = {
       form.appendChild( all );
       const items = Dom.el( "ul" , { class: "archive-pick-list" } );
       cards.forEach( function ( card ) {
-        const box = Dom.el( "input" , { attrs: { type: "checkbox" , value: String( card.id ) } } );
+        const box = Dom.el( "input" , { class: "form-check-input" , attrs: { type: "checkbox" , value: String( card.id ) } } );
         box.addEventListener( "change" , update );
         boxes.push( box );
         const title = Dom.el( "span" );
@@ -301,6 +348,7 @@ const ListMenu = {
       copy.appendChild( Dom.el( "div" , { class: "row-actions" , children: [
         Ui.button( "board.copy_bullets" , function () { Ui.copyText( ListMenu.markdownList( list , ctx , false ) ); } ),
         Ui.button( "board.copy_numbered" , function () { Ui.copyText( ListMenu.markdownList( list , ctx , true ) ); } ),
+        Ui.button( "board.copy_everything" , function () { Ui.copyText( BoardExport.listMarkdown( ctx , list ) ); } ),
       ] } ) );
       body.appendChild( copy );
       // The column as a file, and cards back from one (appended).
@@ -335,10 +383,10 @@ const ListMenu = {
       // link cannot.
       if ( !ctx.canEdit || ctx.listOnly ) return;
       const form = Dom.el( "form" , { attrs: { autocomplete: "off" } } );
-      const input = Dom.el( "input" , { attrs: { maxlength: "120" , required: "" } } );
+      const input = Dom.el( "input" , { class: "form-control" , attrs: { maxlength: "120" , required: "" } } );
       input.value = list.title;
       form.appendChild( Ui.field( "board.list_title_label" , input ) );
-      form.appendChild( Dom.el( "button" , { text: T( "board.save" ) , attrs: { type: "submit" } } ) );
+      form.appendChild( Dom.el( "button" , { class: "btn btn-primary" , text: T( "board.save" ) , attrs: { type: "submit" } } ) );
       form.addEventListener( "submit" , async function ( event ) {
         event.preventDefault();
         await ctx.mutate( function () { return ctx.client.updateList( list.id , { title: input.value } ); } );

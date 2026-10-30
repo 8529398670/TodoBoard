@@ -6,25 +6,65 @@ const T = function ( key ) { return I18n.get( key ); };
 const Ui = {
   button( key , onClick , className ) {
     return Dom.el( "button" , {
-      class: className || "secondary small",
+      class: this.buttonClass( className ),
       text: T( key ),
       attrs: { type: "button" },
       on: { click: onClick },
     } );
   },
 
+  // A button that is only a Bootstrap icon (bi-<icon>); label is its
+  // accessible name and tooltip, already translated.
+  iconButton( icon , label , onClick , className ) {
+    return Dom.el( "button" , {
+      class: "btn btn-link app-icon-button " + ( className || "" ),
+      attrs: { type: "button" , "aria-label": label , title: label },
+      children: [ Dom.el( "i" , { class: "bi bi-" + icon , attrs: { "aria-hidden": "true" } } ) ],
+      on: { click: onClick },
+    } );
+  },
+
+  // Bootstrap's x, for closing a dialog or removing one item.
+  closeButton( label , onClick , className ) {
+    return Dom.el( "button" , {
+      class: "btn-close " + ( className || "" ),
+      attrs: { type: "button" , "aria-label": label , title: label },
+      on: { click: onClick },
+    } );
+  },
+
+  // Shorthand for a Bootstrap button's classes: "secondary" (outlined),
+  // "danger" (outlined red), primary when neither, "small" for btn-sm. Any
+  // other name is kept as a class of its own ("active", "panel-back").
+  buttonClass( className ) {
+    const shorthand = [ "secondary" , "danger" , "small" ];
+    const names = ( className || "secondary small" ).split( /\s+/ ).filter( Boolean );
+    const has = function ( name ) { return names.indexOf( name ) >= 0; };
+    const look = has( "danger" ) ? "btn-outline-danger" : has( "secondary" ) ? "btn-outline-secondary" : "btn-primary";
+    const rest = names.filter( function ( name ) { return shorthand.indexOf( name ) < 0; } );
+    return [ "btn" , look ].concat( has( "small" ) ? [ "btn-sm" ] : [] , rest ).join( " " );
+  },
+
   // A labelled form control. Labels stay visible at every width.
   field( labelKey , control ) {
     const id = control.id || ( "f-" + Math.random().toString( 36 ).slice( 2 ) );
     control.id = id;
+    this.styleControl( control );
     return Dom.el( "div" , { class: "field" , children: [
-      Dom.el( "label" , { text: T( labelKey ) , attrs: { for: id } } ),
+      Dom.el( "label" , { class: "form-label" , text: T( labelKey ) , attrs: { for: id } } ),
       control,
     ] } );
   },
 
+  // Bootstrap's look for a text input, textarea or select the scripts built.
+  styleControl( control ) {
+    if ( control.tagName === "SELECT" ) control.classList.add( "form-select" );
+    else if ( control.tagName === "TEXTAREA" || ( control.tagName === "INPUT" && [ "checkbox" , "radio" , "color" ].indexOf( control.type ) < 0 ) ) control.classList.add( "form-control" );
+    return control;
+  },
+
   select( options , value ) {
-    const select = Dom.el( "select" );
+    const select = Dom.el( "select" , { class: "form-select" } );
     options.forEach( function ( option ) {
       const node = Dom.el( "option" , { text: option.text , attrs: { value: String( option.value ) } } );
       if ( String( option.value ) === String( value ) ) node.selected = true;
@@ -34,18 +74,19 @@ const Ui = {
   },
 
   checkbox( labelKey , checked , onChange ) {
-    const input = Dom.el( "input" , { attrs: { type: "checkbox" } } );
+    return this.check( T( labelKey ) , checked , onChange );
+  },
+
+  // A checkbox with its label as text rather than a language key.
+  check( text , checked , onChange ) {
+    const input = Dom.el( "input" , { class: "form-check-input" , attrs: { type: "checkbox" } } );
     input.checked = !!checked;
     if ( onChange ) input.addEventListener( "change" , function () { onChange( input.checked ); } );
-    return Dom.el( "label" , { class: "check" , children: [ input , Dom.el( "span" , { text: T( labelKey ) } ) ] } );
+    return Dom.el( "label" , { class: "check form-check" , children: [ input , Dom.el( "span" , { class: "form-check-label" , text: text } ) ] } );
   },
 
   toast( message , kind ) {
-    const banner = Dom.get( "toast" );
-    if ( !banner ) return;
-    banner.className = "notice toast " + ( kind === "ok" ? "notice-ok" : "notice-error" );
-    Dom.text( banner , message );
-    Dom.flash( banner , 4000 );
+    Dom.toast( message , kind );
   },
 
   // Errors from the server are codes ("card_stale", "share_link_invalid");
@@ -195,7 +236,7 @@ const Panel = {
     Dom.clear( body );
     if ( back ) {
       body.appendChild( Dom.el( "button" , {
-        class: "secondary small panel-back",
+        class: Ui.buttonClass( "secondary small panel-back" ),
         text: T( "ui.back" ),
         attrs: { type: "button" },
         on: { click: back },
@@ -248,7 +289,7 @@ const InlineEdit = {
     const edit = function ( value ) {
       Dom.clear( wrap );
       const input = Dom.el( settings.textarea ? "textarea" : "input" , {
-        class: "inline-edit-input",
+        class: "inline-edit-input form-control",
         attrs: { maxlength: String( settings.maxlength || 300 ) , "aria-label": settings.label || "" , rows: "1" },
       } );
       if ( !settings.textarea ) input.type = "text";

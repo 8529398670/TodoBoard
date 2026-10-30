@@ -29,7 +29,7 @@ const PrintPage = {
       }
       this.data = await client.board();
     } catch ( error ) {
-      Dom.get( "print-root" ).appendChild( Dom.el( "p" , { class: "notice notice-error" , text: T( "errors." + error.message ) || T( "errors.board_not_found" ) } ) );
+      Dom.get( "print-root" ).appendChild( Dom.el( "p" , { class: "alert alert-danger" , text: T( "errors." + error.message ) || T( "errors.board_not_found" ) } ) );
       return;
     }
     Dom.get( "print-button" ).addEventListener( "click" , function () { window.print(); } );

@@ -325,14 +325,14 @@ func ( handlers *Handlers ) UpdateList( c fiber.Ctx ) ( err error ) {
 }
 
 func ( handlers *Handlers ) DeleteList( c fiber.Ctx ) ( err error ) {
-	_ , board , err := handlers.requireBoard( c , access.Edit )
+	principal , board , err := handlers.requireBoard( c , access.Edit )
 	if board == nil { return }
 	list_id , ok := paramID( c , "list_id" )
 	if ok == false {
 		err = notFound( c , "list_not_found" )
 		return
 	}
-	if delete_err := models.DeleteList( handlers.Store , board.ID , list_id ); delete_err != nil {
+	if delete_err := models.DeleteList( handlers.Store , board.ID , list_id , principal.Name ); delete_err != nil {
 		err = modelError( c , delete_err )
 		return
 	}

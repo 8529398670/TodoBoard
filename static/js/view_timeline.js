@@ -410,7 +410,7 @@ const TimelineView = {
   },
 
   tray( cards , geo , ctx ) {
-    const tray = Dom.el( "section" , { class: "timeline-tray card" } );
+    const tray = Dom.el( "section" , { class: "timeline-tray card card-body" } );
     tray.appendChild( Dom.el( "h2" , { text: T( "timeline.unscheduled" ) } ) );
     if ( !cards.length ) {
       tray.appendChild( Dom.el( "p" , { class: "muted" , text: T( "timeline.none_unscheduled" ) } ) );

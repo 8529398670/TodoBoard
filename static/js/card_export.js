@@ -10,12 +10,12 @@ const CardExport = {
     Panel.open( "export.card_title" , ( body ) => {
       body.appendChild( Dom.el( "h3" , { text: T( "export.image_heading" ) } ) );
       body.appendChild( Dom.el( "div" , { class: "row-actions" , children: [
-        Dom.el( "button" , { class: "small" , text: T( "export.copy_image" ) , attrs: { type: "button" } , on: { click: () => this.copyImage( ctx , card ) } } ),
+        Dom.el( "button" , { class: Ui.buttonClass( "small" ) , text: T( "export.copy_image" ) , attrs: { type: "button" } , on: { click: () => this.copyImage( ctx , card ) } } ),
         Ui.button( "export.download_image" , () => this.downloadImage( ctx , card ) ),
       ] } ) );
       body.appendChild( Dom.el( "h3" , { text: T( "export.markdown_heading" ) } ) );
       body.appendChild( Dom.el( "div" , { class: "row-actions" , children: [
-        Dom.el( "button" , { class: "small" , text: T( "export.copy_markdown" ) , attrs: { type: "button" } , on: { click: () => Ui.copyText( this.markdown( ctx , card ) ) } } ),
+        Dom.el( "button" , { class: Ui.buttonClass( "small" ) , text: T( "export.copy_markdown" ) , attrs: { type: "button" } , on: { click: () => Ui.copyText( this.markdown( ctx , card ) ) } } ),
         Ui.button( "export.download_markdown" , () => {
           Ui.download( new Blob( [ this.markdown( ctx , card ) ] , { type: "text/markdown;charset=utf-8" } ) , Ui.slug( card.title ) + ".md" );
         } ),
@@ -197,7 +197,7 @@ const BoardExport = {
     Panel.open( "export.board_title" , ( body ) => {
       body.appendChild( Dom.el( "h3" , { text: T( "export.markdown_heading" ) } ) );
       body.appendChild( Dom.el( "div" , { class: "row-actions" , children: [
-        Dom.el( "button" , { class: "small" , text: T( "export.copy_markdown" ) , attrs: { type: "button" } , on: { click: () => Ui.copyText( this.markdown( ctx ) ) } } ),
+        Dom.el( "button" , { class: Ui.buttonClass( "small" ) , text: T( "export.copy_markdown" ) , attrs: { type: "button" } , on: { click: () => Ui.copyText( this.markdown( ctx ) ) } } ),
         Ui.button( "export.download_markdown" , () => {
           Ui.download( new Blob( [ this.markdown( ctx ) ] , { type: "text/markdown;charset=utf-8" } ) , Ui.slug( ctx.board.title ) + ".md" );
         } ),
@@ -207,14 +207,14 @@ const BoardExport = {
       const archived = Ui.checkbox( "export.sheet_archived" , ctx.showArchived() );
       const sheet = ( format ) => this.sheet( ctx , format , archived.querySelector( "input" ).checked );
       body.appendChild( Dom.el( "div" , { class: "row-actions" , children: [
-        Dom.el( "button" , { class: "small" , text: T( "export.download_xlsx" ) , attrs: { type: "button" } , on: { click: () => sheet( "xlsx" ) } } ),
+        Dom.el( "button" , { class: Ui.buttonClass( "small" ) , text: T( "export.download_xlsx" ) , attrs: { type: "button" } , on: { click: () => sheet( "xlsx" ) } } ),
         Ui.button( "export.download_csv" , () => sheet( "csv" ) ),
         archived,
       ] } ) );
       body.appendChild( Dom.el( "h3" , { text: T( "export.pdf_heading" ) } ) );
       body.appendChild( Dom.el( "p" , { class: "muted" , text: T( "export.pdf_hint" ) } ) );
       body.appendChild( Dom.el( "a" , {
-        class: "button-link",
+        class: "btn btn-sm btn-outline-secondary",
         text: T( "export.open_print" ),
         attrs: { href: this.printPath( ctx ) , target: "_blank" , rel: "noopener" },
       } ) );
@@ -238,17 +238,21 @@ const BoardExport = {
 
   markdown( ctx ) {
     const lines = [ "# " + ctx.board.title , "" ];
-    ctx.lists().forEach( function ( list ) {
-      lines.push( "## " + list.title );
+    ctx.lists().forEach( ( list ) => lines.push( this.listMarkdown( ctx , list ) ) );
+    return lines.join( "\n" ).replace( /\n{3,}/g , "\n\n" );
+  },
+
+  // One column in full: its heading, then every open card with its dates,
+  // labels, description and checklist. Also what a column's menu copies.
+  listMarkdown( ctx , list ) {
+    const lines = [ "## " + list.title , "" ];
+    const cards = ctx.cardsIn( list.id );
+    if ( !cards.length ) {
+      lines.push( "_" + T( "export.md_empty_list" ) + "_" );
       lines.push( "" );
-      const cards = ctx.cardsIn( list.id );
-      if ( !cards.length ) {
-        lines.push( "_" + T( "export.md_empty_list" ) + "_" );
-        lines.push( "" );
-      }
-      cards.forEach( function ( card ) {
-        lines.push( CardExport.markdown( ctx , card , 3 ) );
-      } );
+    }
+    cards.forEach( function ( card ) {
+      lines.push( CardExport.markdown( ctx , card , 3 ) );
     } );
     return lines.join( "\n" ).replace( /\n{3,}/g , "\n\n" );
   },

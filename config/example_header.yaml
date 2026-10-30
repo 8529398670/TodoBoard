@@ -5,14 +5,15 @@
 #
 # To use it:
 #
-#   cp config.example.yaml config.yaml
-#   chmod 600 config.yaml
+#   cp config/config.example.yaml config/config.yaml
+#   chmod 600 config/config.yaml
 #   openssl rand -hex 32        # paste the output into server.secret_key
 #
 # Or skip the copy: `todoboard config init` (or `go run . config init`)
-# writes config.yaml with a fresh key already in it.
+# writes config/config.yaml with a fresh key already in it. scripts/run.sh
+# and docker/run.sh do that for you on their first run.
 #
-# This file is generated from server/config/defaults.yaml. After changing a
-# default there, regenerate it with `go run . config example`.
+# This file is generated from config/defaults.yaml. After changing a default
+# there, regenerate it with `go run . config example`.
 # ===========================================================================
 

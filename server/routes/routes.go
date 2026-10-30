@@ -94,9 +94,9 @@ func ( handlers *Handlers ) Register( app *fiber.App ) {
 	// A session only: a PIN lets its holder sign in through an invite link,
 	// so a key that could set one could turn itself into a session.
 	account.Post( "/account/pin" , handlers.Guard.RequireSession , handlers.SetPin )
-	// Also a session only: a login link becomes a session, so a key that
-	// could mint one could do the same.
-	account.Post( "/account/login-link" , handlers.Guard.RequireSession , handlers.IssueOwnLoginLink )
+	// A session only, for the same reason as every route that hands out a
+	// login link: the link becomes a session. See the admin group below.
+	account.Post( "/account/login-link" , handlers.Guard.RequireSession , handlers.CreateMyLoginLink )
 	account.Post( "/logout" , handlers.Logout )
 	account.Get( "/team" , handlers.ListTeam )
 
@@ -137,6 +137,7 @@ func ( handlers *Handlers ) Register( app *fiber.App ) {
 	// CSRF check on writes.
 	folders := app.Group( "/api/folders" , handlers.Guard.RequireLogin , handlers.MemberPrincipal )
 	folders.Post( "" , handlers.CreateFolder )
+	folders.Post( "/order" , handlers.SetFolderOrder )
 	folders.Post( "/:folder_id" , handlers.RenameFolder )
 	folders.Post( "/:folder_id/delete" , handlers.DeleteFolder )
 
@@ -238,6 +239,10 @@ func ( handlers *Handlers ) registerBoardContent( group fiber.Router ) {
 	group.Post( "/:board_id/cards" , handlers.CreateCard )
 	group.Post( "/:board_id/cards/:card_id" , handlers.PatchCard )
 	group.Post( "/:board_id/cards/:card_id/delete" , handlers.DeleteCard )
+	group.Get( "/:board_id/trash" , handlers.ListTrash )
+	group.Post( "/:board_id/trash/empty" , handlers.EmptyTrash )
+	group.Post( "/:board_id/trash/:card_id/restore" , handlers.RestoreCard )
+	group.Post( "/:board_id/trash/:card_id/delete" , handlers.PurgeCard )
 	group.Post( "/:board_id/cards/:card_id/checklist" , handlers.AddChecklistItem )
 	group.Post( "/:board_id/cards/:card_id/checklist/:item_id" , handlers.UpdateChecklistItem )
 	group.Post( "/:board_id/cards/:card_id/checklist/:item_id/delete" , handlers.DeleteChecklistItem )

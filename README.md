@@ -57,22 +57,26 @@ passwords. See the comments in `server/security` and `server/routes/auth.go`.
 ## Running it
 
 ```bash
-go run .                 # reads ./config.yaml; prints a one-time login link on first run
-./run.sh                 # rebuild, (re)start, and open it in the browser
+scripts/run.sh               # rebuild, (re)start, print where everything is, open the browser
+scripts/login.sh             # a fresh login link for the owner, from whatever is running
+scripts/run.sh manage list-users   # the admin CLI, against the running server
 go test ./...
-./build.sh darwin/arm64  # single-file binary in dist/
-./dockerRun.sh           # hardened container
+scripts/build.sh darwin/arm64      # single-file binary in dist/
+docker/run.sh                # hardened container; scripts/login.sh --docker for its link
 ```
 
-For plain `http://localhost`, set `server.secure_cookies: false` in
-`config.yaml`.
+On Windows, `scripts\run.bat` and `scripts\login.bat` do the same.
+
+Everything is configured in `config/config.yaml` (gitignored -- it holds the
+secret key; the first `scripts/run.sh` writes it). For plain
+`http://localhost`, set `server.secure_cookies: false` there.
 
 ### Push notifications
 
 1. Create an application at <https://pushover.net/apps/build> and put its
-   token in `config.yaml` under `pushover.app_token`.
+   token in `config/config.yaml` under `pushover.app_token`.
 2. Set `server.public_url` (e.g. `https://boards.example.com`) so
-   notifications link straight to the card.
+   notifications link straight to the card (printed login links use it too).
 3. Each person pastes their Pushover *user key* on the Account page and
    presses "Send a test".
 
@@ -116,7 +120,8 @@ mints a credential. Only keys are accepted -- a browser session gets 403.
 | `static/js/card_export.js`, `print.js` | exports |
 | `server/sheet/`, `server/routes/export.go` | the .xlsx / .csv board export |
 | `server/mcp/`, `server/routes/mcp_tools*.go` | the `/mcp` protocol and its tools |
-| `language.yaml` | every string the UI or a notification shows |
+| `config/language.yaml` | every string the UI or a notification shows |
+| `config/defaults.yaml` | every setting, documented, with its default |
 
 ## Known limits
 

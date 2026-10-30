@@ -56,7 +56,7 @@ const Backup = {
     return count;
   },
 
-  // --- Account page ------------------------------------------------------
+  // --- The Backup screen (index.html) -----------------------------------
 
   initAccount( me ) {
     const panel = Dom.get( "backup-panel" );
@@ -71,7 +71,7 @@ const Backup = {
 
   status( text , kind ) {
     const line = Dom.get( "backup-status" );
-    line.className = "notice " + ( kind === "error" ? "notice-error" : kind === "ok" ? "notice-ok" : "notice-link" );
+    line.className = "alert mt-3 mb-0 " + ( kind === "error" ? "alert-danger" : kind === "ok" ? "alert-success" : "alert-info" );
     Dom.text( line , text );
     Dom.show( line , true );
   },

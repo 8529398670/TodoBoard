@@ -90,6 +90,8 @@ func ( handlers *Handlers ) patchCard( principal *access.Principal , board *mode
 	return
 }
 
+// DeleteCard moves the card to the board's trash (see models/trash.go);
+// nothing is gone for good until the trash is emptied.
 func ( handlers *Handlers ) DeleteCard( c fiber.Ctx ) ( err error ) {
 	principal , board , card , err := handlers.requireCard( c , access.Edit )
 	if card == nil { return }
@@ -97,7 +99,7 @@ func ( handlers *Handlers ) DeleteCard( c fiber.Ctx ) ( err error ) {
 		err = forbidden( c , "forbidden" )
 		return
 	}
-	if delete_err := models.DeleteCard( handlers.Store , board.ID , card.ID ); delete_err != nil {
+	if delete_err := models.TrashCard( handlers.Store , board.ID , card.ID , principal.Name ); delete_err != nil {
 		err = modelError( c , delete_err )
 		return
 	}
@@ -212,5 +214,67 @@ func ( handlers *Handlers ) cardReply( c fiber.Ctx , principal *access.Principal
 		return
 	}
 	err = c.JSON( cardPayload( card , access.Card( principal , board , card ) , access.Board( principal , board ) ) )
+	return
+}
+
+// The trash is the board's, not one column's: listing, restoring and purging
+// need edit rights on the whole board.
+func ( handlers *Handlers ) ListTrash( c fiber.Ctx ) ( err error ) {
+	principal , board , err := handlers.requireBoard( c , access.Edit )
+	if board == nil { return }
+	cards , list_err := models.ListTrash( handlers.Store , board.ID )
+	if list_err != nil {
+		err = modelError( c , list_err )
+		return
+	}
+	level := access.Board( principal , board )
+	payload := make( []fiber.Map , 0 , len( cards ) )
+	for _ , card := range cards {
+		item := cardPayload( card , level , level )
+		item[ "deleted_at" ] , item[ "deleted_by" ] = card.DeletedAt , card.DeletedBy
+		payload = append( payload , item )
+	}
+	err = c.JSON( fiber.Map{ "cards": payload } )
+	return
+}
+
+func ( handlers *Handlers ) RestoreCard( c fiber.Ctx ) ( err error ) {
+	principal , board , err := handlers.requireBoard( c , access.Edit )
+	if board == nil { return }
+	card_id , ok := paramID( c , "card_id" )
+	if ok == false {
+		err = notFound( c , "card_not_found" )
+		return
+	}
+	card , restore_err := models.RestoreCard( handlers.Store , board.ID , card_id , principal.Name )
+	err = handlers.cardResult( c , principal , board , card , restore_err )
+	return
+}
+
+func ( handlers *Handlers ) PurgeCard( c fiber.Ctx ) ( err error ) {
+	_ , board , err := handlers.requireBoard( c , access.Edit )
+	if board == nil { return }
+	card_id , ok := paramID( c , "card_id" )
+	if ok == false {
+		err = notFound( c , "card_not_found" )
+		return
+	}
+	if purge_err := models.PurgeCard( handlers.Store , board.ID , card_id ); purge_err != nil {
+		err = modelError( c , purge_err )
+		return
+	}
+	err = c.JSON( fiber.Map{ "ok": true } )
+	return
+}
+
+func ( handlers *Handlers ) EmptyTrash( c fiber.Ctx ) ( err error ) {
+	_ , board , err := handlers.requireBoard( c , access.Edit )
+	if board == nil { return }
+	removed , empty_err := models.EmptyTrash( handlers.Store , board.ID )
+	if empty_err != nil {
+		err = modelError( c , empty_err )
+		return
+	}
+	err = c.JSON( fiber.Map{ "removed": removed } )
 	return
 }

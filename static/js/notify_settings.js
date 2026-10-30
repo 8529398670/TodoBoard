@@ -1,7 +1,6 @@
-// The account page's notification settings: the Pushover user key, when
-// reminders arrive, and the defaults every board and card starts from. The
-// card is folded to one line saying what is on, and opened to edit. The
-// key itself is never sent back to the browser once saved -- only a hint of
+// The Notifications screen: the Pushover user key, when reminders arrive,
+// and the defaults every board and card starts from, under a one-line
+// summary of what is on. The key itself is never sent back to the browser once saved -- only a hint of
 // it -- so the field is left blank to keep it and typed into to replace it.
 const NotifySettings = {
   prefs: null,
@@ -16,12 +15,9 @@ const NotifySettings = {
       App.showError( error.message );
       return;
     }
+    // A board's Notifications panel links straight here (#notifications);
+    // nav.js shows this screen for that hash.
     this.render();
-    // A link straight here (a board's Notifications panel) means "edit them".
-    if ( window.location.hash === "#notifications" ) {
-      Dom.get( "notifications" ).open = true;
-      Dom.get( "notifications" ).scrollIntoView();
-    }
   },
 
   leadLabel( minutes ) {
@@ -37,7 +33,7 @@ const NotifySettings = {
     return zones;
   },
 
-  // The folded card's one line: is anything going to arrive, and when.
+  // The screen's one line: is anything going to arrive, and when.
   summary() {
     const prefs = this.prefs;
     if ( !prefs.push_enabled ) return T( "notify.summary_server_off" );
@@ -81,10 +77,9 @@ const NotifySettings = {
     const leads = Dom.el( "fieldset" , { class: "check-list" } );
     leads.appendChild( Dom.el( "legend" , { text: T( "notify.leads_label" ) } ) );
     this.leads.forEach( ( minutes ) => {
-      const input = Dom.el( "input" , { attrs: { type: "checkbox" } } );
-      input.checked = prefs.reminder_lead_minutes.indexOf( minutes ) >= 0;
-      leadBoxes[ minutes ] = input;
-      leads.appendChild( Dom.el( "label" , { class: "check" , children: [ input , Dom.el( "span" , { text: this.leadLabel( minutes ) } ) ] } ) );
+      const box = Ui.check( this.leadLabel( minutes ) , prefs.reminder_lead_minutes.indexOf( minutes ) >= 0 );
+      leadBoxes[ minutes ] = box.querySelector( "input" );
+      leads.appendChild( box );
     } );
     form.appendChild( leads );
 
@@ -108,7 +103,7 @@ const NotifySettings = {
     form.appendChild( general );
 
     const actions = Dom.el( "div" , { class: "row-actions" } );
-    actions.appendChild( Dom.el( "button" , { text: T( "notify.save" ) , attrs: { type: "submit" } } ) );
+    actions.appendChild( Dom.el( "button" , { class: "btn btn-primary" , text: T( "notify.save" ) , attrs: { type: "submit" } } ) );
     actions.appendChild( Ui.button( "notify.test" , () => this.test() , "secondary" ) );
     if ( prefs.has_pushover_key ) {
       actions.appendChild( Ui.button( "notify.remove_key" , () => this.save( { pushover_user_key: "-" } ) , "secondary danger" ) );

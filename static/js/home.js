@@ -6,14 +6,26 @@
 // to.
 //
 // Folders are private to each person (see server/models/folder.go): filing a
-// shared board here moves it on my home page and nobody else's.
+// shared board here moves it on my home page and nobody else's. They read A
+// to Z, or in the person's own order (an account setting); dragging a folder
+// by its grip switches to their own order.
+//
+// Above it all, "Recently edited": the few boards changed last, mine and
+// shared, for jumping straight back in.
 const Home = {
+  me: null,
   boards: [],
   shared: [],
   folders: [],
+  recentCount: 6,
+  // Fewer boards than this and the whole list is already a glance away.
+  recentMinBoards: 4,
 
   async init( me ) {
-    Dom.show( Dom.get( "home" ) , true );
+    this.me = me;
+    const sort = Dom.get( "folder-sort" );
+    sort.value = this.manual() ? "manual" : "";
+    sort.addEventListener( "change" , () => this.setSort( sort.value ) );
     Dom.get( "create-board-form" ).addEventListener( "submit" , this.onCreate.bind( this ) );
     Dom.get( "board-search" ).addEventListener( "input" , () => this.filter() );
     Dom.get( "new-folder-button" ).addEventListener( "click" , () => this.editFolder( null ) );
@@ -33,13 +45,14 @@ const Home = {
     this.folders = result.folders || [];
     this.render();
     this.renderShared();
+    this.renderRecent( result.boards );
 
     const shared = Dom.get( "shared-cards" );
     Dom.clear( shared );
     result.shared_cards.forEach( function ( item ) {
       const link = Dom.el( "a" , { attrs: { href: "/b/" + ( item.board_slug || item.board_id ) + "?card=" + item.card_id } } );
       Markdown.renderInline( item.card_title , link );
-      shared.appendChild( Dom.el( "li" , { class: "link-row" , children: [
+      shared.appendChild( Dom.el( "li" , { class: "link-row list-group-item" , children: [
         link,
         Dom.el( "span" , { class: "muted" , text: item.board_title } ),
       ] } ) );
@@ -47,6 +60,68 @@ const Home = {
     Dom.show( Dom.get( "shared-cards-section" ) , result.shared_cards.length > 0 );
     Dom.show( Dom.get( "shared-section" ) , this.shared.length > 0 || result.shared_cards.length > 0 );
     this.filter();
+  },
+
+  manual() {
+    return !!( this.me && this.me.display && this.me.display.folder_sort === "manual" );
+  },
+
+  async setSort( value ) {
+    if ( !this.me ) return;
+    this.me.display = this.me.display || {};
+    await UserSettings.save( this.me , { folder_sort: value } );
+    Dom.get( "folder-sort" ).value = this.manual() ? "manual" : "";
+    this.render();
+  },
+
+  // Folders in the order chosen: the server's order is the person's own,
+  // A to Z is sorted here.
+  orderedFolders() {
+    if ( this.manual() ) return this.folders.slice();
+    return this.folders.slice().sort( function ( a , b ) {
+      return a.name.localeCompare( b.name , undefined , { sensitivity: "base" } );
+    } );
+  },
+
+  renderRecent( all ) {
+    const section = Dom.get( "recent-section" );
+    const grid = Dom.get( "recent-boards" );
+    Dom.clear( grid );
+    if ( all.length < this.recentMinBoards ) {
+      Dom.show( section , false );
+      return;
+    }
+    all.slice()
+      .sort( function ( a , b ) { return new Date( b.updated_at ) - new Date( a.updated_at ); } )
+      .slice( 0 , this.recentCount )
+      .forEach( ( board ) => {
+        const wrap = this.tile( board , false );
+        wrap.querySelector( ".board-tile" ).appendChild( Dom.el( "span" , {
+          class: "board-tile-when muted",
+          text: I18n.fill( "home.edited_ago" , { when: this.ago( board.updated_at ) } ),
+          attrs: { title: new Date( board.updated_at ).toLocaleString() },
+        } ) );
+        grid.appendChild( wrap );
+      } );
+    Dom.show( section , true );
+  },
+
+  // "5 minutes ago", "yesterday", in the browser's language.
+  ago( value ) {
+    const seconds = ( new Date( value ).getTime() - Date.now() ) / 1000;
+    const steps = [ [ 60 , "second" ] , [ 60 , "minute" ] , [ 24 , "hour" ] , [ 7 , "day" ] , [ 4.35 , "week" ] , [ 12 , "month" ] , [ Infinity , "year" ] ];
+    let amount = seconds;
+    for ( const [ size , unit ] of steps ) {
+      if ( Math.abs( amount ) < size ) {
+        try {
+          return new Intl.RelativeTimeFormat( undefined , { numeric: "auto" } ).format( Math.round( amount ) , unit );
+        } catch ( error ) {
+          return new Date( value ).toLocaleDateString();
+        }
+      }
+      amount /= size;
+    }
+    return new Date( value ).toLocaleDateString();
   },
 
   // Boards other people own and I am on: one plain grid. Folders are for
@@ -69,14 +144,16 @@ const Home = {
     try { window.localStorage.setItem( "home_collapsed" , JSON.stringify( ids ) ); } catch ( error ) { /* not remembered */ }
   },
 
-  // One section per folder, A to Z, then the boards in none. With no folders
-  // at all, the unfiled boards are just the grid, with no heading.
+  // One section per folder, in the chosen order, then the boards in none.
+  // With no folders at all, the unfiled boards are just the grid, with no
+  // heading.
   render() {
     const root = Dom.get( "board-folders" );
     Dom.clear( root );
     const known = {};
     this.folders.forEach( function ( folder ) { known[ folder.id ] = true; } );
-    this.folders.forEach( ( folder ) => {
+    Dom.show( Dom.get( "folder-sort" ) , this.folders.length > 1 );
+    this.orderedFolders().forEach( ( folder ) => {
       root.appendChild( this.section( folder , this.boards.filter( function ( board ) { return board.folder_id === folder.id; } ) ) );
     } );
     const unfiled = this.boards.filter( function ( board ) { return !known[ board.folder_id ]; } );
@@ -95,6 +172,13 @@ const Home = {
     if ( folder || this.folders.length ) {
       const closed = this.collapsed().indexOf( folderId ) >= 0;
       const head = Dom.el( "div" , { class: "folder-head" } );
+      if ( folder && this.folders.length > 1 ) {
+        head.appendChild( Dom.el( "span" , {
+          class: "folder-grip",
+          text: T( "home.folder_drag_symbol" ),
+          attrs: { title: T( "home.folder_drag" ) , "aria-hidden": "true" },
+        } ) );
+      }
       const toggle = Dom.el( "button" , {
         class: "folder-toggle",
         attrs: { type: "button" , "aria-expanded": closed ? "false" : "true" },
@@ -111,12 +195,7 @@ const Home = {
       } );
       head.appendChild( toggle );
       if ( folder ) {
-        head.appendChild( Dom.el( "button" , {
-          class: "icon-button small",
-          text: T( "board.menu_symbol" ),
-          attrs: { type: "button" , title: T( "home.folder_menu" ) , "aria-label": T( "home.folder_menu" ) },
-          on: { click: () => this.editFolder( folder ) },
-        } ) );
+        head.appendChild( Ui.iconButton( "three-dots" , T( "home.folder_menu" ) , () => this.editFolder( folder ) ) );
       }
       section.appendChild( head );
       grid.hidden = closed;
@@ -142,19 +221,36 @@ const Home = {
     tile.appendChild( title );
     wrap.appendChild( tile );
     if ( filable === false ) return wrap;
-    wrap.appendChild( Dom.el( "button" , {
-      class: "icon-button small tile-menu",
-      text: T( "board.menu_symbol" ),
-      attrs: { type: "button" , title: T( "home.board_menu" ) , "aria-label": T( "home.board_menu" ) },
-      on: { click: () => this.moveBoard( board ) },
-    } ) );
+    wrap.appendChild( Ui.iconButton( "three-dots" , T( "home.board_menu" ) , () => this.moveBoard( board ) , "tile-menu" ) );
     return wrap;
   },
 
   // Tiles drag between folders. Order inside a folder is most recently
-  // changed first, so a drop only ever changes the folder.
+  // changed first, so a drop only ever changes the folder. Folders drag by
+  // their grip; Unfiled stays last.
   bindDragging( root ) {
     if ( typeof Sortable === "undefined" ) return;
+    // root outlives each render, so its last Sortable has to go first.
+    const previous = Sortable.get( root );
+    if ( previous ) previous.destroy();
+    Sortable.create( root , {
+      animation: 150,
+      forceFallback: true,
+      handle: ".folder-grip",
+      draggable: ".folder:not([data-folder-id=\"0\"])",
+      ghostClass: "drag-ghost",
+      onMove: function ( event ) {
+        // Nothing goes below Unfiled.
+        return event.related.getAttribute( "data-folder-id" ) !== "0" || !event.willInsertAfter;
+      },
+      onEnd: ( event ) => {
+        if ( event.oldIndex === event.newIndex ) return;
+        const ids = Dom.all( ".folder" , root )
+          .map( function ( section ) { return Number( section.getAttribute( "data-folder-id" ) ); } )
+          .filter( Boolean );
+        this.setOrder( ids );
+      },
+    } );
     Dom.all( ".boards-grid" , root ).forEach( ( grid ) => {
       Sortable.create( grid , {
         group: "boards",
@@ -173,6 +269,16 @@ const Home = {
         },
       } );
     } );
+  },
+
+  async setOrder( ids ) {
+    try {
+      await Api.post( "/api/folders/order" , { ids: ids } );
+      if ( !this.manual() ) await this.setSort( "manual" );
+    } catch ( error ) {
+      App.showError( error.message );
+    }
+    await this.refresh();
   },
 
   async setFolder( boardId , folderId ) {
@@ -218,16 +324,18 @@ const Home = {
       this.showFolder( section , query ? true : closed.indexOf( folderId ) < 0 );
     } );
     Dom.show( Dom.get( "no-matches" ) , !!query && shown + sharedShown === 0 );
+    // Search covers every board below; the recent strip would repeat hits.
+    Dom.get( "recent-section" ).classList.toggle( "is-searching" , !!query );
   },
 
   // New folder (folder null), or rename / delete one.
   editFolder( folder ) {
     Panel.open( "home.folder_title" , ( body ) => {
       const form = Dom.el( "form" , { attrs: { autocomplete: "off" } } );
-      const name = Dom.el( "input" , { attrs: { maxlength: "80" , required: "" , placeholder: T( "home.folder_name_placeholder" ) } } );
+      const name = Dom.el( "input" , { class: "form-control" , attrs: { maxlength: "80" , required: "" , placeholder: T( "home.folder_name_placeholder" ) } } );
       name.value = folder ? folder.name : "";
       form.appendChild( Ui.field( "home.folder_name_label" , name ) );
-      form.appendChild( Dom.el( "button" , { text: T( folder ? "home.rename_folder" : "home.create_folder" ) , attrs: { type: "submit" } } ) );
+      form.appendChild( Dom.el( "button" , { class: "btn btn-primary" , text: T( folder ? "home.rename_folder" : "home.create_folder" ) , attrs: { type: "submit" } } ) );
       form.addEventListener( "submit" , async ( event ) => {
         event.preventDefault();
         try {
@@ -266,7 +374,7 @@ const Home = {
         return { value: folder.id , text: folder.name };
       } ) ) , board.folder_id || 0 );
       form.appendChild( Ui.field( "home.move_label" , select ) );
-      form.appendChild( Dom.el( "button" , { text: T( "home.move_button" ) , attrs: { type: "submit" } } ) );
+      form.appendChild( Dom.el( "button" , { class: "btn btn-primary" , text: T( "home.move_button" ) , attrs: { type: "submit" } } ) );
       form.addEventListener( "submit" , async ( event ) => {
         event.preventDefault();
         Panel.close();

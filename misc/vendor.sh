@@ -2,7 +2,7 @@
 # Download a browser library into static/vendor/ so it can be served from this
 # app instead of a CDN. See static/vendor/README.md for why.
 #
-# Usage: ./scripts/vendor.sh <url> [filename]
+# Usage: misc/vendor.sh <url> [filename]
 set -euo pipefail
 cd "$( dirname "${BASH_SOURCE[0]}" )/.."
 
