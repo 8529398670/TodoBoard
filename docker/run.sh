@@ -154,24 +154,17 @@ fi
 EXISTING="$( docker ps -a --filter "name=^${docker_container}\$" --format '{{.Status}}' )"
 if [ -n "$EXISTING" ]; then
   echo "Replacing the existing ${docker_container} container (${EXISTING})..."
-  # The container can vanish between the check above and this line (it did,
-  # once, on a live server), and then rm -f fails with "No such container"
-  # and set -e stops us before the new one starts -- leaving nothing running.
-  # Gone is what we wanted, so ignore the error and check the result instead.
-  docker rm -f "$docker_container" >/dev/null 2>&1 || true
-  if [ -n "$( docker ps -a --filter "name=^${docker_container}\$" --format '{{.ID}}' )" ]; then
-    echo "" >&2
-    echo "ERROR: could not remove the existing ${docker_container} container." >&2
-    echo "       Remove it by hand (docker rm -f ${docker_container}) and re-run." >&2
-    exit 1
-  fi
+  docker rm -f "$docker_container" >/dev/null
 fi
 
 # With our own container gone, anything still on the host port is something
 # else, and docker run would fail with a bind error after creating the
 # container. Name it instead.
 if command -v lsof >/dev/null 2>&1; then
-  PORT_PID="$( lsof -nP -iTCP:"$docker_host_port" -sTCP:LISTEN -t 2>/dev/null | head -n 1 )"
+  # lsof exits 1 when nothing is listening -- the usual case -- and under
+  # pipefail that failure would end this script silently, before it starts
+  # the container. An empty answer is the one we want, so swallow it.
+  PORT_PID="$( lsof -nP -iTCP:"$docker_host_port" -sTCP:LISTEN -t 2>/dev/null | head -n 1 || true )"
   if [ -n "$PORT_PID" ]; then
     PORT_OWNER="$( ps -p "$PORT_PID" -o command= 2>/dev/null | awk '{ n = split( $1 , part , "/" ); $1 = part[ n ]; print }' | cut -c1-100 )"
     OTHER_CONTAINER="$( docker ps --filter "publish=${docker_host_port}" --format '{{.Names}}' | head -n 1 )"
