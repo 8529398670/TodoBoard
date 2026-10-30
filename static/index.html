@@ -40,11 +40,6 @@
       <!-- The app's name is the way home, from any screen. -->
       <a href="/" class="navbar-brand fw-semibold me-auto" data-i18n="app.title"></a>
       <span class="navbar-text small d-none d-md-inline" data-i18n="app.tagline"></span>
-      <div id="app-nav" class="d-flex align-items-center gap-2" hidden>
-        <!-- Your account, behind the usual profile icon. Its title says who
-             is signed in; see App.labelProfile. -->
-        <a href="#account" id="profile-link" class="btn btn-link app-icon-button"><i class="bi bi-person-circle" aria-hidden="true"></i></a>
-      </div>
     </div>
   </nav>
 
@@ -67,7 +62,8 @@
 
           <div class="sidebar-group">
             <h3 class="sidebar-heading" data-i18n="nav.you_heading"></h3>
-            <a class="nav-link" href="#account" data-nav="account"><i class="bi bi-person" aria-hidden="true"></i><span data-i18n="nav.account"></span></a>
+            <!-- Its title says who is signed in; see App.labelProfile. -->
+            <a class="nav-link" href="#account" data-nav="account" id="profile-link"><i class="bi bi-person" aria-hidden="true"></i><span data-i18n="nav.account"></span></a>
             <a class="nav-link" href="#settings" data-nav="settings"><i class="bi bi-palette" aria-hidden="true"></i><span data-i18n="nav.settings"></span></a>
             <a class="nav-link" href="#notifications" data-nav="notifications"><i class="bi bi-bell" aria-hidden="true"></i><span data-i18n="nav.notifications"></span></a>
             <a class="nav-link" href="#backup" data-nav="backup"><i class="bi bi-archive" aria-hidden="true"></i><span data-i18n="nav.backup"></span></a>

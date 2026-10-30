@@ -122,7 +122,6 @@ const App = {
     }
 
     Dom.show( Dom.get( "signed-in" ) , true );
-    Dom.show( Dom.get( "app-nav" ) , true );
     this.labelProfile();
     Dom.get( "display-name" ).value = me.display_name;
 
@@ -164,15 +163,14 @@ const App = {
     }
   },
 
-  // The header's profile icon opens the Account screen; its tooltip and
-  // accessible name say who is signed in, which the header used to spell out.
+  // The sidebar's Account entry says, in its tooltip, who is signed in,
+  // which the header used to spell out.
   labelProfile() {
     const user = this.currentUser;
     const label = I18n.get( "nav.account" );
     const who = user.display_name + " (" + user.role + ")";
     const link = Dom.get( "profile-link" );
     link.setAttribute( "title" , label ? label + " · " + who : who );
-    link.setAttribute( "aria-label" , link.getAttribute( "title" ) );
   },
 
   async onLogout() {
