@@ -261,6 +261,7 @@ p.due-chip { margin: 0.5rem 0; }
   -webkit-overflow-scrolling: touch;
 }
 .kanban-column {
+  position: relative;
   flex: 0 0 86vw;
   max-width: 20rem;
   display: flex;
@@ -272,6 +273,12 @@ p.due-chip { margin: 0.5rem 0; }
   scroll-snap-align: start;
 }
 .add-column { background: transparent; border: 1px dashed var(--border); }
+/* The strip on a free-lists column's right edge that resizes it; only on
+   wide screens, where columns sit side by side at their own widths. */
+.column-resize { display: none; }
+.column-resize::after { content: ""; position: absolute; top: 0.5rem; bottom: 0.5rem; left: 50%; width: 2px; border-radius: 1px; background: transparent; transform: translateX(-50%); }
+.column-resize:hover::after, .is-resizing .column-resize::after { background: var(--accent); }
+.kanban-column.is-resizing { user-select: none; }
 .column-header { display: flex; align-items: center; gap: 0.4rem; padding: 0 0.15rem; }
 .column-title { flex: 1 1 auto; margin: 0; font-size: 0.98rem; overflow-wrap: anywhere; }
 .column-handle { cursor: grab; }
@@ -403,6 +410,8 @@ p.due-chip { margin: 0.5rem 0; }
 .quick-add { display: flex; flex-direction: column; }
 .quick-add-open { width: 100%; justify-content: flex-start; text-align: left; border-style: dashed; }
 .quick-add-form { display: flex; flex-direction: column; gap: 0.5rem; margin: 0; }
+.quick-add .quick-add-flip { margin-left: auto; font-size: 1.15rem; padding: 0.2rem 0.35rem; color: var(--fg-muted); }
+.quick-add .quick-add-flip.active { color: var(--accent); }
 
 /* Todo */
 .todo { display: flex; flex-direction: column; gap: 0.75rem; }
@@ -908,7 +917,8 @@ input.card-number:focus { color: var(--fg); background: var(--bg); border-color:
   .guest-banner { margin: 0.75rem 1.5rem 0; }
 
   .kanban { padding: 0 1.5rem 1.5rem; scroll-snap-type: none; }
-  .kanban-column { flex: 0 0 18rem; }
+  .kanban-column { flex: 0 0 var(--col-w, 18rem); max-width: none; }
+  .kanban:not(.three) .column-resize { display: block; position: absolute; top: 0; right: -0.55rem; width: 0.6rem; height: 100%; cursor: col-resize; touch-action: none; z-index: 1; }
   .timeline { padding: 0 1.5rem; }
   .timeline-label { flex-basis: 12rem; width: 12rem; }
 

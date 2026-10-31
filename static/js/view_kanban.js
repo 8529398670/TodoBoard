@@ -144,7 +144,51 @@ const KanbanView = {
     if ( add && ctx.addOnTop() ) column.appendChild( add );
     column.appendChild( container );
     if ( add && !ctx.addOnTop() ) column.appendChild( add );
+    // A free-lists board keeps each column's own width (wide screens only;
+    // CSS ignores it on a phone and on a three-column board).
+    if ( !ctx.isThree() && list.width ) column.style.setProperty( "--col-w" , list.width + "px" );
+    if ( ctx.canEdit && !ctx.isThree() && !ctx.fixedColumns ) column.appendChild( this.resizer( column , list , ctx ) );
     return column;
+  },
+
+  // The strip on a column's right edge: drag it to widen or narrow the
+  // column for everyone on the board, double-click it for the standard width.
+  resizer( column , list , ctx ) {
+    const handle = Dom.el( "div" , { class: "column-resize" , attrs: { "aria-hidden": "true" , title: T( "board.column_resize" ) } } );
+    let startX = 0;
+    let startWidth = 0;
+    let width = 0;
+    handle.addEventListener( "pointerdown" , function ( event ) {
+      if ( event.button !== 0 ) return;
+      event.preventDefault();
+      event.stopPropagation();
+      handle.setPointerCapture( event.pointerId );
+      startX = event.clientX;
+      startWidth = width = column.getBoundingClientRect().width;
+      column.classList.add( "is-resizing" );
+      ctx.setDragging( true );
+    } );
+    handle.addEventListener( "pointermove" , function ( event ) {
+      if ( !handle.hasPointerCapture( event.pointerId ) ) return;
+      width = Math.min( 800 , Math.max( 200 , startWidth + event.clientX - startX ) );
+      column.style.setProperty( "--col-w" , width + "px" );
+    } );
+    const finish = function ( event ) {
+      if ( !handle.hasPointerCapture( event.pointerId ) ) return;
+      handle.releasePointerCapture( event.pointerId );
+      column.classList.remove( "is-resizing" );
+      ctx.setDragging( false );
+      const rounded = Math.round( width );
+      if ( Math.abs( rounded - startWidth ) < 2 ) return;
+      ctx.mutate( function () { return ctx.client.updateList( list.id , { width: rounded } ); } );
+    };
+    handle.addEventListener( "pointerup" , finish );
+    handle.addEventListener( "pointercancel" , finish );
+    handle.addEventListener( "dblclick" , function () {
+      column.style.removeProperty( "--col-w" );
+      if ( list.width ) ctx.mutate( function () { return ctx.client.updateList( list.id , { width: 0 } ); } );
+    } );
+    return handle;
   },
 
   // A column a share link shows by title only. The server sent how many
@@ -237,26 +281,52 @@ const KanbanView = {
 // input open for the next one, which is how people add a list's worth of
 // cards in a row.
 const QuickAdd = {
+  // Boxes whose cards go to the other end from the usual one, by key. It
+  // lasts while the box stays open -- across the re-render after each add --
+  // and is forgotten when the box is cancelled or opened afresh.
+  flipped: {},
+  reopening: false,
+
   // A column's add-card box. With add-on-top the box sits above the cards
-  // and what it adds goes first; otherwise both go last.
+  // and what it adds goes first; otherwise both go last. Its arrow button
+  // sends what is added to the other end instead, for as long as it is on.
   // A picture pasted into the box is held, shown small, and put on the
   // card once it is added.
   forCards( list , ctx , buttonKey ) {
-    return this.build( "card-" + list.id , buttonKey , "board.card_title_placeholder" , function ( title , image ) {
-      const position = ctx.addOnTop() ? CardBits.edgePosition( ctx.cardsIn( list.id ) , true ) : undefined;
+    const key = "card-" + list.id;
+    const onTop = function () { return ctx.addOnTop() !== !!QuickAdd.flipped[ key ]; };
+    const flip = Ui.iconButton( "arrow-bar-up" , "" , function () {
+      QuickAdd.flipped[ key ] = !QuickAdd.flipped[ key ];
+      show();
+    } , "quick-add-flip" );
+    const show = function () {
+      const top = onTop();
+      const label = T( top ? "board.add_to_top" : "board.add_to_bottom" );
+      flip.firstChild.className = "bi bi-" + ( top ? "arrow-bar-up" : "arrow-bar-down" );
+      flip.classList.toggle( "active" , !!QuickAdd.flipped[ key ] );
+      flip.setAttribute( "aria-pressed" , QuickAdd.flipped[ key ] ? "true" : "false" );
+      flip.setAttribute( "aria-label" , label );
+      flip.setAttribute( "title" , label );
+    };
+    show();
+    const wrap = this.build( key , buttonKey , "board.card_title_placeholder" , function ( title , image ) {
+      const position = onTop() ? CardBits.edgePosition( ctx.cardsIn( list.id ) , true ) : undefined;
       return ctx.mutate( async function () {
         const card = await ctx.client.createCard( list.id , title || T( "board.image_card_title" ) , position );
         if ( image ) await ctx.client.uploadImage( card.id , await CardBits.shrinkImage( image ) );
         return card;
       } );
-    } , undefined , true );
+    } , undefined , true , flip );
+    wrap.querySelector( ".quick-add-open" ).addEventListener( "click" , show );
+    return wrap;
   },
 
   // key identifies this form across re-renders ("card-12", "list"), so after
   // an add -- which re-renders the board -- the new copy can be reopened.
   // maxlength is for lists and checklist items; card titles have none.
   // withImage lets a pasted picture ride along: submit( text , file ).
-  build( key , buttonKey , placeholderKey , submit , maxlength , withImage ) {
+  // extra, if given, is one more control shown beside Add and Cancel.
+  build( key , buttonKey , placeholderKey , submit , maxlength , withImage , extra ) {
     const wrap = Dom.el( "div" , { class: "quick-add" , attrs: { "data-quick-key": key } } );
     const opener = Dom.el( "button" , { class: Ui.buttonClass( "secondary small quick-add-open" ) , text: T( buttonKey ) , attrs: { type: "button" } } );
     const form = Dom.el( "form" , { class: "quick-add-form" , attrs: { autocomplete: "off" } } );
@@ -291,14 +361,15 @@ const QuickAdd = {
         holdImage( file );
       } );
     }
-    const cancel = Ui.button( "board.cancel" , function () { holdImage( null ); form.hidden = true; opener.hidden = false; } );
+    const cancel = Ui.button( "board.cancel" , function () { holdImage( null ); delete QuickAdd.flipped[ key ]; form.hidden = true; opener.hidden = false; } );
     form.appendChild( preview );
     form.appendChild( input );
     form.appendChild( Dom.el( "div" , { class: "row-actions" , children: [
       Dom.el( "button" , { class: Ui.buttonClass( "small" ) , text: T( "board.add" ) , attrs: { type: "submit" } } ),
       cancel,
-    ] } ) );
+    ].concat( extra ? [ extra ] : [] ) } ) );
     opener.addEventListener( "click" , function () {
+      if ( !QuickAdd.reopening ) delete QuickAdd.flipped[ key ];
       opener.hidden = true;
       form.hidden = false;
       input.focus();
@@ -313,7 +384,11 @@ const QuickAdd = {
       Ui.autoGrow( input );
       await submit( value , held );
       const fresh = document.querySelector( "[data-quick-key=\"" + key + "\"] .quick-add-open" );
-      if ( fresh && fresh !== opener ) fresh.click();
+      if ( fresh && fresh !== opener ) {
+        QuickAdd.reopening = true;
+        fresh.click();
+        QuickAdd.reopening = false;
+      }
       else input.focus();
     } );
     input.addEventListener( "keydown" , function ( event ) {

@@ -367,3 +367,19 @@ func TestBoardPlainIcons( t *testing.T ) {
 		t.Errorf( "someone not on the board has nothing to set, got %v" , err )
 	}
 }
+
+func TestListWidth( t *testing.T ) {
+	board := &Board{ Lists: []*List{ { ID: 1 , Title: "L" } } }
+	set := func( width int ) error { return ( &ListUpdate{ Width: &width } ).Apply( board , 1 ) }
+
+	if err := set( 340 ); err != nil || board.Lists[ 0 ].Width != 340 {
+		t.Errorf( "a width is kept as given: %v %d" , err , board.Lists[ 0 ].Width )
+	}
+	set( 50 )
+	if board.Lists[ 0 ].Width != ListWidthMin { t.Errorf( "too narrow is raised to the minimum: %d" , board.Lists[ 0 ].Width ) }
+	set( 5000 )
+	if board.Lists[ 0 ].Width != ListWidthMax { t.Errorf( "too wide is lowered to the maximum: %d" , board.Lists[ 0 ].Width ) }
+	if err := set( -1 ); !errors.Is( err , ErrBadInput ) { t.Errorf( "a negative width is refused: %v" , err ) }
+	set( 0 )
+	if board.Lists[ 0 ].Width != 0 { t.Errorf( "0 goes back to the standard width: %d" , board.Lists[ 0 ].Width ) }
+}

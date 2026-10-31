@@ -107,6 +107,9 @@ type List struct {
 	// Shopping: any shop's product link in a card here is looked up, not
 	// only Amazon's (see product.go).
 	Shopping bool    `json:"shopping"`
+	// Width: the column's width in pixels on a free-lists board, as dragged
+	// by its edge; 0 is the standard width.
+	Width    int     `json:"width"`
 }
 
 type Label struct {
@@ -423,7 +426,14 @@ type ListUpdate struct {
 	Position *float64 `json:"position"`
 	Archived *bool    `json:"archived"`
 	Shopping *bool    `json:"shopping"`
+	Width    *int     `json:"width"`
 }
+
+// A dragged column stays between these; 0 puts it back to the standard width.
+const (
+	ListWidthMin = 200
+	ListWidthMax = 800
+)
 
 func ( update *ListUpdate ) Apply( board *Board , list_id uint64 ) ( err error ) {
 	list := board.List( list_id )
@@ -442,6 +452,13 @@ func ( update *ListUpdate ) Apply( board *Board , list_id uint64 ) ( err error )
 	}
 	if update.Shopping != nil {
 		list.Shopping = *update.Shopping
+	}
+	if update.Width != nil {
+		width := *update.Width
+		if width < 0 { return ErrBadInput }
+		if width > 0 && width < ListWidthMin { width = ListWidthMin }
+		if width > ListWidthMax { width = ListWidthMax }
+		list.Width = width
 	}
 	return
 }
