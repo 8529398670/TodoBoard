@@ -3,7 +3,7 @@
 config.yaml
 data/
 *.db
-
+.claude
 # Compiled output. Built by the Dockerfile, scripts/build.sh, or `go build`.
 #
 # The trailing negations matter: a bare "/server" also matches the server/

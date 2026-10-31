@@ -1,6 +1,7 @@
 package models
 
 import (
+	strings "strings"
 	time "time"
 
 	db "todoboard/server/db"
@@ -37,10 +38,16 @@ type ProductImage struct {
 // and its photo (nil removes it). It moves the board's revision so open
 // pages pick it up, but not the card's: the card's text did not change, so
 // someone typing in it must not be told it was edited under them.
+//
+// The exception: a card whose title is nothing but the link it was looked up
+// from takes the product's name as its title, and the link moves to its
+// description so it is not lost. That does change the text, so the card's
+// revision moves too.
 func SetCardProduct( store *db.Store , board_id uint64 , card_id uint64 , product *Product , image *ProductImage ) ( card *Card , err error ) {
 	err = store.Write( func( tx *db.Tx ) ( tx_err error ) {
 		card , tx_err = getCardTx( tx , board_id , card_id )
 		if tx_err != nil { return }
+		nameAfterProduct( card , product )
 		key := cardKey( board_id , card_id )
 		if image != nil && product != nil {
 			product.HasImage = true
@@ -57,6 +64,20 @@ func SetCardProduct( store *db.Store , board_id uint64 , card_id uint64 , produc
 	} )
 	if err != nil { card = nil }
 	return
+}
+
+// nameAfterProduct retitles a card that is only its product's link.
+func nameAfterProduct( card *Card , product *Product ) {
+	if product == nil || product.Status != ProductOK { return }
+	if strings.TrimSpace( card.Title ) != product.URL { return }
+	title , ok := cleanTitle( product.Title , maxCardTitleChars )
+	if ok == false { return }
+	card.Title = title
+	if strings.Contains( card.Description , product.URL ) == false {
+		card.Description = strings.TrimSpace( product.URL + "\n\n" + card.Description )
+	}
+	card.Rev += 1
+	card.UpdatedAt = time.Now().UTC()
 }
 
 func GetProductImage( store *db.Store , board_id uint64 , card_id uint64 ) ( image *ProductImage , err error ) {

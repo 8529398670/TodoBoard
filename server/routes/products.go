@@ -42,6 +42,8 @@ func ( handlers *Handlers ) lookUpProductLater( board *models.Board , card *mode
 	}()
 }
 
+// lookUpProduct reads link and stores what it found on the card; a card
+// titled with nothing but the link is renamed after the product.
 func ( handlers *Handlers ) lookUpProduct( board_id uint64 , card_id uint64 , link string ) ( card *models.Card , err error ) {
 	ctx , cancel := context.WithTimeout( context.Background() , 25 * time.Second )
 	defer cancel()
