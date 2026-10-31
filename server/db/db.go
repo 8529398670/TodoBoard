@@ -47,13 +47,14 @@ const (
 	BucketBoardSlugs    = "board_slugs"    // LookupKey(slug) -> board id
 	BucketFolders       = "folders"        // userID|folderID: one person's home page folders
 	BucketTrash         = "trash"          // boardID|cardID: deleted cards, until restored or purged
+	BucketProductImages = "product_images" // boardID|cardID: the photo of the product a card links to
 )
 
 var bucketNames = []string{
 	BucketUsers , BucketSessions , BucketLoginTokens , BucketAPIKeys , BucketInviteLinks , BucketMeta ,
 	BucketBoards , BucketCards , BucketUserBoards , BucketUserCards , BucketShareLinks ,
 	BucketUserPrefs , BucketSubscriptions , BucketNotifySent , BucketBoardSlugs , BucketFolders ,
-	BucketTrash ,
+	BucketTrash , BucketProductImages ,
 }
 
 // Key joins big-endian uint64s into one composite key.

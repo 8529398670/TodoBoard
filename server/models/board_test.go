@@ -120,7 +120,7 @@ func TestShareLinks( t *testing.T ) {
 	board , _ := CreateBoard( store , owner.ID , "B" , []string{ "L" } )
 	card , _ := CreateCard( store , board.ID , board.Lists[ 0 ].ID , "c" , nil , owner.ID , "" )
 
-	credential , link , err := IssueShareLink( store , board.ID , card.ID , 0 , ModeEdit , "for Sam" , 0 , owner.ID )
+	credential , link , err := IssueShareLink( store , board.ID , card.ID , 0 , nil , ModeEdit , "for Sam" , 0 , owner.ID )
 	if err != nil { t.Fatal( err ) }
 	if loaded := LoadShareLink( store , credential ); loaded == nil || loaded.CardID != card.ID {
 		t.Fatalf( "a fresh link should load" )
@@ -128,7 +128,7 @@ func TestShareLinks( t *testing.T ) {
 	if LoadShareLink( store , link.ID + ".wrong" ) != nil {
 		t.Errorf( "a wrong secret must not load" )
 	}
-	if _ , _ , err = IssueShareLink( store , board.ID , 0 , 0 , "admin" , "" , 0 , owner.ID ); err == nil {
+	if _ , _ , err = IssueShareLink( store , board.ID , 0 , 0 , nil , "admin" , "" , 0 , owner.ID ); err == nil {
 		t.Errorf( "a link mode must be view or edit" )
 	}
 	if err = RevokeShareLink( store , link.ID ); err != nil { t.Fatal( err ) }
@@ -137,15 +137,21 @@ func TestShareLinks( t *testing.T ) {
 	}
 
 	// A column link names a column that exists, and never a card as well.
-	if _ , _ , err = IssueShareLink( store , board.ID , card.ID , board.Lists[ 0 ].ID , ModeView , "" , 0 , owner.ID ); err == nil {
+	if _ , _ , err = IssueShareLink( store , board.ID , card.ID , board.Lists[ 0 ].ID , nil , ModeView , "" , 0 , owner.ID ); err == nil {
 		t.Errorf( "a link cannot be for a card and a column at once" )
 	}
-	if _ , _ , err = IssueShareLink( store , board.ID , 0 , 9999 , ModeView , "" , 0 , owner.ID ); errors.Is( err , ErrListNotFound ) == false {
+	if _ , _ , err = IssueShareLink( store , board.ID , 0 , board.Lists[ 0 ].ID , []uint64{ board.Lists[ 0 ].ID } , ModeView , "" , 0 , owner.ID ); err == nil {
+		t.Errorf( "only a board link picks columns" )
+	}
+	if _ , _ , err = IssueShareLink( store , board.ID , 0 , 0 , []uint64{ 9999 } , ModeView , "" , 0 , owner.ID ); errors.Is( err , ErrListNotFound ) == false {
+		t.Errorf( "an unknown visible column: %v" , err )
+	}
+	if _ , _ , err = IssueShareLink( store , board.ID , 0 , 9999 , nil , ModeView , "" , 0 , owner.ID ); errors.Is( err , ErrListNotFound ) == false {
 		t.Errorf( "a column link needs a real column, got %v" , err )
 	}
 
 	// Deleting the card takes its links with it.
-	credential , _ , _ = IssueShareLink( store , board.ID , card.ID , 0 , ModeView , "" , 7 , owner.ID )
+	credential , _ , _ = IssueShareLink( store , board.ID , card.ID , 0 , nil , ModeView , "" , 7 , owner.ID )
 	if err = DeleteCard( store , board.ID , card.ID ); err != nil { t.Fatal( err ) }
 	if LoadShareLink( store , credential ) != nil {
 		t.Errorf( "a deleted card's link must not load" )
@@ -172,7 +178,7 @@ func TestNewBoardDefaults( t *testing.T ) {
 
 	// Deleting a column takes its column links.
 	list := board.SortedLists()[ 1 ].ID
-	credential , _ , err := IssueShareLink( store , board.ID , 0 , list , ModeEdit , "" , 0 , owner.ID )
+	credential , _ , err := IssueShareLink( store , board.ID , 0 , list , nil , ModeEdit , "" , 0 , owner.ID )
 	if err != nil { t.Fatal( err ) }
 	if loaded := LoadShareLink( store , credential ); loaded == nil || loaded.ListID != list {
 		t.Fatalf( "a fresh column link should load" )

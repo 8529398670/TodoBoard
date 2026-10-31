@@ -30,7 +30,7 @@ const TodoView = {
     wrap.appendChild( toolbar );
 
     ctx.lists().forEach( ( list ) => wrap.appendChild( this.section( list , ctx ) ) );
-    if ( ctx.canEdit && !ctx.isThree() && !ctx.listOnly ) {
+    if ( ctx.canEdit && !ctx.isThree() && !ctx.fixedColumns ) {
       wrap.appendChild( QuickAdd.build( "list" , "board.add_list" , "board.list_title_placeholder" , function ( title ) {
         return ctx.mutate( function () { return ctx.client.createList( title ); } );
       } , 120 ) );
@@ -56,6 +56,19 @@ const TodoView = {
   },
 
   section( list , ctx ) {
+    const hidden = ctx.hiddenCount( list.id );
+    if ( hidden !== null ) {
+      const section = Dom.el( "section" , { class: "todo-section card is-obscured" } );
+      const header = Dom.el( "header" , { class: "todo-header" } );
+      const title = Dom.el( "h2" );
+      Markdown.renderInline( list.title , title );
+      header.appendChild( title );
+      header.appendChild( Dom.el( "span" , { class: "count" , text: String( hidden ) } ) );
+      section.appendChild( header );
+      section.appendChild( Dom.el( "p" , { class: "visually-hidden" , text: T( "share.column_hidden" ) } ) );
+      section.appendChild( KanbanView.obscuredCards( hidden ) );
+      return section;
+    }
     const all = ctx.cardsIn( list.id );
     const shown = ctx.shownIn( list.id );
     const cards = this.hideDone() ? shown.filter( function ( card ) { return !card.done; } ) : shown;
@@ -100,7 +113,7 @@ const TodoView = {
     Markdown.renderInline( card.title , title );
     body.appendChild( title );
     const meta = Dom.el( "span" , { class: "card-meta" } );
-    [ CardBits.labels( card , ctx.board ) , CardBits.due( card ) , CardBits.checklist( card ) , CardBits.assignees( card , ctx.people ) ]
+    [ CardBits.labels( card , ctx.board ) , CardBits.price( card ) , CardBits.due( card ) , CardBits.checklist( card ) , CardBits.assignees( card , ctx.people ) ]
       .filter( Boolean ).forEach( function ( node ) { meta.appendChild( node ); } );
     if ( meta.childNodes.length ) body.appendChild( meta );
     row.appendChild( body );

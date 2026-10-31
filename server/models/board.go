@@ -72,6 +72,9 @@ type Board struct {
 	DefaultView string            `json:"default_view"`
 	Color       string            `json:"color"`
 	Theme       *Theme            `json:"theme"`
+	// Shopping: product links from any shop are looked up on every column
+	// (List.Shopping does one column).
+	Shopping    bool              `json:"shopping"`
 	Rev         uint64            `json:"rev"`
 	NextLocalID uint64            `json:"next_local_id"`
 	CreatedAt   time.Time         `json:"created_at"`
@@ -83,6 +86,9 @@ type List struct {
 	Title    string  `json:"title"`
 	Position float64 `json:"position"`
 	Archived bool    `json:"archived"`
+	// Shopping: any shop's product link in a card here is looked up, not
+	// only Amazon's (see product.go).
+	Shopping bool    `json:"shopping"`
 }
 
 type Label struct {
@@ -288,6 +294,7 @@ type BoardSettings struct {
 	ListTitles  []string `json:"list_titles"`
 	Theme       *Theme   `json:"theme"`
 	ClearTheme  bool     `json:"clear_theme"`
+	Shopping    *bool    `json:"shopping"`
 }
 
 // UpdateBoardSettings applies settings in one transaction; the slug index
@@ -332,6 +339,7 @@ func ( settings *BoardSettings ) Apply( board *Board ) ( err error ) {
 		board.Theme = settings.Theme
 	}
 	if settings.ClearTheme { board.Theme = nil }
+	if settings.Shopping != nil { board.Shopping = *settings.Shopping }
 	if settings.Layout != nil {
 		if *settings.Layout != LayoutFree && *settings.Layout != LayoutThree { return ErrBadInput }
 		board.Layout = *settings.Layout
@@ -386,6 +394,7 @@ type ListUpdate struct {
 	Title    *string  `json:"title"`
 	Position *float64 `json:"position"`
 	Archived *bool    `json:"archived"`
+	Shopping *bool    `json:"shopping"`
 }
 
 func ( update *ListUpdate ) Apply( board *Board , list_id uint64 ) ( err error ) {
@@ -402,6 +411,9 @@ func ( update *ListUpdate ) Apply( board *Board , list_id uint64 ) ( err error )
 	}
 	if update.Archived != nil {
 		list.Archived = *update.Archived
+	}
+	if update.Shopping != nil {
+		list.Shopping = *update.Shopping
 	}
 	return
 }
@@ -665,6 +677,7 @@ func deleteBoardTx( tx *db.Tx , board_id uint64 ) ( err error ) {
 		if err = deleteCardTx( tx , card ); err != nil { return }
 	}
 	if _ , err = tx.DeletePrefix( db.BucketTrash , db.Key( board_id ) ); err != nil { return }
+	if _ , err = tx.DeletePrefix( db.BucketProductImages , db.Key( board_id ) ); err != nil { return }
 
 	if err = tx.Delete( db.BucketUserBoards , db.Key( board.OwnerID , board_id ) ); err != nil { return }
 	for user_id := range board.Members {

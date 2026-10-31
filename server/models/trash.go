@@ -124,6 +124,7 @@ func RestoreCard( store *db.Store , board_id uint64 , card_id uint64 , actor_nam
 func PurgeCard( store *db.Store , board_id uint64 , card_id uint64 ) ( err error ) {
 	err = store.Write( func( tx *db.Tx ) ( tx_err error ) {
 		if _ , tx_err = getTrashedTx( tx , board_id , card_id ); tx_err != nil { return }
+		if tx_err = tx.Delete( db.BucketProductImages , cardKey( board_id , card_id ) ); tx_err != nil { return }
 		tx_err = tx.Delete( db.BucketTrash , cardKey( board_id , card_id ) )
 		return
 	} )
@@ -133,6 +134,16 @@ func PurgeCard( store *db.Store , board_id uint64 , card_id uint64 ) ( err error
 // EmptyTrash deletes every trashed card of a board for good.
 func EmptyTrash( store *db.Store , board_id uint64 ) ( removed int , err error ) {
 	err = store.Write( func( tx *db.Tx ) ( tx_err error ) {
+		keys := [][]byte{}
+		tx_err = tx.ForEachPrefix( db.BucketTrash , db.Key( board_id ) , func() any { return &Card{} } ,
+			func( key []byte , item any ) bool {
+				keys = append( keys , append( []byte{} , key... ) )
+				return true
+			} )
+		if tx_err != nil { return }
+		for _ , key := range keys {
+			if tx_err = tx.Delete( db.BucketProductImages , key ); tx_err != nil { return }
+		}
 		removed , tx_err = tx.DeletePrefix( db.BucketTrash , db.Key( board_id ) )
 		return
 	} )

@@ -92,11 +92,22 @@ func ( handlers *Handlers ) boardPayload( principal *access.Principal , board *m
 	whole_board := board_level != access.None
 	reported := board_level
 	if list_only != 0 { reported = access.List( principal , board , list_only ) }
+	// A link showing only some columns may still edit cards in those; the
+	// page offers that, and nothing board-wide (columns_only).
+	columns_only := principal.Share != nil && principal.Share.BoardID == board.ID && principal.Share.Restricted()
+	if columns_only && principal.Share.Mode == models.ModeEdit { reported = access.Edit }
 
 	visible := []fiber.Map{}
 	visible_lists := map[uint64]bool{}
 	people_ids := map[uint64]bool{ board.OwnerID: true }
+	// Columns a link shows by title only: how many open cards are in each,
+	// and nothing else about them.
+	hidden_lists := map[uint64]int{}
 	for _ , card := range all_cards {
+		if access.HiddenList( principal , board , card.ListID ) {
+			if card.Archived == false { hidden_lists[ card.ListID ] += 1 }
+			continue
+		}
 		level := access.Card( principal , board , card )
 		if level == access.None { continue }
 		visible_lists[ card.ListID ] = true
@@ -108,6 +119,7 @@ func ( handlers *Handlers ) boardPayload( principal *access.Principal , board *m
 	for _ , list := range board.SortedLists() {
 		if list_only != 0 && list.ID != list_only { continue }
 		if card_only && visible_lists[ list.ID ] == false { continue }
+		if columns_only && access.HiddenList( principal , board , list.ID ) { hidden_lists[ list.ID ] += 0 }
 		lists = append( lists , list )
 	}
 
@@ -147,6 +159,7 @@ func ( handlers *Handlers ) boardPayload( principal *access.Principal , board *m
 			"owner_id":     board.OwnerID,
 			"default_view": board.DefaultView,
 			"color":        board.Color,
+			"shopping":     board.Shopping,
 			"theme":        board.Theme,
 			"rev":          board.Rev,
 			"lists":        lists,
@@ -158,6 +171,8 @@ func ( handlers *Handlers ) boardPayload( principal *access.Principal , board *m
 		"access":    reported.String(),
 		"card_only": card_only,
 		"list_only": list_only,
+		"columns_only": columns_only,
+		"hidden_lists": hidden_lists,
 		"me":        me,
 	}
 	return
@@ -189,6 +204,7 @@ func cardPayload( card *models.Card , level access.Level , board_level access.Le
 		"updated_by":  card.UpdatedBy,
 		"rev":         card.Rev,
 		"access":      level.String(),
+		"product":     card.Product,
 	}
 	if board_level == access.Manage {
 		payload[ "shared_with" ] = card.SharedWith

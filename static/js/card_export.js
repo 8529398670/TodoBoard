@@ -61,6 +61,7 @@ const CardExport = {
       meta.push( "**" + T( "export.md_assignees" ) + ":** " + card.assignees.map( function ( id ) { return ctx.people[ id ] || "?"; } ).join( ", " ) );
     }
     if ( card.done ) meta.push( "**" + T( "export.md_status" ) + ":** " + T( "card.done_label" ) );
+    if ( card.product && card.product.url ) meta.push( "**" + T( "export.md_product" ) + ":** " + ( card.product.price ? card.product.price + " " : "" ) + "<" + card.product.url + ">" );
     if ( meta.length ) {
       lines.push( meta.join( "  \n" ) );
       lines.push( "" );
@@ -78,6 +79,14 @@ const CardExport = {
       lines.push( "" );
     }
     return lines.join( "\n" );
+  },
+
+  // "Price -- link" for a card with a product on it, or "".
+  productLine( card ) {
+    const product = card.product;
+    if ( !product || !product.url ) return "";
+    const price = product.price ? product.price + " " : "";
+    return T( "export.md_product" ) + ": " + price + ( product.title ? product.title + " -- " : "" ) + product.url;
   },
 
   // The element the PNG is drawn from.
@@ -255,5 +264,94 @@ const BoardExport = {
       lines.push( CardExport.markdown( ctx , card , 3 ) );
     } );
     return lines.join( "\n" ).replace( /\n{3,}/g , "\n\n" );
+  },
+
+  // One column as a single numbered list, everything nested under its card:
+  // the details on one line, the product, the description (its own lists
+  // keep their nesting, renumbered), then the checklist. Three spaces a
+  // level, which is what a numbered item's children need in Markdown. What
+  // a column's "Copy everything" copies.
+  listNumbered( ctx , list ) {
+    const out = NumberedList.make();
+    ctx.cardsIn( list.id ).forEach( function ( card ) {
+      out.add( 0 , Ui.oneLine( card.title ) + ( card.done ? " " + T( "export.md_done_marker" ) : "" ) );
+      const details = [];
+      const labels = CardExport.labelNames( ctx , card );
+      if ( card.start_at ) details.push( T( "export.md_start" ) + ": " + CardExport.dateText( card.start_at , card.start_all_day ) );
+      if ( card.due_at ) details.push( T( "export.md_due" ) + ": " + CardExport.dateText( card.due_at , card.due_all_day ) );
+      if ( labels.length ) details.push( T( "export.md_labels" ) + ": " + labels.join( ", " ) );
+      if ( card.assignees.length ) details.push( T( "export.md_assignees" ) + ": " + card.assignees.map( function ( id ) { return ctx.people[ id ] || "?"; } ).join( ", " ) );
+      if ( details.length ) out.add( 1 , details.join( " · " ) );
+      const product = CardExport.productLine( card );
+      if ( product ) out.add( 1 , product );
+      if ( CardBits.hasDescription( card ) ) NumberedList.addText( out , card.description , 1 );
+      if ( card.checklist.length ) {
+        out.add( 1 , T( "card.checklist_heading" ) );
+        card.checklist.forEach( function ( item ) {
+          out.add( 2 , "[" + ( item.done ? "x" : " " ) + "] " + Ui.oneLine( item.text ) );
+        } );
+      }
+    } );
+    return out.text();
+  },
+};
+
+// Builds a nested numbered Markdown list: add( depth , text ) numbers each
+// item within its parent, starting again at 1 under every new parent.
+const NumberedList = {
+  make() {
+    const lines = [];
+    const counters = [];
+    return {
+      add( depth , text ) {
+        counters.length = depth + 1;
+        counters[ depth ] = ( counters[ depth ] || 0 ) + 1;
+        lines.push( "   ".repeat( depth ) + counters[ depth ] + ". " + text );
+      },
+      // A line kept as written (inside a code block), indented under the
+      // item before it.
+      raw( depth , text ) {
+        lines.push( "   ".repeat( depth ) + text );
+      },
+      text() { return lines.join( "\n" ); },
+    };
+  },
+
+  // A description as items from depth down: each paragraph line an item,
+  // its bullets and numbered lines nested by their indent (two spaces or a
+  // tab a level, never more than one deeper than the line before). Blank
+  // lines go; a fenced code block stays verbatim under one item.
+  addText( out , text , depth ) {
+    let previous = -1;
+    let fence = null;
+    String( text ).split( /\r?\n/ ).forEach( function ( line ) {
+      const marker = line.match( /^\s*(```+|~~~+)/ );
+      if ( fence !== null ) {
+        out.raw( depth + previous + 1 , line.trim() === "" ? "" : line );
+        if ( marker && marker[ 1 ][ 0 ] === fence ) fence = null;
+        return;
+      }
+      if ( marker ) {
+        fence = marker[ 1 ][ 0 ];
+        if ( previous < 0 ) {
+          out.add( depth , T( "export.md_code" ) );
+          previous = 0;
+        }
+        out.raw( depth + previous + 1 , line.trim() );
+        return;
+      }
+      if ( !line.trim() ) return;
+      const indent = line.match( /^[ \t]*/ )[ 0 ].replace( /\t/g , "  " ).length;
+      const item = line.match( /^\s*(?:[-*+]|\d+[.)])\s+(.*)$/ );
+      let level = 0;
+      let body = line.trim().replace( /^#{1,6}\s+/ , "" ).replace( /^>\s?/ , "" );
+      if ( item ) {
+        level = Math.floor( indent / 2 );
+        body = item[ 1 ];
+      }
+      level = Math.min( level , previous + 1 );
+      out.add( depth + level , body );
+      previous = level;
+    } );
   },
 };

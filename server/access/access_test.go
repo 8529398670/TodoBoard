@@ -35,6 +35,9 @@ func TestLevels( t *testing.T ) {
 		{ "guest card edit" , &Principal{ Share: &models.ShareLink{ BoardID: 1 , CardID: 5 , Mode: models.ModeEdit } } , None , Edit , None },
 		{ "guest column view" , &Principal{ Share: &models.ShareLink{ BoardID: 1 , ListID: 7 , Mode: models.ModeView } } , None , View , None },
 		{ "guest column edit" , &Principal{ Share: &models.ShareLink{ BoardID: 1 , ListID: 7 , Mode: models.ModeEdit } } , None , Edit , None },
+		{ "guest board view, column 7 only" , &Principal{ Share: &models.ShareLink{ BoardID: 1 , Mode: models.ModeView , VisibleListIDs: []uint64{ 7 } } } , View , View , None },
+		{ "guest board edit, column 7 only" , &Principal{ Share: &models.ShareLink{ BoardID: 1 , Mode: models.ModeEdit , VisibleListIDs: []uint64{ 7 } } } , View , Edit , None },
+		{ "guest board edit, column 8 only" , &Principal{ Share: &models.ShareLink{ BoardID: 1 , Mode: models.ModeEdit , VisibleListIDs: []uint64{ 8 } } } , View , None , Edit },
 		{ "guest other board" , &Principal{ Share: &models.ShareLink{ BoardID: 2 , Mode: models.ModeEdit } } , None , None , None },
 		{ "guest revoked" , &Principal{ Share: &models.ShareLink{ BoardID: 1 , Mode: models.ModeEdit , RevokedAt: &past } } , None , None , None },
 		{ "guest expired" , &Principal{ Share: &models.ShareLink{ BoardID: 1 , Mode: models.ModeEdit , ExpiresAt: &past } } , None , None , None },
@@ -92,5 +95,22 @@ func TestListLevels( t *testing.T ) {
 	}
 	if ListOnly( card_link , board ) != 0 || CardOnly( card_link , board ) == false {
 		t.Errorf( "a card link is card-only" )
+	}
+}
+
+// A link showing some columns edits cards only in those, and sees the rest
+// as hidden.
+func TestVisibleColumns( t *testing.T ) {
+	board := &models.Board{ ID: 1 , OwnerID: 10 , Lists: []*models.List{ { ID: 7 } , { ID: 8 } } }
+	guest := &Principal{ Share: &models.ShareLink{ BoardID: 1 , Mode: models.ModeEdit , VisibleListIDs: []uint64{ 7 } } }
+	if List( guest , board , 7 ) != Edit || List( guest , board , 8 ) != None {
+		t.Errorf( "column levels %v / %v, want edit / none" , List( guest , board , 7 ) , List( guest , board , 8 ) )
+	}
+	if HiddenList( guest , board , 7 ) || HiddenList( guest , board , 8 ) == false {
+		t.Errorf( "column 8 should be hidden and 7 not" )
+	}
+	whole := &Principal{ Share: &models.ShareLink{ BoardID: 1 , Mode: models.ModeEdit } }
+	if HiddenList( whole , board , 8 ) || HiddenList( &Principal{ UserID: 10 } , board , 8 ) {
+		t.Errorf( "an unrestricted link or a member hides nothing" )
 	}
 }

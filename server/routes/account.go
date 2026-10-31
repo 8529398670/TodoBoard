@@ -49,7 +49,7 @@ func ( handlers *Handlers ) meRow( actor *security.Actor ) ( payload fiber.Map ,
 	owner_id , err := models.OwnerID( handlers.Store )
 	if err != nil { return }
 
-	display := fiber.Map{ "timezone": "" , "hour12": nil , "number_cards": false , "plain_icons": false , "theme": nil , "own_theme_on_boards": false , "swipe_columns": false , "folder_sort": "" }
+	display := fiber.Map{ "timezone": "" , "hour12": nil , "number_cards": false , "plain_icons": false , "theme": nil , "own_theme_on_boards": false , "swipe_columns": true , "folder_sort": "" }
 	if prefs , prefs_err := models.GetUserPrefs( handlers.Store , user.ID ); prefs_err == nil {
 		display = displayPayload( prefs )
 	}
@@ -117,7 +117,7 @@ type displayRequest struct {
 }
 
 func displayPayload( prefs *models.UserPrefs ) ( payload fiber.Map ) {
-	payload = fiber.Map{ "timezone": prefs.DisplayTimezone , "hour12": prefs.Hour12 , "number_cards": prefs.NumberCards , "plain_icons": prefs.PlainIcons , "theme": prefs.Theme , "own_theme_on_boards": prefs.OwnThemeOnBoards , "swipe_columns": prefs.SwipeColumns , "folder_sort": prefs.FolderSort }
+	payload = fiber.Map{ "timezone": prefs.DisplayTimezone , "hour12": prefs.Hour12 , "number_cards": prefs.NumberCards , "plain_icons": prefs.PlainIcons , "theme": prefs.Theme , "own_theme_on_boards": prefs.OwnThemeOnBoards , "swipe_columns": prefs.SwipeColumns == nil || *prefs.SwipeColumns , "folder_sort": prefs.FolderSort }
 	return
 }
 
@@ -145,7 +145,7 @@ func ( handlers *Handlers ) SaveDisplay( c fiber.Ctx ) ( err error ) {
 	if body.NumberCards != nil { prefs.NumberCards = *body.NumberCards }
 	if body.PlainIcons != nil { prefs.PlainIcons = *body.PlainIcons }
 	if body.OwnThemeOnBoards != nil { prefs.OwnThemeOnBoards = *body.OwnThemeOnBoards }
-	if body.SwipeColumns != nil { prefs.SwipeColumns = *body.SwipeColumns }
+	if body.SwipeColumns != nil { prefs.SwipeColumns = body.SwipeColumns }
 	if body.FolderSort != nil { prefs.FolderSort = *body.FolderSort }
 	if body.Theme != nil {
 		if body.Theme.Validate() != nil {

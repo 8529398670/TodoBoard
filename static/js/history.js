@@ -20,6 +20,7 @@ const History = {
   undoStack: [],
   redoStack: [],
   limit: 100,
+  coalesceMs: 60000,
   replaying: false,
   busy: false,
   raw: {},
@@ -66,6 +67,16 @@ const History = {
       entry = null;
     }
     if ( entry ) {
+      // Text saved as it is typed arrives as many small patches; ones to the
+      // same field of the same card close together are one step to undo.
+      const top = this.undoStack[ this.undoStack.length - 1 ];
+      const now = Date.now();
+      if ( entry.key && top && top.key === entry.key && now - top.at < this.coalesceMs && !this.redoStack.length ) {
+        top.redo = entry.redo;
+        top.at = now;
+        return result;
+      }
+      entry.at = now;
       this.undoStack.push( entry );
       if ( this.undoStack.length > this.limit ) this.undoStack.shift();
       this.redoStack = [];
@@ -229,7 +240,10 @@ const History = {
       const keys = [ "title" , "description" , "list_id" , "position" , "label_ids" , "assignees" , "start_at" , "due_at" , "done" , "archived" ];
       const change = this.previous( card , args[ 1 ] , keys , ( source , key ) => this.cardValue( source , key ) );
       if ( !change ) return null;
+      const fields = Object.keys( change.forward );
+      const text = fields.length === 1 && ( fields[ 0 ] === "title" || fields[ 0 ] === "description" );
       return {
+        key: text ? "text:" + cardId + ":" + fields[ 0 ] : null,
         undo: () => this.raw.patchCard( this.id( "card" , cardId ) , this.mapCardFields( change.back ) ),
         redo: () => this.raw.patchCard( this.id( "card" , cardId ) , this.mapCardFields( change.forward ) ),
       };

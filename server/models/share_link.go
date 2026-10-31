@@ -26,6 +26,9 @@ type ShareLink struct {
 	BoardID    uint64     `json:"board_id"`
 	CardID     uint64     `json:"card_id"` // 0: the whole board (or a column)
 	ListID     uint64     `json:"list_id"` // 0: not a column link
+	// VisibleListIDs, on a board link, are the columns whose cards it shows;
+	// the rest show their titles only. Empty: every column.
+	VisibleListIDs []uint64 `json:"visible_list_ids,omitempty"`
 	Mode       string     `json:"mode"`
 	Label      string     `json:"label"`
 	CreatedBy  uint64     `json:"created_by"`
@@ -36,6 +39,19 @@ type ShareLink struct {
 }
 
 var ErrShareLinkNotFound = errors.New( "share link not found" )
+
+// Restricted is a board link that shows only some columns' cards.
+func ( link *ShareLink ) Restricted() ( result bool ) {
+	result = link.CardID == 0 && link.ListID == 0 && len( link.VisibleListIDs ) > 0
+	return
+}
+
+// Shows reports whether a board link shows this column's cards.
+func ( link *ShareLink ) Shows( list_id uint64 ) ( result bool ) {
+	if link.Restricted() == false { return true }
+	result = containsID( link.VisibleListIDs , list_id )
+	return
+}
 
 const maxShareLinksPerBoard = 100
 
@@ -49,9 +65,14 @@ func ( link *ShareLink ) Live() ( result bool ) {
 // IssueShareLink mints a link for the board, one card (card_id), or one
 // column (list_id) -- never both of the last two. days 0 means it does not
 // expire.
-func IssueShareLink( store *db.Store , board_id uint64 , card_id uint64 , list_id uint64 , mode string , label string , days int , created_by uint64 ) ( credential string , link *ShareLink , err error ) {
+func IssueShareLink( store *db.Store , board_id uint64 , card_id uint64 , list_id uint64 , visible_list_ids []uint64 , mode string , label string , days int , created_by uint64 ) ( credential string , link *ShareLink , err error ) {
 	label = strings.TrimSpace( label )
 	if ( mode != ModeView && mode != ModeEdit ) || utf8.RuneCountInString( label ) > 80 || days < 0 || days > 3650 || ( card_id != 0 && list_id != 0 ) {
+		err = ErrBadInput
+		return
+	}
+	// Only a board link picks columns.
+	if len( visible_list_ids ) > 0 && ( card_id != 0 || list_id != 0 ) {
 		err = ErrBadInput
 		return
 	}
@@ -60,6 +81,7 @@ func IssueShareLink( store *db.Store , board_id uint64 , card_id uint64 , list_i
 	now := time.Now().UTC()
 	link = &ShareLink{
 		ID: link_id , SecretHash: encryption.Sha256Hex( secret ) , BoardID: board_id , CardID: card_id , ListID: list_id ,
+		VisibleListIDs: visible_list_ids ,
 		Mode: mode , Label: label , CreatedBy: created_by , CreatedAt: now ,
 	}
 	if days > 0 {
@@ -70,6 +92,9 @@ func IssueShareLink( store *db.Store , board_id uint64 , card_id uint64 , list_i
 		board , tx_err := getBoardTx( tx , board_id )
 		if tx_err != nil { return }
 		if list_id != 0 && board.List( list_id ) == nil { return ErrListNotFound }
+		for _ , id := range visible_list_ids {
+			if board.List( id ) == nil { return ErrListNotFound }
+		}
 		if card_id != 0 {
 			if _ , tx_err = getCardTx( tx , board_id , card_id ); tx_err != nil { return }
 		}

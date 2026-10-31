@@ -172,6 +172,18 @@ const BoardPage = {
       cardOnly: data ? data.card_only : false,
       // A column share link: the one column is the whole board for them.
       listOnly: data ? !!data.list_only : false,
+      // A board link showing only some columns: cards in those, nothing
+      // board-wide (adding, moving or renaming columns, the trash).
+      columnsOnly: data ? !!data.columns_only : false,
+      // Either way the columns themselves are not theirs to change.
+      fixedColumns: data ? !!( data.list_only || data.columns_only ) : false,
+      // Open cards in a column the link shows by title only, or null for a
+      // column whose cards can be read.
+      hiddenCount( listId ) {
+        const hidden = data && data.hidden_lists;
+        if ( !hidden || hidden[ listId ] === undefined ) return null;
+        return hidden[ listId ];
+      },
       view: this.view,
       openCard( cardId ) { page.openCard( cardId ); },
       reload() { return page.load(); },
@@ -196,8 +208,9 @@ const BoardPage = {
         if ( typeof data.me.plain_icons === "boolean" ) return data.me.plain_icons;
         return !!( page.me && page.me.display && page.me.display.plain_icons );
       },
+      // On unless this person turned it off; a guest has no account, so on.
       swipeColumns() {
-        return !!( page.me && page.me.display && page.me.display.swipe_columns );
+        return !( page.me && page.me.display && page.me.display.swipe_columns === false );
       },
       lists() {
         const open = data.board.lists.filter( function ( list ) { return !list.archived; } );
@@ -248,7 +261,7 @@ const BoardPage = {
 
     Dom.show( Dom.get( "settings-button" ) , !ctx.cardOnly );
     // The trash is the whole board's, so it is for board editors only.
-    Dom.show( Dom.get( "trash-button" ) , ctx.canEdit && !ctx.cardOnly && !ctx.listOnly );
+    Dom.show( Dom.get( "trash-button" ) , ctx.canEdit && !ctx.cardOnly && !ctx.fixedColumns );
     Dom.show( Dom.get( "account-link" ) , !ctx.isGuest );
     Dom.show( Dom.get( "guest-settings-button" ) , ctx.isGuest );
     this.showHistory();

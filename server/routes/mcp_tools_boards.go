@@ -310,6 +310,7 @@ func ( handlers *Handlers ) registerBoardTools( server *mcp.Server ) {
 				}
 				card = updated
 			}
+			handlers.lookUpProductLater( board , card )
 			result = cardPayload( card , access.Card( principal , board , card ) , access.Board( principal , board ) )
 			return
 		},
@@ -352,6 +353,7 @@ func ( handlers *Handlers ) registerBoardTools( server *mcp.Server ) {
 				err = refusalError( refused )
 				return
 			}
+			handlers.lookUpProductLater( board , updated )
 			result = cardPayload( updated , access.Card( principal , board , updated ) , access.Board( principal , board ) )
 			return
 		},

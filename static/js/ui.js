@@ -117,6 +117,56 @@ const Ui = {
     area.style.height = area.scrollHeight + 2 + "px";
   },
 
+  // Tab indents every line the selection touches by two spaces (a nested
+  // Markdown list item), Shift+Tab takes up to two back off. Escape still
+  // leaves the field, so the keyboard is never trapped. Goes through
+  // execCommand where it exists so the browser's own undo keeps working.
+  indentKeys( area ) {
+    area.addEventListener( "keydown" , function ( event ) {
+      if ( event.key !== "Tab" || event.ctrlKey || event.altKey || event.metaKey || event.isComposing ) return;
+      event.preventDefault();
+      const value = area.value;
+      const start = area.selectionStart;
+      const end = area.selectionEnd;
+      const lineStart = value.lastIndexOf( "\n" , start - 1 ) + 1;
+      // A selection ending right after a newline does not take in the next line.
+      const lastLine = end > start && value[ end - 1 ] === "\n" ? end - 1 : end;
+      const nextBreak = value.indexOf( "\n" , lastLine );
+      const lineEnd = nextBreak < 0 ? value.length : nextBreak;
+      const lines = value.slice( lineStart , lineEnd ).split( "\n" );
+      let firstShift = 0;
+      let totalShift = 0;
+      const changed = lines.map( function ( line , index ) {
+        let shift;
+        let next;
+        if ( event.shiftKey ) {
+          const removed = line.match( /^ {0,2}/ )[ 0 ].length || ( line[ 0 ] === "\t" ? 1 : 0 );
+          next = line.slice( removed );
+          shift = -removed;
+        } else if ( line === "" && lines.length > 1 ) {
+          // Blank lines between indented ones stay blank.
+          next = line;
+          shift = 0;
+        } else {
+          next = "  " + line;
+          shift = 2;
+        }
+        if ( index === 0 ) firstShift = shift;
+        totalShift += shift;
+        return next;
+      } ).join( "\n" );
+      if ( !totalShift ) return;
+      area.focus();
+      area.setSelectionRange( lineStart , lineEnd );
+      if ( !document.execCommand || !document.execCommand( "insertText" , false , changed ) ) {
+        area.setRangeText( changed , lineStart , lineEnd , "end" );
+        area.dispatchEvent( new Event( "input" , { bubbles: true } ) );
+      }
+      const newStart = Math.max( lineStart , start + firstShift );
+      area.setSelectionRange( newStart , start === end ? newStart : Math.max( newStart , end + totalShift ) );
+    } );
+  },
+
   // List titles and checklist items stay on one line: line breaks become
   // single spaces.
   oneLine( text ) {
@@ -570,6 +620,54 @@ const CardBits = {
 
   hasDescription( card ) {
     return card.description && card.description.trim() !== "";
+  },
+
+  // ---- the product a card's link sells --------------------------------
+
+  // The product, when its page was read.
+  product( card ) {
+    const product = card.product;
+    return product && product.status === "ok" ? product : null;
+  },
+
+  // A link a person may follow: http(s) only.
+  safeLink( value ) {
+    return /^https?:\/\//i.test( String( value || "" ) ) ? String( value ) : "";
+  },
+
+  // The product photo. It is fetched with the board's own credentials (a
+  // share link's travels in a header an <img> cannot send) and shown from
+  // a blob URL, kept per card until the product changes.
+  productImages: {},
+  productImage( card , ctx , className ) {
+    const product = this.product( card );
+    if ( !product || !product.has_image ) return null;
+    const img = Dom.el( "img" , { class: className , attrs: { alt: product.title || "" , loading: "lazy" , decoding: "async" } } );
+    const key = ctx.board.id + ":" + card.id + ":" + product.fetched_at;
+    const cached = this.productImages[ key ];
+    const show = function ( url ) { if ( url ) img.src = url; else img.remove(); };
+    if ( cached && typeof cached === "string" ) {
+      show( cached );
+    } else {
+      if ( !cached ) {
+        this.productImages[ key ] = ctx.client.productImage( card.id ).then( ( blob ) => {
+          const url = URL.createObjectURL( blob );
+          this.productImages[ key ] = url;
+          return url;
+        } , () => {
+          this.productImages[ key ] = "";
+          return "";
+        } );
+      }
+      Promise.resolve( this.productImages[ key ] ).then( show );
+    }
+    return img;
+  },
+
+  price( card ) {
+    const product = this.product( card );
+    if ( !product || !product.price ) return null;
+    return Dom.el( "span" , { class: "price-chip" , text: product.price } );
   },
 
   // "Sam (guest)" for a guest edit, the name otherwise.

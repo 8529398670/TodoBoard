@@ -55,8 +55,11 @@ type UserPrefs struct {
 	PlainIcons bool `json:"plain_icons"`
 
 	// SwipeColumns shows a board one full-width column at a time on a phone
-	// held upright, swiped between.
-	SwipeColumns bool `json:"swipe_columns"`
+	// held upright, swiped between. nil -- never chosen -- means on. Stored
+	// under a new key: the old "swipe_columns" was saved as false by anyone
+	// who changed any display setting, so it could not tell a choice from
+	// the old default.
+	SwipeColumns *bool `json:"phone_one_column"`
 
 	// FolderSort is how the home page orders folders: "" by name, "manual"
 	// by the order they were dragged into (Folder.Position).

@@ -26,6 +26,7 @@ func ( handlers *Handlers ) CreateCard( c fiber.Ctx ) ( err error ) {
 	if ok , bind_err := bindBody( c , &body ); ok == false { return bind_err }
 	card , refused := handlers.createCard( principal , board , body.ListID , body.Title , body.Position )
 	err = handlers.cardReply( c , principal , board , card , refused )
+	if refused == nil { handlers.lookUpProductLater( board , card ) }
 	return
 }
 
@@ -57,6 +58,7 @@ func ( handlers *Handlers ) PatchCard( c fiber.Ctx ) ( err error ) {
 	var body models.CardPatch
 	if ok , bind_err := bindBody( c , &body ); ok == false { return bind_err }
 	updated , current , refused := handlers.patchCard( principal , board , card , &body )
+	if refused == nil && ( body.Title != nil || body.Description != nil || body.ListID != nil ) { handlers.lookUpProductLater( board , updated ) }
 	if current != nil {
 		// Hand back the current card so the client can show what changed
 		// without a second request.
@@ -73,7 +75,10 @@ func ( handlers *Handlers ) PatchCard( c fiber.Ctx ) ( err error ) {
 func ( handlers *Handlers ) patchCard( principal *access.Principal , board *models.Board , card *models.Card , patch *models.CardPatch ) ( updated *models.Card , current *models.Card , refused *refusal ) {
 	if patch.Moves() {
 		leaves := patch.ListID != nil && *patch.ListID != card.ListID
-		if ( leaves && access.Board( principal , board ) < access.Edit ) || access.List( principal , board , card.ListID ) < access.Edit {
+		// Leaving its column needs edit rights where it lands too: a board
+		// editor has them everywhere, a column link nowhere else, and a link
+		// showing some columns only in those.
+		if ( leaves && access.List( principal , board , *patch.ListID ) < access.Edit ) || access.List( principal , board , card.ListID ) < access.Edit {
 			refused = &refusal{ fiber.StatusForbidden , "forbidden" }
 			return
 		}

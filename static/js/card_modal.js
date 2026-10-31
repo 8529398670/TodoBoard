@@ -16,6 +16,10 @@ const CardModal = {
   conflict: null,
   titleConflict: null,
   pendingRefresh: false,
+  // Title and description save themselves while they are typed (see
+  // scheduleText): per field, the revision the next save is checked
+  // against, what was last saved, and the save in flight, if any.
+  text: { title: null , description: null },
 
   dialog() {
     return Dom.get( "card-dialog" );
@@ -27,6 +31,8 @@ const CardModal = {
     dialog.dataset.bound = "1";
     closeOnBackdrop( dialog );
     dialog.addEventListener( "close" , () => {
+      this.flushText( "title" );
+      this.flushText( "description" );
       this.cardId = null;
       this.editingDescription = false;
       this.editingTitle = false;
@@ -44,10 +50,25 @@ const CardModal = {
         }
       } , 0 );
     } );
+    // Closing or leaving the tab sends what is still waiting (the client
+    // sends small writes with keepalive, so they outlive the page).
+    window.addEventListener( "pagehide" , () => {
+      this.flushText( "title" );
+      this.flushText( "description" );
+    } );
+    document.addEventListener( "visibilitychange" , () => {
+      if ( !document.hidden ) return;
+      this.flushText( "title" );
+      this.flushText( "description" );
+    } );
   },
 
   open( ctx , cardId ) {
     this.bind();
+    if ( this.cardId !== null && this.cardId !== cardId ) {
+      this.flushText( "title" );
+      this.flushText( "description" );
+    }
     this.ctx = ctx;
     if ( !ctx.card( cardId ) ) {
       Ui.toast( T( "errors.card_not_found" ) );
@@ -115,6 +136,8 @@ const CardModal = {
     Dom.clear( body );
 
     body.appendChild( this.header( card , canEdit ) );
+    const product = this.productSection( card , canEdit );
+    if ( product ) body.appendChild( product );
     body.appendChild( this.description( card , canEdit ) );
     body.appendChild( this.checklist( card , canEdit ) );
     body.appendChild( this.dates( card , canEdit ) );
@@ -307,6 +330,7 @@ const CardModal = {
         this.titlePreviewing = false;
         this.titleDraft = card.title;
         this.titleRev = card.rev;
+        this.startText( "title" , card );
         this.render();
         const area = this.dialog().querySelector( ".title-input" );
         if ( area ) {
@@ -332,9 +356,13 @@ const CardModal = {
     tabs.appendChild( Ui.button( "card.write_tab" , () => { this.titlePreviewing = false; this.render(); } , "secondary small" + ( this.titlePreviewing ? "" : " active" ) ) );
     tabs.appendChild( Ui.button( "card.preview_tab" , () => { this.titlePreviewing = true; this.render(); } , "secondary small" + ( this.titlePreviewing ? " active" : "" ) ) );
     wrap.appendChild( tabs );
-    const cancel = () => {
+    // Escape puts back the title editing started from; Enter or Done keeps
+    // what is there. Either way it is already saved, or about to be.
+    const finish = async ( revert ) => {
+      if ( revert && this.text.title ) this.titleDraft = this.text.title.original;
+      await this.flushText( "title" );
+      if ( this.titleConflict ) return;
       this.editingTitle = false;
-      this.titleConflict = null;
       this.render();
     };
     if ( this.titlePreviewing ) {
@@ -347,15 +375,17 @@ const CardModal = {
       area.addEventListener( "input" , () => {
         this.titleDraft = area.value;
         Ui.autoGrow( area );
+        this.scheduleText( "title" );
       } );
+      area.addEventListener( "blur" , () => { this.flushText( "title" ); } );
       area.addEventListener( "keydown" , ( event ) => {
         if ( event.key === "Enter" && !event.shiftKey && !event.isComposing ) {
           event.preventDefault();
-          this.saveTitle( this.titleRev );
+          finish( false );
         } else if ( event.key === "Escape" ) {
           event.preventDefault();
           event.stopPropagation();
-          cancel();
+          finish( true );
         }
       } );
       wrap.appendChild( area );
@@ -363,35 +393,10 @@ const CardModal = {
       wrap.appendChild( Dom.el( "p" , { class: "muted small-print" , text: T( "card.markdown_hint" ) } ) );
     }
     wrap.appendChild( Dom.el( "div" , { class: "row-actions" , children: [
-      Dom.el( "button" , { class: Ui.buttonClass( "small" ) , text: T( "board.save" ) , attrs: { type: "button" } , on: { click: () => this.saveTitle( this.titleRev ) } } ),
-      Ui.button( "board.cancel" , cancel ),
+      Dom.el( "button" , { class: Ui.buttonClass( "small" ) , text: T( "card.done_editing" ) , attrs: { type: "button" } , on: { click: () => finish( false ) } } ),
+      this.textStatus( "title" ),
     ] } ) );
     return wrap;
-  },
-
-  // Like saveDescription: checked against the revision editing started from.
-  async saveTitle( rev ) {
-    const title = this.titleDraft.trim();
-    if ( !title ) return;
-    const card = this.card();
-    if ( card && title === card.title ) {
-      this.editingTitle = false;
-      this.render();
-      return;
-    }
-    try {
-      await this.ctx.client.patchCard( this.cardId , { title: title , rev: rev } );
-      this.editingTitle = false;
-      this.titleConflict = null;
-      await this.ctx.reload();
-    } catch ( error ) {
-      if ( error.status === 409 && error.payload && error.payload.card ) {
-        this.titleConflict = error.payload.card;
-        this.render();
-        return;
-      }
-      Ui.error( error );
-    }
   },
 
   titleConflictBox() {
@@ -399,14 +404,73 @@ const CardModal = {
     const box = Dom.el( "div" , { class: "alert alert-warning conflict" } );
     box.appendChild( Dom.el( "p" , { text: I18n.fill( "card.title_conflict" , { name: CardBits.actorName( theirs.updated_by ) } ) } ) );
     box.appendChild( Dom.el( "div" , { class: "row-actions" , children: [
-      Ui.button( "card.conflict_keep_mine" , () => this.saveTitle( theirs.rev ) ),
+      Ui.button( "card.conflict_keep_mine" , () => this.keepMine( "title" , theirs.rev ) ),
       Ui.button( "card.conflict_take_theirs" , async () => {
         this.titleConflict = null;
         this.editingTitle = false;
+        this.text.title = null;
         await this.ctx.reload();
       } ),
     ] } ) );
     return box;
+  },
+
+  // What the card's shop link sells: photo, name, price, a line about it and
+  // a Buy button. Filled in by the server a few seconds after the link
+  // appears (Amazon anywhere, any shop on a shopping board or column); an
+  // editor can look it up again or take it off. A card with a link but no
+  // product offers to look it up by hand.
+  productSection( card , canEdit ) {
+    const product = card.product;
+    const section = Dom.el( "section" , { class: "card-section card-product" } );
+    const refresh = async ( button ) => {
+      button.disabled = true;
+      Dom.text( button , T( "product.looking_up" ) );
+      try {
+        const updated = await this.ctx.client.refreshProduct( card.id );
+        Object.assign( card , updated );
+        if ( updated.product && updated.product.status !== "ok" ) Ui.toast( T( "product.failed" ) , "error" );
+      } catch ( error ) {
+        Ui.error( error );
+      }
+      await this.ctx.reload();
+    };
+    if ( !product ) {
+      if ( !canEdit || !/https?:\/\//i.test( card.title + " " + card.description ) ) return null;
+      const button = Ui.button( "product.look_up" , () => refresh( button ) );
+      section.appendChild( button );
+      return section;
+    }
+    const link = CardBits.safeLink( product.url );
+    if ( product.status === "ok" ) {
+      const photo = CardBits.productImage( card , this.ctx , "card-product-photo" );
+      if ( photo ) section.appendChild( photo );
+      const info = Dom.el( "div" , { class: "card-product-info" } );
+      if ( product.title ) info.appendChild( Dom.el( "p" , { class: "card-product-title" , text: product.title } ) );
+      if ( product.price ) info.appendChild( Dom.el( "p" , { class: "card-product-price" , text: product.price } ) );
+      if ( product.description ) info.appendChild( Dom.el( "p" , { class: "card-product-description muted" , text: product.description } ) );
+      section.appendChild( info );
+    } else {
+      section.appendChild( Dom.el( "p" , { class: "muted" , text: T( "product.failed" ) } ) );
+    }
+    const actions = Dom.el( "div" , { class: "row-actions" } );
+    if ( link ) {
+      actions.appendChild( Dom.el( "a" , {
+        class: "btn btn-sm btn-primary",
+        text: T( "product.buy" ),
+        attrs: { href: link , target: "_blank" , rel: "noopener noreferrer nofollow" },
+      } ) );
+    }
+    if ( canEdit ) {
+      const again = Ui.button( "product.refresh" , () => refresh( again ) );
+      actions.appendChild( again );
+      actions.appendChild( Ui.button( "product.remove" , async () => {
+        try { await this.ctx.client.removeProduct( card.id ); } catch ( error ) { Ui.error( error ); }
+        await this.ctx.reload();
+      } ) );
+    }
+    section.appendChild( actions );
+    return section;
   },
 
   description( card , canEdit ) {
@@ -423,6 +487,7 @@ const CardModal = {
         this.previewing = false;
         this.draft = card.description;
         this.baseRev = card.rev;
+        this.startText( "description" , card );
         this.render();
         const area = this.dialog().querySelector( ".description-input" );
         if ( area ) area.focus();
@@ -460,40 +525,126 @@ const CardModal = {
     } else {
       const area = Dom.el( "textarea" , { class: "description-input form-control" , attrs: { rows: "10" , "aria-label": T( "card.description_label" ) , placeholder: T( "card.description_placeholder" ) } } );
       area.value = this.draft;
-      area.addEventListener( "input" , () => { this.draft = area.value; } );
+      area.addEventListener( "input" , () => {
+        this.draft = area.value;
+        this.scheduleText( "description" );
+      } );
+      area.addEventListener( "blur" , () => { this.flushText( "description" ); } );
+      Ui.indentKeys( area );
       section.appendChild( area );
-      section.appendChild( Dom.el( "p" , { class: "muted small-print" , text: T( "card.markdown_hint" ) } ) );
+      section.appendChild( Dom.el( "p" , { class: "muted small-print" , text: T( "card.description_hint" ) } ) );
     }
 
     section.appendChild( Dom.el( "div" , { class: "row-actions" , children: [
-      Dom.el( "button" , { class: Ui.buttonClass( "small" ) , text: T( "board.save" ) , attrs: { type: "button" } , on: { click: () => this.saveDescription( this.baseRev ) } } ),
-      Ui.button( "board.cancel" , () => {
+      Dom.el( "button" , { class: Ui.buttonClass( "small" ) , text: T( "card.done_editing" ) , attrs: { type: "button" } , on: { click: async () => {
+        await this.flushText( "description" );
+        if ( this.conflict ) return;
         this.editingDescription = false;
-        this.conflict = null;
         this.render();
-      } ),
+      } } } ),
+      this.textStatus( "description" ),
     ] } ) );
     return section;
   },
 
-  // Saving text is checked against the revision the editor started from. If
-  // someone else saved in between, the server answers 409 with their copy,
-  // and the person chooses -- nothing is overwritten silently.
-  async saveDescription( rev ) {
-    const ctx = this.ctx;
-    try {
-      await ctx.client.patchCard( this.cardId , { description: this.draft , rev: rev } );
-      this.editingDescription = false;
-      this.conflict = null;
-      await ctx.reload();
-    } catch ( error ) {
-      if ( error.status === 409 && error.payload && error.payload.card ) {
-        this.conflict = error.payload.card;
-        this.render();
-        return;
-      }
-      Ui.error( error );
+  // ---- saving text as it is typed ---------------------------------------
+  // Each save is checked against the revision the last one left (or editing
+  // started from). If someone else saved in between, the server answers 409
+  // with their copy and saving stops until the person chooses -- nothing is
+  // overwritten silently.
+
+  startText( field , card ) {
+    const value = field === "title" ? card.title : card.description;
+    this.text[ field ] = { cardId: card.id , ctx: this.ctx , rev: card.rev , original: value , saved: value , timer: null , inflight: null , again: false };
+  },
+
+  scheduleText( field ) {
+    const state = this.text[ field ];
+    if ( !state ) return;
+    window.clearTimeout( state.timer );
+    state.timer = window.setTimeout( () => { this.flushText( field ); } , 800 );
+    this.showStatus( field , "card.autosave_pending" );
+  },
+
+  draftOf( field ) {
+    return field === "title" ? this.titleDraft.trim() : this.draft;
+  },
+
+  conflictOf( field ) {
+    return field === "title" ? this.titleConflict : this.conflict;
+  },
+
+  // Send what is typed now, if it differs from what was saved. One save at
+  // a time: anything typed meanwhile goes in the next.
+  async flushText( field ) {
+    const state = this.text[ field ];
+    if ( !state ) return;
+    window.clearTimeout( state.timer );
+    state.timer = null;
+    if ( state.inflight ) {
+      state.again = true;
+      return state.inflight;
     }
+    // Only while this card's editor holds the draft.
+    if ( this.cardId !== state.cardId || this.conflictOf( field ) ) return;
+    const value = this.draftOf( field );
+    if ( value === state.saved || ( field === "title" && !value ) ) {
+      this.showStatus( field , value === state.saved && value !== state.original ? "card.autosave_saved" : "" );
+      return;
+    }
+    this.showStatus( field , "card.autosave_saving" );
+    state.inflight = ( async () => {
+      try {
+        const fields = { rev: state.rev };
+        fields[ field ] = value;
+        const updated = await state.ctx.client.patchCard( state.cardId , fields );
+        state.saved = value;
+        state.rev = updated.rev;
+        // Keep the board's copy current without re-reading it, which would
+        // redraw the editor under the cursor. The next poll catches up.
+        const card = state.ctx.card( state.cardId );
+        if ( card ) Object.assign( card , updated );
+        this.showStatus( field , "card.autosave_saved" );
+      } catch ( error ) {
+        if ( error.status === 409 && error.payload && error.payload.card ) {
+          if ( field === "title" ) this.titleConflict = error.payload.card;
+          else this.conflict = error.payload.card;
+          if ( this.cardId === state.cardId ) this.render();
+        } else {
+          this.showStatus( field , "card.autosave_failed" );
+          Ui.error( error );
+        }
+      } finally {
+        state.inflight = null;
+      }
+      if ( state.again ) {
+        state.again = false;
+        await this.flushText( field );
+      }
+    } )();
+    return state.inflight;
+  },
+
+  // "Keep mine" after a conflict: save over their revision.
+  keepMine( field , rev ) {
+    const state = this.text[ field ];
+    if ( field === "title" ) this.titleConflict = null;
+    else this.conflict = null;
+    if ( state ) {
+      state.rev = rev;
+      state.saved = null;
+    }
+    this.render();
+    return this.flushText( field );
+  },
+
+  textStatus( field ) {
+    return Dom.el( "span" , { class: "muted small-print autosave-status" , attrs: { "data-field": field , "aria-live": "polite" } } );
+  },
+
+  showStatus( field , key ) {
+    const node = this.dialog().querySelector( ".autosave-status[data-field=\"" + field + "\"]" );
+    if ( node ) Dom.text( node , key ? T( key ) : "" );
   },
 
   conflictBox( card ) {
@@ -501,10 +652,11 @@ const CardModal = {
     const box = Dom.el( "div" , { class: "alert alert-warning conflict" } );
     box.appendChild( Dom.el( "p" , { text: I18n.fill( "card.conflict" , { name: CardBits.actorName( theirs.updated_by ) } ) } ) );
     box.appendChild( Dom.el( "div" , { class: "row-actions" , children: [
-      Ui.button( "card.conflict_keep_mine" , () => this.saveDescription( theirs.rev ) ),
+      Ui.button( "card.conflict_keep_mine" , () => this.keepMine( "description" , theirs.rev ) ),
       Ui.button( "card.conflict_take_theirs" , async () => {
         this.conflict = null;
         this.editingDescription = false;
+        this.text.description = null;
         await this.ctx.reload();
       } ),
     ] } ) );

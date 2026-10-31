@@ -102,7 +102,10 @@ const BoardSettings = {
       { value: "timeline" , text: T( "views.timeline" ) },
     ] , ctx.board.default_view );
     let boardColor = ctx.board.color || "";
-    const color = ColorPicker.named( boardColor , function ( name ) { boardColor = name; } , { none: true , labelKey: "settings.color_label" } );
+    const color = ColorPicker.named( boardColor , function ( name ) {
+      boardColor = name;
+      save( { color: name } );
+    } , { none: true , labelKey: "settings.color_label" } );
     const layout = Ui.select( [
       { value: "" , text: T( "settings.layout_free" ) },
       { value: "three" , text: T( "settings.layout_three" ) },
@@ -125,15 +128,52 @@ const BoardSettings = {
     form.appendChild( BoardSettings.swatchField( "settings.color_label" , color ) );
     form.appendChild( Dom.el( "p" , { class: "muted small-print" , text: T( "settings.layout_hint" ) } ) );
     form.appendChild( Ui.field( "settings.numbering_label" , numbering ) );
-    form.appendChild( Dom.el( "button" , { class: "btn btn-primary" , text: T( "board.save" ) , attrs: { type: "submit" } } ) );
-    form.addEventListener( "submit" , async function ( event ) {
-      event.preventDefault();
-      const changes = { title: title.value , default_view: view.value , color: boardColor , layout: layout.value , numbering: numbering.value };
-      if ( slug.value !== ( ctx.board.slug || "" ) ) changes.slug = slug.value.replace( /^-+|-+$/g , "" );
+    form.appendChild( Ui.checkbox( "settings.shopping_label" , ctx.board.shopping , function ( checked ) { save( { shopping: checked } ); } ) );
+    form.appendChild( Dom.el( "p" , { class: "muted small-print" , text: T( "settings.shopping_hint" ) } ) );
+    // Every field saves by itself: choices as they are picked, the name as
+    // it is typed (after a pause), the address when it is left.
+    const status = Dom.el( "p" , { class: "muted small-print autosave-status" , attrs: { "aria-live": "polite" } } );
+    form.appendChild( status );
+    const save = async function ( changes ) {
+      Dom.text( status , T( "card.autosave_saving" ) );
+      const result = await ctx.mutate( function () { return ctx.client.updateBoard( changes ); } );
+      Dom.text( status , result ? T( "card.autosave_saved" ) : "" );
+    };
+    let titleTimer = null;
+    let savedTitle = ctx.board.title;
+    const saveTitle = function () {
+      window.clearTimeout( titleTimer );
+      const value = title.value.trim();
+      if ( !value || value === savedTitle ) return;
+      savedTitle = value;
+      save( { title: value } );
+    };
+    title.addEventListener( "input" , function () {
+      window.clearTimeout( titleTimer );
+      Dom.text( status , T( "card.autosave_pending" ) );
+      titleTimer = window.setTimeout( saveTitle , 800 );
+    } );
+    title.addEventListener( "change" , saveTitle );
+    let savedSlug = ctx.board.slug || "";
+    slug.addEventListener( "change" , function () {
+      const value = slug.value.replace( /^-+|-+$/g , "" );
+      if ( value === savedSlug || !slug.checkValidity() ) return;
+      savedSlug = value;
+      save( { slug: value } );
+    } );
+    view.addEventListener( "change" , function () { save( { default_view: view.value } ); } );
+    numbering.addEventListener( "change" , function () { save( { numbering: numbering.value } ); } );
+    layout.addEventListener( "change" , function () {
+      const changes = { layout: layout.value };
       // Lists to add if the three-column layout finds fewer than three.
       if ( layout.value === "three" ) changes.list_titles = T( "home.default_lists" ).split( "," ).map( function ( name ) { return name.trim(); } );
-      const result = await ctx.mutate( function () { return ctx.client.updateBoard( changes ); } );
-      if ( result ) Ui.toast( T( "settings.saved" ) , "ok" );
+      save( changes );
+    } );
+    // Enter in a box saves now rather than submitting anything.
+    form.addEventListener( "submit" , function ( event ) {
+      event.preventDefault();
+      saveTitle();
+      slug.dispatchEvent( new Event( "change" ) );
     } );
     section.appendChild( form );
     return section;
@@ -230,7 +270,7 @@ const BoardSettings = {
   archived( ctx ) {
     const section = Dom.el( "section" , { class: "panel-section" } );
     section.appendChild( Dom.el( "h3" , { text: T( "settings.archived_heading" ) } ) );
-    if ( ctx.canEdit && !ctx.listOnly ) {
+    if ( ctx.canEdit && !ctx.fixedColumns ) {
       section.appendChild( Dom.el( "div" , { class: "row-actions" , children: [
         Ui.button( "trash.open_button" , function () { Trash.open( ctx , function () { BoardSettings.open( BoardPage.context() ); } ); } ),
       ] } ) );

@@ -76,6 +76,9 @@ func Board( principal *Principal , board *models.Board ) ( level Level ) {
 		link := principal.Share
 		if link.BoardID != board.ID || link.CardID != 0 || link.ListID != 0 || link.Live() == false { return }
 		level = modeLevel( link.Mode )
+		// A link that shows only some columns reads the board's shape but
+		// changes nothing board-wide: its edit rights are per column (List).
+		if link.Restricted() && level > View { level = View }
 		return
 	}
 	switch board.RoleOf( principal.UserID ) {
@@ -95,11 +98,24 @@ func Board( principal *Principal , board *models.Board ) ( level Level ) {
 // not renaming or removing the column itself, which stays a board edit.
 func List( principal *Principal , board *models.Board , list_id uint64 ) ( level Level ) {
 	if principal == nil || board == nil || board.List( list_id ) == nil { return }
+	if HiddenList( principal , board , list_id ) { return }
 	level = Board( principal , board )
 	if level > Edit { level = Edit }
-	if link := principal.Share; link != nil && link.BoardID == board.ID && link.ListID == list_id && link.Live() {
-		if direct := modeLevel( link.Mode ); direct > level { level = direct }
+	if link := principal.Share; link != nil && link.BoardID == board.ID && link.Live() {
+		if link.ListID == list_id || ( link.Restricted() && link.Shows( list_id ) ) {
+			if direct := modeLevel( link.Mode ); direct > level { level = direct }
+		}
 	}
+	return
+}
+
+// HiddenList reports whether the principal holds a board link that shows
+// this column's title but not its cards.
+func HiddenList( principal *Principal , board *models.Board , list_id uint64 ) ( result bool ) {
+	if principal == nil || principal.Share == nil || board == nil { return }
+	link := principal.Share
+	if link.BoardID != board.ID || link.CardID != 0 || link.ListID != 0 || link.Live() == false { return }
+	result = link.Shows( list_id ) == false
 	return
 }
 
@@ -108,12 +124,13 @@ func List( principal *Principal , board *models.Board , list_id uint64 ) ( level
 // grants on the card's column, and anything granted on this card alone.
 func Card( principal *Principal , board *models.Board , card *models.Card ) ( level Level ) {
 	if principal == nil || board == nil || card == nil || card.BoardID != board.ID { return }
+	if HiddenList( principal , board , card.ListID ) { return }
 	level = Board( principal , board )
 	if level > Edit { level = Edit }
 	var direct Level
 	if principal.Share != nil {
 		link := principal.Share
-		if link.BoardID == board.ID && link.Live() && ( link.CardID == card.ID || ( link.ListID != 0 && link.ListID == card.ListID ) ) {
+		if link.BoardID == board.ID && link.Live() && ( link.CardID == card.ID || ( link.ListID != 0 && link.ListID == card.ListID ) || ( link.Restricted() && link.Shows( card.ListID ) ) ) {
 			direct = modeLevel( link.Mode )
 		}
 	} else {

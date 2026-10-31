@@ -159,6 +159,21 @@ const Sharing = {
     form.appendChild( Ui.field( "share.mode_label" , mode ) );
     form.appendChild( Ui.field( "share.link_label" , label ) );
     form.appendChild( Ui.field( "share.link_days" , days ) );
+    // A board link can show only some columns' cards; the rest show their
+    // titles over blurred cards. All ticked is the whole board as before.
+    const columns = [];
+    if ( !scope.card_id && !scope.list_id ) {
+      const pick = Dom.el( "fieldset" , { class: "field share-columns" } );
+      pick.appendChild( Dom.el( "legend" , { class: "form-label" , text: T( "share.columns_label" ) } ) );
+      ctx.lists().forEach( function ( list ) {
+        const check = Ui.check( Ui.oneLine( list.title ) , true );
+        check.querySelector( "input" ).value = String( list.id );
+        columns.push( check.querySelector( "input" ) );
+        pick.appendChild( check );
+      } );
+      pick.appendChild( Dom.el( "p" , { class: "muted small-print mb-0" , text: T( "share.columns_hint" ) } ) );
+      form.appendChild( pick );
+    }
     form.appendChild( Dom.el( "button" , { class: "btn btn-primary" , text: T( "share.create_link" ) , attrs: { type: "submit" } } ) );
     section.appendChild( form );
 
@@ -168,8 +183,16 @@ const Sharing = {
 
     form.addEventListener( "submit" , async ( event ) => {
       event.preventDefault();
+      const ticked = columns.filter( function ( box ) { return box.checked; } ).map( function ( box ) { return Number( box.value ); } );
+      if ( columns.length && !ticked.length ) {
+        Ui.toast( T( "share.columns_none" ) , "error" );
+        return;
+      }
+      // Every column ticked is sent as none picked, so columns added later
+      // show too.
+      const visible = ticked.length === columns.length ? [] : ticked;
       try {
-        const link = await ctx.client.createShareLink( { card_id: scope.card_id || 0 , list_id: scope.list_id || 0 , mode: mode.value , label: label.value , days: Number( days.value ) || 0 } );
+        const link = await ctx.client.createShareLink( { card_id: scope.card_id || 0 , list_id: scope.list_id || 0 , visible_list_ids: visible , mode: mode.value , label: label.value , days: Number( days.value ) || 0 } );
         Dom.clear( created );
         const url = Dom.el( "code" , { text: window.location.origin + link.share_path } );
         const notice = Dom.el( "span" , { class: "muted" , text: T( "share.copied" ) } );
@@ -201,6 +224,9 @@ const Sharing = {
     if ( link.list_id ) {
       const column = ctx.board.lists.find( function ( item ) { return item.id === link.list_id; } );
       return I18n.fill( "share.scope_list" , { list: column ? column.title : "#" + link.list_id } );
+    }
+    if ( link.visible_list_ids && link.visible_list_ids.length ) {
+      return I18n.fill( "share.scope_columns" , { n: link.visible_list_ids.length , total: ctx.board.lists.filter( function ( list ) { return !list.archived; } ).length } );
     }
     return T( "share.scope_board" );
   },

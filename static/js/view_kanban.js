@@ -7,13 +7,13 @@ const KanbanView = {
     const scroller = Dom.el( "div" , { class: "kanban scroll-x" + ( three ? " three" : "" ) } );
     const lists = ctx.lists();
     lists.forEach( ( list ) => scroller.appendChild( this.column( list , ctx ) ) );
-    if ( ctx.canEdit && !three && !ctx.listOnly ) scroller.appendChild( this.addListColumn( ctx ) );
+    if ( ctx.canEdit && !three && !ctx.fixedColumns ) scroller.appendChild( this.addListColumn( ctx ) );
     if ( ctx.swipeColumns() && lists.length > 1 ) root.appendChild( this.dots( scroller , lists ) );
     root.appendChild( scroller );
 
     if ( !ctx.canEdit || typeof Sortable === "undefined" ) return;
 
-    Dom.all( ".kanban-cards" , scroller ).forEach( ( container ) => {
+    Dom.all( ".kanban-cards:not(.is-obscured)" , scroller ).forEach( ( container ) => {
       Sortable.create( container , {
         group: "cards",
         animation: 150,
@@ -40,7 +40,7 @@ const KanbanView = {
 
     // A three-column board's columns are fixed in place, and a single
     // shared column has nowhere to go.
-    if ( three || ctx.listOnly ) return;
+    if ( three || ctx.fixedColumns ) return;
     Sortable.create( scroller , {
       animation: 150,
       forceFallback: true,
@@ -125,6 +125,8 @@ const KanbanView = {
   },
 
   column( list , ctx ) {
+    const hidden = ctx.hiddenCount( list.id );
+    if ( hidden !== null ) return this.obscuredColumn( list , hidden );
     const cards = ctx.cardsIn( list.id );
     const column = Dom.el( "section" , { class: "kanban-column" , attrs: { "data-list-id": list.id , "data-position": list.position } } );
 
@@ -146,6 +148,40 @@ const KanbanView = {
     return column;
   },
 
+  // A column a share link shows by title only. The server sent how many
+  // cards it holds and nothing else, so these are blank bars, blurred.
+  obscuredColumn( list , count ) {
+    const column = Dom.el( "section" , { class: "kanban-column is-obscured" , attrs: { "data-list-id": list.id , "data-position": list.position } } );
+    const header = Dom.el( "header" , { class: "column-header" } );
+    const title = Dom.el( "h2" , { class: "column-title" } );
+    Markdown.renderInline( list.title , title );
+    header.appendChild( title );
+    header.appendChild( Dom.el( "span" , { class: "count" , text: String( count ) } ) );
+    column.appendChild( header );
+    column.appendChild( Dom.el( "p" , { class: "visually-hidden" , text: T( "share.column_hidden" ) } ) );
+    column.appendChild( KanbanView.obscuredCards( count ) );
+    return column;
+  },
+
+  obscuredCards( count ) {
+    const container = Dom.el( "div" , { class: "kanban-cards is-obscured" , attrs: { "aria-hidden": "true" , title: T( "share.column_hidden" ) } } );
+    // Widths from the index, so a redraw does not shimmer.
+    const widths = [ 82 , 64 , 91 , 55 , 73 , 60 , 87 ];
+    for ( let index = 0; index < count; index += 1 ) {
+      const face = Dom.el( "div" , { class: "card-face obscured-card" } );
+      const bar = Dom.el( "span" , { class: "obscured-bar" } );
+      bar.style.width = widths[ index % widths.length ] + "%";
+      face.appendChild( bar );
+      if ( index % 2 === 0 ) {
+        const short = Dom.el( "span" , { class: "obscured-bar" } );
+        short.style.width = widths[ ( index + 3 ) % widths.length ] / 2 + "%";
+        face.appendChild( short );
+      }
+      container.appendChild( face );
+    }
+    return container;
+  },
+
   // cards is the card's column (open cards), for its number.
   face( card , ctx , cards ) {
     const face = Dom.el( "article" , {
@@ -160,6 +196,8 @@ const KanbanView = {
     face.appendChild( card.archived ? CardBits.restoreIcon( card , ctx ) : CardBits.statusIcons( card , ctx ) );
     const labels = CardBits.labels( card , ctx.board );
     if ( labels ) face.appendChild( labels );
+    const photo = CardBits.productImage( card , ctx , "card-product-thumb" );
+    if ( photo ) face.appendChild( photo );
 
     const title = Dom.el( "div" , { class: "card-title" } );
     if ( cards && !card.archived && ctx.numbered() ) title.appendChild( CardBits.numberField( card , cards , ctx ) );
@@ -178,6 +216,7 @@ const KanbanView = {
 
     const meta = Dom.el( "div" , { class: "card-meta" } );
     [
+      CardBits.price( card ),
       CardBits.due( card ),
       CardBits.checklist( card ),
       CardBits.assignees( card , ctx.people ),
@@ -348,7 +387,7 @@ const ListMenu = {
       copy.appendChild( Dom.el( "div" , { class: "row-actions" , children: [
         Ui.button( "board.copy_bullets" , function () { Ui.copyText( ListMenu.markdownList( list , ctx , false ) ); } ),
         Ui.button( "board.copy_numbered" , function () { Ui.copyText( ListMenu.markdownList( list , ctx , true ) ); } ),
-        Ui.button( "board.copy_everything" , function () { Ui.copyText( BoardExport.listMarkdown( ctx , list ) ); } ),
+        Ui.button( "board.copy_everything" , function () { Ui.copyText( BoardExport.listNumbered( ctx , list ) ); } ),
       ] } ) );
       body.appendChild( copy );
       // The column as a file, and cards back from one (appended).
@@ -381,15 +420,40 @@ const ListMenu = {
       }
       // Renaming, archiving and deleting change the board, which a column
       // link cannot.
-      if ( !ctx.canEdit || ctx.listOnly ) return;
+      if ( !ctx.canEdit || ctx.fixedColumns ) return;
       const form = Dom.el( "form" , { attrs: { autocomplete: "off" } } );
       const input = Dom.el( "input" , { class: "form-control" , attrs: { maxlength: "120" , required: "" } } );
       input.value = list.title;
       form.appendChild( Ui.field( "board.list_title_label" , input ) );
-      form.appendChild( Dom.el( "button" , { class: "btn btn-primary" , text: T( "board.save" ) , attrs: { type: "submit" } } ) );
+      form.appendChild( Ui.checkbox( "board.list_shopping" , list.shopping , async function ( checked ) {
+        Dom.text( status , T( "card.autosave_saving" ) );
+        const result = await ctx.mutate( function () { return ctx.client.updateList( list.id , { shopping: checked } ); } );
+        Dom.text( status , result ? T( "card.autosave_saved" ) : "" );
+      } ) );
+      // The name saves itself after a pause in typing, or when it is left;
+      // Enter saves and closes the menu.
+      const status = Dom.el( "p" , { class: "muted small-print autosave-status" , attrs: { "aria-live": "polite" } } );
+      form.appendChild( status );
+      let saved = list.title;
+      let timer = null;
+      const save = async function () {
+        window.clearTimeout( timer );
+        const value = input.value.trim();
+        if ( !value || value === saved ) return;
+        saved = value;
+        Dom.text( status , T( "card.autosave_saving" ) );
+        const result = await ctx.mutate( function () { return ctx.client.updateList( list.id , { title: value } ); } );
+        Dom.text( status , result ? T( "card.autosave_saved" ) : "" );
+      };
+      input.addEventListener( "input" , function () {
+        window.clearTimeout( timer );
+        Dom.text( status , T( "card.autosave_pending" ) );
+        timer = window.setTimeout( save , 800 );
+      } );
+      input.addEventListener( "change" , save );
       form.addEventListener( "submit" , async function ( event ) {
         event.preventDefault();
-        await ctx.mutate( function () { return ctx.client.updateList( list.id , { title: input.value } ); } );
+        await save();
         Panel.close();
       } );
       body.appendChild( form );

@@ -74,6 +74,8 @@ type Card struct {
 	UpdatedBy   string            `json:"updated_by"`
 	Rev         uint64            `json:"rev"`
 	NextItemID  uint64            `json:"next_item_id"`
+	// What the shop page a link in the card sells (see product.go).
+	Product     *Product          `json:"product,omitempty"`
 	// Set only while the card is in the board's trash (see trash.go).
 	DeletedAt   *time.Time        `json:"deleted_at,omitempty"`
 	DeletedBy   string            `json:"deleted_by,omitempty"`
@@ -528,6 +530,7 @@ func DeleteCard( store *db.Store , board_id uint64 , card_id uint64 ) ( err erro
 // deleteCardTx removes a card and every row that points at it.
 func deleteCardTx( tx *db.Tx , card *Card ) ( err error ) {
 	if err = detachCardTx( tx , card ); err != nil { return }
+	if err = tx.Delete( db.BucketProductImages , cardKey( card.BoardID , card.ID ) ); err != nil { return }
 	err = tx.Delete( db.BucketCards , cardKey( card.BoardID , card.ID ) )
 	return
 }

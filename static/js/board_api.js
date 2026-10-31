@@ -30,13 +30,17 @@ class BoardClient {
     } else if ( method !== "GET" ) {
       payload = Object.assign( {} , body || {} , { csrf_token: Api.csrfToken } );
     }
+    const sent = method === "GET" ? undefined : JSON.stringify( payload || {} );
     const response = await fetch( this.base + path , {
       method: method,
+      // A small write outlives the page, so text saved as the tab closes
+      // still arrives. Browsers cap keepalive bodies at 64 KB in total.
+      keepalive: sent !== undefined && sent.length < 60000,
       // A guest sends no cookie, so a share link behaves the same whether or
       // not the browser also happens to be signed in.
       credentials: this.isGuest ? "omit" : "same-origin",
       headers: headers,
-      body: method === "GET" ? undefined : JSON.stringify( payload || {} ),
+      body: sent,
     } );
     let result = {};
     try {
@@ -99,6 +103,10 @@ class BoardClient {
   }
   patchCard( cardId , fields )     { return this.post( "/" + this.boardId + "/cards/" + cardId , fields ); }
   deleteCard( cardId )             { return this.post( "/" + this.boardId + "/cards/" + cardId + "/delete" ); }
+  // The product a card's link sells (see server/routes/products.go).
+  refreshProduct( cardId )         { return this.post( "/" + this.boardId + "/cards/" + cardId + "/product/refresh" ); }
+  removeProduct( cardId )          { return this.post( "/" + this.boardId + "/cards/" + cardId + "/product/delete" ); }
+  productImage( cardId )           { return this.file( "/" + this.boardId + "/cards/" + cardId + "/product-image" ); }
   // Deleted cards wait in the board's trash (see trash.js).
   trash()                          { return this.get( "/" + this.boardId + "/trash" ); }
   restoreFromTrash( cardId )       { return this.post( "/" + this.boardId + "/trash/" + cardId + "/restore" ); }
