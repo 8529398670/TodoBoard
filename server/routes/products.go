@@ -42,21 +42,22 @@ func ( handlers *Handlers ) lookUpProductLater( board *models.Board , card *mode
 	}()
 }
 
-// lookUpProduct reads link and stores what it found on the card; a card
-// titled with nothing but the link is renamed after the product.
+// lookUpProduct reads link and stores what it found on the card; the link
+// in the card's text is swapped for its clean form (see product.CleanURL),
+// and a card titled with nothing but the link is renamed after the product.
 func ( handlers *Handlers ) lookUpProduct( board_id uint64 , card_id uint64 , link string ) ( card *models.Card , err error ) {
 	ctx , cancel := context.WithTimeout( context.Background() , 25 * time.Second )
 	defer cancel()
 	info , data , image_type , fetch_err := product.Fetch( ctx , link )
-	found := &models.Product{ URL: link , Status: models.ProductOK , FetchedAt: time.Now().UTC() }
+	found := &models.Product{ URL: product.CleanURL( link ) , Status: models.ProductOK , FetchedAt: time.Now().UTC() }
 	var image *models.ProductImage
 	if fetch_err != nil {
 		found.Status = models.ProductFailed
 	} else {
-		found.Title , found.Description , found.Price = info.Title , info.Description , info.Price
+		found.URL , found.Title , found.Description , found.Price = info.URL , info.Title , info.Description , info.Price
 		if data != nil { image = &models.ProductImage{ ContentType: image_type , Data: data } }
 	}
-	card , err = models.SetCardProduct( handlers.Store , board_id , card_id , found , image )
+	card , err = models.SetCardProduct( handlers.Store , board_id , card_id , link , found , image )
 	return
 }
 
@@ -86,7 +87,7 @@ func ( handlers *Handlers ) RefreshProduct( c fiber.Ctx ) ( err error ) {
 func ( handlers *Handlers ) RemoveProduct( c fiber.Ctx ) ( err error ) {
 	principal , board , card , err := handlers.requireCard( c , access.Edit )
 	if card == nil { return }
-	updated , set_err := models.SetCardProduct( handlers.Store , board.ID , card.ID , nil , nil )
+	updated , set_err := models.SetCardProduct( handlers.Store , board.ID , card.ID , "" , nil , nil )
 	if set_err != nil {
 		err = modelError( c , set_err )
 		return

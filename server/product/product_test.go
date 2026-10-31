@@ -78,3 +78,19 @@ func TestPublicIP( t *testing.T ) {
 	}
 	if publicOnly( "tcp" , "127.0.0.1:80" , nil ) == nil { t.Errorf( "dialing loopback must be refused" ) }
 }
+
+func TestCleanURL( t *testing.T ) {
+	cases := map[ string ]string{
+		"https://www.amazon.com/Super-Widget-2-Pack/dp/B0ABCDE123/ref=sr_1_3?crid=X&keywords=widget&qid=1&sr=8-3&th=1": "https://www.amazon.com/dp/B0ABCDE123",
+		"https://www.amazon.co.uk/gp/product/B0ABCDE123?pf_rd_r=Z&psc=1":                                              "https://www.amazon.co.uk/dp/B0ABCDE123",
+		"https://www.amazon.com/dp/B0ABCDE123":                                                                         "https://www.amazon.com/dp/B0ABCDE123",
+		"https://shop.example/p/1?variant=42&utm_source=news&utm_medium=email&fbclid=abc":                               "https://shop.example/p/1?variant=42",
+		"https://shop.example/p/1?b=2&a=1":                                                                             "https://shop.example/p/1?b=2&a=1",
+		"https://shop.example/p/1?gclid=x#:~:text=price":                                                               "https://shop.example/p/1",
+		"https://shop.example/p/1#reviews":                                                                             "https://shop.example/p/1#reviews",
+		"https://amzn.to/3xyz":                                                                                         "https://amzn.to/3xyz",
+	}
+	for raw , want := range cases {
+		if got := CleanURL( raw ); got != want { t.Errorf( "CleanURL( %q ) = %q, want %q" , raw , got , want ) }
+	}
+}

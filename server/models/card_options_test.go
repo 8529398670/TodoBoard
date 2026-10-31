@@ -42,7 +42,7 @@ func TestCardManualPrice( t *testing.T ) {
 	}
 
 	// Looking the product up again leaves the typed price alone.
-	if _ , err = SetCardProduct( store , board.ID , card.ID , &Product{ URL: "https://example.com" , Price: "$30" , Status: ProductOK } , nil ); err != nil { t.Fatal( err ) }
+	if _ , err = SetCardProduct( store , board.ID , card.ID , "" , &Product{ URL: "https://example.com" , Price: "$30" , Status: ProductOK } , nil ); err != nil { t.Fatal( err ) }
 	again , _ := GetCard( store , board.ID , card.ID )
 	if again.Price != "$24.99" || again.Product.Price != "$30" {
 		t.Errorf( "a product lookup must not touch the typed price: %q / %q" , again.Price , again.Product.Price )

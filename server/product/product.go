@@ -85,6 +85,63 @@ func IsAmazon( raw string ) ( result bool ) {
 	return
 }
 
+// amazonItem finds the ASIN in an Amazon product path, in any of the
+// shapes the store and its apps link with.
+var amazonItem = regexp.MustCompile( `/(?:dp|gp/product|gp/aw/d|exec/obidos/ASIN|o/ASIN)/([A-Z0-9]{10})(?:[/?]|$)` )
+
+// trackingParams are query parameters that only say who sent the visitor
+// (ads, affiliates, newsletters, search result positions); the page is the
+// same without them. Lowercase; a trailing "*" matches a prefix.
+var trackingParams = []string{
+	"utm_*" , "fbclid" , "gclid" , "gclsrc" , "gbraid" , "wbraid" , "dclid" , "msclkid" , "yclid" , "twclid" , "ttclid" , "igshid" , "srsltid" ,
+	"mc_cid" , "mc_eid" , "_ga" , "_gl" , "_hsenc" , "_hsmi" , "mkt_tok" , "s_kwcid" , "ef_id" , "_branch_match_id" , "cmpid" , "icid" ,
+	"ref" , "ref_" , "ref_src" , "referrer" , "tag" , "ascsubtag" , "linkcode" , "linkid" , "camp" , "creative" , "creativeasin" ,
+	"psc" , "smid" , "sr" , "qid" , "sprefix" , "crid" , "keywords" , "dib" , "dib_tag" , "content-id" , "th" , "_encoding" ,
+	"pd_rd_*" , "pf_rd_*" , "spm" , "scm" , "pvid" , "algo_*" , "aff_*" , "affiliate*" , "campaign_id" , "ad_id" , "adgroupid" ,
+	"mkevt" , "mkcid" , "mkrid" , "campid" , "toolid" , "customid" , "trk" , "trkid" , "si" , "epik" , "clickid" , "irclickid" ,
+}
+
+func isTracking( name string ) ( result bool ) {
+	name = strings.ToLower( name )
+	for _ , pattern := range trackingParams {
+		if prefix , ok := strings.CutSuffix( pattern , "*" ); ok {
+			if strings.HasPrefix( name , prefix ) { return true }
+		} else if name == pattern {
+			return true
+		}
+	}
+	return
+}
+
+// CleanURL is raw without what only tracks the visit: an Amazon product
+// link becomes its short /dp/ASIN form, and any other link loses its
+// tracking parameters while keeping the ones that pick the item (a size,
+// a colour, a variant). A link it cannot read comes back unchanged.
+func CleanURL( raw string ) ( result string ) {
+	result = raw
+	parsed , err := url.Parse( raw )
+	if err != nil || parsed.Host == "" { return }
+	if IsAmazon( raw ) {
+		if match := amazonItem.FindStringSubmatch( parsed.EscapedPath() + "/" ); match != nil {
+			result = parsed.Scheme + "://" + parsed.Host + "/dp/" + match[ 1 ]
+			return
+		}
+	}
+	if parsed.RawQuery != "" {
+		query , dropped := parsed.Query() , false
+		for name := range query {
+			if isTracking( name ) {
+				query.Del( name )
+				dropped = true
+			}
+		}
+		if dropped { parsed.RawQuery = query.Encode() }
+	}
+	if strings.HasPrefix( parsed.Fragment , ":~:" ) { parsed.Fragment = "" }
+	result = parsed.String()
+	return
+}
+
 // ---- fetching -------------------------------------------------------------
 
 // publicOnly refuses a connection to anything but a public unicast address.
@@ -179,7 +236,8 @@ func Fetch( ctx context.Context , raw string ) ( info *Info , image []byte , ima
 	}
 	info , err = Parse( final , body )
 	if err != nil { return }
-	info.URL = raw
+	// Where a short link (a.co, amzn.to) led, without its tracking.
+	info.URL = CleanURL( final.String() )
 	if info.Image != "" {
 		data , _ , image_status , _ , image_err := get( ctx , info.Image , "image/avif,image/webp,image/png,image/jpeg,*/*;q=0.5" , maxImageBytes )
 		if image_err == nil && image_status < 400 {
