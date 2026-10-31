@@ -642,15 +642,32 @@ const CardBits = {
   productImage( card , ctx , className ) {
     const product = this.product( card );
     if ( !product || !product.has_image ) return null;
-    const img = Dom.el( "img" , { class: className , attrs: { alt: product.title || "" , loading: "lazy" , decoding: "async" } } );
-    const key = ctx.board.id + ":" + card.id + ":" + product.fetched_at;
+    return this.blobImage( "product:" + ctx.board.id + ":" + card.id + ":" + product.fetched_at , function () { return ctx.client.productImage( card.id ); } , className , product.title || "" );
+  },
+
+  // The picture pasted onto the card, the same way.
+  cardImage( card , ctx , className ) {
+    if ( !card.image_at ) return null;
+    return this.blobImage( "card:" + ctx.board.id + ":" + card.id + ":" + card.image_at , function () { return ctx.client.cardImage( card.id ); } , className , "" );
+  },
+
+  // What a card face shows as its picture: the pasted one, else the
+  // product's.
+  thumbnail( card , ctx , className ) {
+    return this.cardImage( card , ctx , className ) || this.productImage( card , ctx , className );
+  },
+
+  // An <img> filled from fetch() once per key: a promise while it loads,
+  // then the blob URL ("" when it could not be had).
+  blobImage( key , fetch , className , alt ) {
+    const img = Dom.el( "img" , { class: className , attrs: { alt: alt , loading: "lazy" , decoding: "async" } } );
     const cached = this.productImages[ key ];
     const show = function ( url ) { if ( url ) img.src = url; else img.remove(); };
     if ( cached && typeof cached === "string" ) {
       show( cached );
     } else {
       if ( !cached ) {
-        this.productImages[ key ] = ctx.client.productImage( card.id ).then( ( blob ) => {
+        this.productImages[ key ] = fetch().then( ( blob ) => {
           const url = URL.createObjectURL( blob );
           this.productImages[ key ] = url;
           return url;
@@ -664,10 +681,65 @@ const CardBits = {
     return img;
   },
 
-  price( card ) {
+  // ---- pictures pasted onto a card --------------------------------------
+
+  // The image a paste (or a file picker) carries, or null.
+  pastedImage( event ) {
+    const items = event.clipboardData ? Array.from( event.clipboardData.items || [] ) : [];
+    const item = items.find( function ( entry ) { return entry.kind === "file" && /^image\//.test( entry.type ); } );
+    return item ? item.getAsFile() : null;
+  },
+
+  // Whether a paste also carries text a focused text box should get
+  // instead -- copying from a web page can bring both.
+  pasteHasText( event ) {
+    const target = event.target;
+    const typing = target && ( target.tagName === "TEXTAREA" || ( target.tagName === "INPUT" && target.type === "text" ) );
+    return !!( typing && event.clipboardData && event.clipboardData.getData( "text/plain" ) );
+  },
+
+  // Shrinks a picture to at most 640px on its longer side, as WebP (JPEG
+  // where the browser cannot write WebP), and answers with its base64.
+  async shrinkImage( file ) {
+    const bitmap = await createImageBitmap( file );
+    const scale = Math.min( 1 , 640 / Math.max( bitmap.width , bitmap.height ) );
+    const canvas = document.createElement( "canvas" );
+    canvas.width = Math.max( 1 , Math.round( bitmap.width * scale ) );
+    canvas.height = Math.max( 1 , Math.round( bitmap.height * scale ) );
+    const draw = canvas.getContext( "2d" );
+    // JPEG has no transparency; white is what a card shows behind it.
+    draw.fillStyle = "#fff";
+    draw.fillRect( 0 , 0 , canvas.width , canvas.height );
+    draw.drawImage( bitmap , 0 , 0 , canvas.width , canvas.height );
+    if ( bitmap.close ) bitmap.close();
+    const encode = function ( type ) { return new Promise( function ( resolve ) { canvas.toBlob( resolve , type , 0.85 ); } ); };
+    let blob = await encode( "image/webp" );
+    if ( !blob || blob.type !== "image/webp" ) blob = await encode( "image/jpeg" );
+    const url = await new Promise( function ( resolve , reject ) {
+      const reader = new FileReader();
+      reader.onload = function () { resolve( reader.result ); };
+      reader.onerror = reject;
+      reader.readAsDataURL( blob );
+    } );
+    return String( url ).slice( String( url ).indexOf( "," ) + 1 );
+  },
+
+  // Shrinks and stores a picture on a card, then re-reads the board.
+  attachImage( ctx , cardId , file ) {
+    return ctx.mutate( async () => ctx.client.uploadImage( cardId , await this.shrinkImage( file ) ) );
+  },
+
+  // The price typed on the card, else the one its product page gave, or "".
+  priceText( card ) {
+    if ( card.price ) return card.price;
     const product = this.product( card );
-    if ( !product || !product.price ) return null;
-    return Dom.el( "span" , { class: "price-chip" , text: product.price } );
+    return product && product.price ? product.price : "";
+  },
+
+  price( card ) {
+    const text = this.priceText( card );
+    if ( !text ) return null;
+    return Dom.el( "span" , { class: "price-chip" , text: text } );
   },
 
   // "Sam (guest)" for a guest edit, the name otherwise.
@@ -681,6 +753,23 @@ const CardBits = {
   },
 
   // Midpoint position for a card dropped between two neighbours.
+  // Where a card or item goes at one end of others (in order): above the
+  // first, or after the last.
+  edgePosition( others , top ) {
+    if ( top ) return this.positionBetween( null , others.length ? others[ 0 ].position : null );
+    return this.positionBetween( others.length ? others[ others.length - 1 ].position : null , null );
+  },
+
+  // Ticks or unticks a card's done flag. Ticked, with done-on-top, it also
+  // moves to the top of its list -- a move, so only for board editors.
+  toggleDone( card , ctx ) {
+    const fields = { done: !card.done };
+    if ( fields.done && ctx.canEdit && ctx.doneOnTop() ) {
+      fields.position = this.edgePosition( ctx.cardsIn( card.list_id ).filter( function ( other ) { return other.id !== card.id; } ) , true );
+    }
+    ctx.mutate( function () { return ctx.client.patchCard( card.id , fields ); } );
+  },
+
   positionBetween( before , after ) {
     if ( before == null && after == null ) return 1024;
     if ( before == null ) return after / 2;
@@ -763,15 +852,13 @@ const CardBits = {
         icon( pair[ 0 ] , here , ctx.canEdit , function () {
           const target = here ? lists[ 0 ] : column;
           const there = ctx.cardsIn( target.id ).filter( function ( other ) { return other.id !== card.id; } );
-          const last = there[ there.length - 1 ];
-          const position = CardBits.positionBetween( last ? last.position : null , null );
+          // Into Done, done-on-top puts it first; anywhere else, last.
+          const position = CardBits.edgePosition( there , pair[ 0 ] === "done" && !here && ctx.doneOnTop() );
           ctx.mutate( function () { return ctx.client.patchCard( card.id , { list_id: target.id , position: position } ); } );
         } );
       } );
     } else {
-      icon( "done" , card.done , card.access === "edit" , function () {
-        ctx.mutate( function () { return ctx.client.patchCard( card.id , { done: !card.done } ); } );
-      } );
+      icon( "done" , card.done , card.access === "edit" , function () { CardBits.toggleDone( card , ctx ); } );
     }
     return wrap;
   },

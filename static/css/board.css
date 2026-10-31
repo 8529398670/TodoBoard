@@ -945,3 +945,11 @@ input.card-number:focus { color: var(--fg); background: var(--bg); border-color:
   .card-product:has(.card-product-photo) .row-actions { grid-column: 1 / -1; }
 }
 :root[data-theme="dark"] { --price-bg: #1d3b2a; --price-fg: #8fdcaa; }
+.card-price-row { display: flex; align-items: center; gap: 0.6rem; margin: 0; }
+.card-price-label { font-weight: 600; }
+.card-price-input { max-width: 12rem; }
+.card-image { display: grid; gap: 0.5rem; }
+.card-image-photo { max-width: 100%; max-height: 18rem; object-fit: contain; justify-self: start; border-radius: 0.5rem; background: #fff; }
+.quick-add-image { position: relative; display: inline-block; margin-bottom: 0.35rem; }
+.quick-add-image img { display: block; max-width: 8rem; max-height: 5rem; object-fit: contain; border-radius: 0.35rem; background: #fff; }
+.quick-add-image .btn-close { position: absolute; top: 0.15rem; right: 0.15rem; background-color: #fff; border-radius: 50%; }

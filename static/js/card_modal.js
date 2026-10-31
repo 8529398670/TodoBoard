@@ -30,6 +30,16 @@ const CardModal = {
     if ( dialog.dataset.bound ) return;
     dialog.dataset.bound = "1";
     closeOnBackdrop( dialog );
+    // A picture pasted anywhere in the editor goes onto the card, unless
+    // the add-item box or a text field is taking text from the same paste.
+    dialog.addEventListener( "paste" , ( event ) => {
+      const card = this.card();
+      if ( !card || card.access !== "edit" || event.defaultPrevented ) return;
+      const file = CardBits.pastedImage( event );
+      if ( !file || CardBits.pasteHasText( event ) ) return;
+      event.preventDefault();
+      CardBits.attachImage( this.ctx , card.id , file );
+    } );
     dialog.addEventListener( "close" , () => {
       this.flushText( "title" );
       this.flushText( "description" );
@@ -138,8 +148,15 @@ const CardModal = {
     body.appendChild( this.header( card , canEdit ) );
     const product = this.productSection( card , canEdit );
     if ( product ) body.appendChild( product );
+    // A card's picture sits at the top; with none, the offer to add one
+    // waits below the checklist.
+    const picture = this.imageSection( card , canEdit );
+    if ( picture && card.image_at ) body.appendChild( picture );
+    const price = this.priceSection( card , canEdit );
+    if ( price ) body.appendChild( price );
     body.appendChild( this.description( card , canEdit ) );
     body.appendChild( this.checklist( card , canEdit ) );
+    if ( picture && !card.image_at ) body.appendChild( picture );
     body.appendChild( this.dates( card , canEdit ) );
     const people = this.assignees( card , canEdit );
     if ( people ) body.appendChild( people );
@@ -447,7 +464,8 @@ const CardModal = {
       if ( photo ) section.appendChild( photo );
       const info = Dom.el( "div" , { class: "card-product-info" } );
       if ( product.title ) info.appendChild( Dom.el( "p" , { class: "card-product-title" , text: product.title } ) );
-      if ( product.price ) info.appendChild( Dom.el( "p" , { class: "card-product-price" , text: product.price } ) );
+      const shownPrice = CardBits.priceText( card );
+      if ( shownPrice ) info.appendChild( Dom.el( "p" , { class: "card-product-price" , text: shownPrice } ) );
       if ( product.description ) info.appendChild( Dom.el( "p" , { class: "card-product-description muted" , text: product.description } ) );
       section.appendChild( info );
     } else {
@@ -470,6 +488,58 @@ const CardModal = {
       } ) );
     }
     section.appendChild( actions );
+    return section;
+  },
+
+  // The picture pasted onto the card: shown with Remove, or, for an editor,
+  // a hint to paste one and a file picker for when there is no clipboard.
+  imageSection( card , canEdit ) {
+    const ctx = this.ctx;
+    if ( !card.image_at && !canEdit ) return null;
+    const section = Dom.el( "section" , { class: "card-section card-image" } );
+    const photo = CardBits.cardImage( card , ctx , "card-image-photo" );
+    if ( photo ) section.appendChild( photo );
+    if ( !canEdit ) return section;
+    const picker = Dom.el( "input" , { attrs: { type: "file" , accept: "image/*" , hidden: "" } } );
+    picker.addEventListener( "change" , function () {
+      if ( picker.files && picker.files[ 0 ] ) CardBits.attachImage( ctx , card.id , picker.files[ 0 ] );
+    } );
+    const actions = Dom.el( "div" , { class: "row-actions" } );
+    if ( !card.image_at ) actions.appendChild( Dom.el( "span" , { class: "muted small-print" , text: T( "card.image_hint" ) } ) );
+    actions.appendChild( Ui.button( card.image_at ? "card.image_replace" : "card.image_choose" , function () { picker.click(); } ) );
+    if ( card.image_at ) actions.appendChild( Ui.button( "card.image_remove" , function () { ctx.mutate( function () { return ctx.client.removeImage( card.id ); } ); } ) );
+    section.appendChild( picker );
+    section.appendChild( actions );
+    return section;
+  },
+
+  // A price typed by hand, for any card: one the shop page did not give,
+  // or a correction to one it got wrong. Empty falls back to the page's.
+  priceSection( card , canEdit ) {
+    if ( !canEdit ) return null;
+    const product = CardBits.product( card );
+    const fetched = product && product.price ? product.price : "";
+    const section = Dom.el( "section" , { class: "card-section card-price" } );
+    const input = Dom.el( "input" , { class: "form-control form-control-sm card-price-input" , attrs: {
+      type: "text" , maxlength: "40" , autocomplete: "off",
+      placeholder: fetched ? I18n.fill( "card.price_placeholder_fetched" , { price: fetched } ) : T( "card.price_placeholder" ),
+      "aria-label": T( "card.price_label" ),
+    } } );
+    input.value = card.price || "";
+    const save = () => {
+      const value = input.value.trim();
+      if ( value === ( card.price || "" ) ) return;
+      this.save( { price: value } );
+    };
+    input.addEventListener( "change" , save );
+    input.addEventListener( "keydown" , function ( event ) {
+      if ( event.key === "Enter" ) { event.preventDefault(); input.blur(); }
+    } );
+    const row = Dom.el( "label" , { class: "card-price-row" } );
+    row.appendChild( Dom.el( "span" , { class: "card-price-label" , text: T( "card.price_label" ) } ) );
+    row.appendChild( input );
+    section.appendChild( row );
+    if ( card.price && fetched && fetched !== card.price ) section.appendChild( Dom.el( "p" , { class: "muted small-print" , text: I18n.fill( "card.price_overrides" , { price: fetched } ) } ) );
     return section;
   },
 
@@ -689,7 +759,11 @@ const CardModal = {
       box.checked = item.done;
       box.disabled = !canEdit;
       box.addEventListener( "change" , function () {
-        ctx.mutate( function () { return ctx.client.updateItem( cardId , item.id , { done: box.checked } ); } );
+        const fields = { done: box.checked };
+        if ( box.checked && ctx.doneOnTop() ) {
+          fields.position = CardBits.edgePosition( card.checklist.filter( function ( other ) { return other.id !== item.id; } ) , true );
+        }
+        ctx.mutate( function () { return ctx.client.updateItem( cardId , item.id , fields ); } );
       } );
       row.appendChild( box );
       if ( canEdit ) {

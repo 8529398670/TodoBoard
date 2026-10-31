@@ -49,7 +49,7 @@ func ( handlers *Handlers ) meRow( actor *security.Actor ) ( payload fiber.Map ,
 	owner_id , err := models.OwnerID( handlers.Store )
 	if err != nil { return }
 
-	display := fiber.Map{ "timezone": "" , "hour12": nil , "number_cards": false , "plain_icons": false , "theme": nil , "own_theme_on_boards": false , "swipe_columns": true , "folder_sort": "" }
+	display := fiber.Map{ "timezone": "" , "hour12": nil , "number_cards": false , "plain_icons": false , "done_on_top": false , "add_on_top": false , "theme": nil , "own_theme_on_boards": false , "swipe_columns": true , "folder_sort": "" }
 	if prefs , prefs_err := models.GetUserPrefs( handlers.Store , user.ID ); prefs_err == nil {
 		display = displayPayload( prefs )
 	}
@@ -108,6 +108,8 @@ type displayRequest struct {
 	Hour12           *bool         `json:"hour12"`
 	NumberCards      *bool         `json:"number_cards"`
 	PlainIcons       *bool         `json:"plain_icons"`
+	DoneOnTop        *bool         `json:"done_on_top"`
+	AddOnTop         *bool         `json:"add_on_top"`
 	Theme            *models.Theme `json:"theme"`
 	ClearTheme       bool          `json:"clear_theme"`
 	OwnThemeOnBoards *bool         `json:"own_theme_on_boards"`
@@ -117,7 +119,7 @@ type displayRequest struct {
 }
 
 func displayPayload( prefs *models.UserPrefs ) ( payload fiber.Map ) {
-	payload = fiber.Map{ "timezone": prefs.DisplayTimezone , "hour12": prefs.Hour12 , "number_cards": prefs.NumberCards , "plain_icons": prefs.PlainIcons , "theme": prefs.Theme , "own_theme_on_boards": prefs.OwnThemeOnBoards , "swipe_columns": prefs.SwipeColumns == nil || *prefs.SwipeColumns , "folder_sort": prefs.FolderSort }
+	payload = fiber.Map{ "timezone": prefs.DisplayTimezone , "hour12": prefs.Hour12 , "number_cards": prefs.NumberCards , "plain_icons": prefs.PlainIcons , "done_on_top": prefs.DoneOnTop , "add_on_top": prefs.AddOnTop , "theme": prefs.Theme , "own_theme_on_boards": prefs.OwnThemeOnBoards , "swipe_columns": prefs.SwipeColumns == nil || *prefs.SwipeColumns , "folder_sort": prefs.FolderSort }
 	return
 }
 
@@ -144,6 +146,8 @@ func ( handlers *Handlers ) SaveDisplay( c fiber.Ctx ) ( err error ) {
 	if body.Timezone != "" { prefs.Timezone = body.Timezone }
 	if body.NumberCards != nil { prefs.NumberCards = *body.NumberCards }
 	if body.PlainIcons != nil { prefs.PlainIcons = *body.PlainIcons }
+	if body.DoneOnTop != nil { prefs.DoneOnTop = *body.DoneOnTop }
+	if body.AddOnTop != nil { prefs.AddOnTop = *body.AddOnTop }
 	if body.OwnThemeOnBoards != nil { prefs.OwnThemeOnBoards = *body.OwnThemeOnBoards }
 	if body.SwipeColumns != nil { prefs.SwipeColumns = body.SwipeColumns }
 	if body.FolderSort != nil { prefs.FolderSort = *body.FolderSort }

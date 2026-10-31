@@ -93,11 +93,10 @@ const TodoView = {
 
     const items = Dom.el( "ul" , { class: "todo-items" , attrs: { "data-list-id": list.id } } );
     cards.forEach( ( card ) => items.appendChild( this.row( card , ctx , all ) ) );
+    const add = ctx.canEdit ? QuickAdd.forCards( list , ctx , "todo.add_item" ) : null;
+    if ( add && ctx.addOnTop() ) section.appendChild( add );
     section.appendChild( items );
-
-    if ( ctx.canEdit ) section.appendChild( QuickAdd.build( "card-" + list.id , "todo.add_item" , "board.card_title_placeholder" , function ( text ) {
-      return ctx.mutate( function () { return ctx.client.createCard( list.id , text ); } );
-    } ) );
+    if ( add && !ctx.addOnTop() ) section.appendChild( add );
     return section;
   },
 

@@ -70,6 +70,8 @@ const UserSettings = {
       hour12: typeof display.hour12 === "boolean" ? display.hour12 : null,
       number_cards: !!display.number_cards,
       plain_icons: !!display.plain_icons,
+      done_on_top: !!display.done_on_top,
+      add_on_top: !!display.add_on_top,
       swipe_columns: !!display.swipe_columns,
       folder_sort: display.folder_sort || "",
     } , changes );
@@ -126,6 +128,14 @@ const UserSettings = {
       UserSettings.save( me , { plain_icons: checked } );
     } ) );
     section.appendChild( Dom.el( "p" , { class: "muted small-print" , text: T( "user_settings.plain_icons_hint" ) } ) );
+    // Two checkboxes under one hint: each on its own line.
+    section.appendChild( Dom.el( "div" , { children: [ Ui.checkbox( "user_settings.done_on_top" , me.display && me.display.done_on_top , function ( checked ) {
+      UserSettings.save( me , { done_on_top: checked } );
+    } ) ] } ) );
+    section.appendChild( Dom.el( "div" , { children: [ Ui.checkbox( "user_settings.add_on_top" , me.display && me.display.add_on_top , function ( checked ) {
+      UserSettings.save( me , { add_on_top: checked } );
+    } ) ] } ) );
+    section.appendChild( Dom.el( "p" , { class: "muted small-print" , text: T( "user_settings.placement_hint" ) } ) );
     section.appendChild( Ui.checkbox( "user_settings.swipe_columns" , me.display && me.display.swipe_columns , function ( checked ) {
       UserSettings.save( me , { swipe_columns: checked } );
     } ) );

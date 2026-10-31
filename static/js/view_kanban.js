@@ -140,11 +140,10 @@ const KanbanView = {
 
     const container = Dom.el( "div" , { class: "kanban-cards" , attrs: { "data-list-id": list.id } } );
     ctx.shownIn( list.id ).forEach( ( card ) => container.appendChild( this.face( card , ctx , cards ) ) );
+    const add = ctx.canEdit ? QuickAdd.forCards( list , ctx , "board.add_card" ) : null;
+    if ( add && ctx.addOnTop() ) column.appendChild( add );
     column.appendChild( container );
-
-    if ( ctx.canEdit ) column.appendChild( QuickAdd.build( "card-" + list.id , "board.add_card" , "board.card_title_placeholder" , function ( title ) {
-      return ctx.mutate( function () { return ctx.client.createCard( list.id , title ); } );
-    } ) );
+    if ( add && !ctx.addOnTop() ) column.appendChild( add );
     return column;
   },
 
@@ -196,7 +195,7 @@ const KanbanView = {
     face.appendChild( card.archived ? CardBits.restoreIcon( card , ctx ) : CardBits.statusIcons( card , ctx ) );
     const labels = CardBits.labels( card , ctx.board );
     if ( labels ) face.appendChild( labels );
-    const photo = CardBits.productImage( card , ctx , "card-product-thumb" );
+    const photo = CardBits.thumbnail( card , ctx , "card-product-thumb" );
     if ( photo ) face.appendChild( photo );
 
     const title = Dom.el( "div" , { class: "card-title" } );
@@ -238,10 +237,26 @@ const KanbanView = {
 // input open for the next one, which is how people add a list's worth of
 // cards in a row.
 const QuickAdd = {
+  // A column's add-card box. With add-on-top the box sits above the cards
+  // and what it adds goes first; otherwise both go last.
+  // A picture pasted into the box is held, shown small, and put on the
+  // card once it is added.
+  forCards( list , ctx , buttonKey ) {
+    return this.build( "card-" + list.id , buttonKey , "board.card_title_placeholder" , function ( title , image ) {
+      const position = ctx.addOnTop() ? CardBits.edgePosition( ctx.cardsIn( list.id ) , true ) : undefined;
+      return ctx.mutate( async function () {
+        const card = await ctx.client.createCard( list.id , title || T( "board.image_card_title" ) , position );
+        if ( image ) await ctx.client.uploadImage( card.id , await CardBits.shrinkImage( image ) );
+        return card;
+      } );
+    } , undefined , true );
+  },
+
   // key identifies this form across re-renders ("card-12", "list"), so after
   // an add -- which re-renders the board -- the new copy can be reopened.
   // maxlength is for lists and checklist items; card titles have none.
-  build( key , buttonKey , placeholderKey , submit , maxlength ) {
+  // withImage lets a pasted picture ride along: submit( text , file ).
+  build( key , buttonKey , placeholderKey , submit , maxlength , withImage ) {
     const wrap = Dom.el( "div" , { class: "quick-add" , attrs: { "data-quick-key": key } } );
     const opener = Dom.el( "button" , { class: Ui.buttonClass( "secondary small quick-add-open" ) , text: T( buttonKey ) , attrs: { type: "button" } } );
     const form = Dom.el( "form" , { class: "quick-add-form" , attrs: { autocomplete: "off" } } );
@@ -256,7 +271,28 @@ const QuickAdd = {
       Ui.autoGrow( input );
     } );
     if ( maxlength ) input.setAttribute( "maxlength" , String( maxlength ) );
-    const cancel = Ui.button( "board.cancel" , function () { form.hidden = true; opener.hidden = false; } );
+    let image = null;
+    const preview = Dom.el( "div" , { class: "quick-add-image" } );
+    preview.hidden = true;
+    const holdImage = function ( file ) {
+      image = file;
+      Dom.clear( preview );
+      preview.hidden = !file;
+      if ( !file ) return;
+      const url = URL.createObjectURL( file );
+      preview.appendChild( Dom.el( "img" , { attrs: { src: url , alt: "" } } ) );
+      preview.appendChild( Ui.closeButton( T( "board.image_remove" ) , function () { URL.revokeObjectURL( url ); holdImage( null ); input.focus(); } , "btn-close-small" ) );
+    };
+    if ( withImage ) {
+      input.addEventListener( "paste" , function ( event ) {
+        const file = CardBits.pastedImage( event );
+        if ( !file || CardBits.pasteHasText( event ) ) return;
+        event.preventDefault();
+        holdImage( file );
+      } );
+    }
+    const cancel = Ui.button( "board.cancel" , function () { holdImage( null ); form.hidden = true; opener.hidden = false; } );
+    form.appendChild( preview );
     form.appendChild( input );
     form.appendChild( Dom.el( "div" , { class: "row-actions" , children: [
       Dom.el( "button" , { class: Ui.buttonClass( "small" ) , text: T( "board.add" ) , attrs: { type: "submit" } } ),
@@ -270,10 +306,12 @@ const QuickAdd = {
     form.addEventListener( "submit" , async function ( event ) {
       event.preventDefault();
       const value = input.value.trim();
-      if ( !value ) return;
+      const held = image;
+      if ( !value && !held ) return;
       input.value = "";
+      holdImage( null );
       Ui.autoGrow( input );
-      await submit( value );
+      await submit( value , held );
       const fresh = document.querySelector( "[data-quick-key=\"" + key + "\"] .quick-add-open" );
       if ( fresh && fresh !== opener ) fresh.click();
       else input.focus();
@@ -299,7 +337,7 @@ const CardMenu = {
     const items = [ { key: "board.card_menu_open" , action: function () { ctx.openCard( card.id ); } } ];
     if ( card.access === "edit" && !card.archived ) {
       items.push( { key: card.done ? "board.card_menu_undone" : "board.card_menu_done" , action: function () {
-        ctx.mutate( function () { return ctx.client.patchCard( card.id , { done: !card.done } ); } );
+        CardBits.toggleDone( card , ctx );
       } } );
     }
     items.push( { key: "export.copy_card_markdown" , action: function () { Ui.copyText( CardExport.markdown( ctx , card ) ); } } );

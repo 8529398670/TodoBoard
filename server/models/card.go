@@ -33,6 +33,7 @@ const (
 	maxCardTitleChars   = 10000
 	maxDescriptionBytes = 100 * 1024
 	maxChecklistItems   = 200
+	maxPriceChars       = 40
 )
 
 var (
@@ -76,6 +77,12 @@ type Card struct {
 	NextItemID  uint64            `json:"next_item_id"`
 	// What the shop page a link in the card sells (see product.go).
 	Product     *Product          `json:"product,omitempty"`
+	// Price typed in by hand: shown instead of the product's, and kept
+	// when the product is looked up again. "" shows the product's.
+	Price       string            `json:"price"`
+	// When a picture was pasted onto the card (see card_image.go); nil
+	// when it has none. Doubles as the picture's cache stamp.
+	ImageAt     *time.Time        `json:"image_at,omitempty"`
 	// Set only while the card is in the board's trash (see trash.go).
 	DeletedAt   *time.Time        `json:"deleted_at,omitempty"`
 	DeletedBy   string            `json:"deleted_by,omitempty"`
@@ -256,6 +263,7 @@ type CardPatch struct {
 	DueAt    *string `json:"due_at"`
 	Done     *bool   `json:"done"`
 	Archived *bool   `json:"archived"`
+	Price    *string `json:"price"`
 }
 
 // Moves reports whether the patch relocates the card, which needs board-level
@@ -371,6 +379,12 @@ func ( patch *CardPatch ) apply( board *Board , card *Card ) ( change CardChange
 	if patch.Archived != nil {
 		change.Edited = change.Edited || *patch.Archived != card.Archived
 		card.Archived = *patch.Archived
+	}
+	if patch.Price != nil {
+		clean := strings.TrimSpace( *patch.Price )
+		if utf8.RuneCountInString( clean ) > maxPriceChars || strings.ContainsAny( clean , "\r\n" ) { return change , ErrBadInput }
+		change.Edited = change.Edited || clean != card.Price
+		card.Price = clean
 	}
 	return
 }
@@ -531,6 +545,7 @@ func DeleteCard( store *db.Store , board_id uint64 , card_id uint64 ) ( err erro
 func deleteCardTx( tx *db.Tx , card *Card ) ( err error ) {
 	if err = detachCardTx( tx , card ); err != nil { return }
 	if err = tx.Delete( db.BucketProductImages , cardKey( card.BoardID , card.ID ) ); err != nil { return }
+	if err = tx.Delete( db.BucketCardImages , cardKey( card.BoardID , card.ID ) ); err != nil { return }
 	err = tx.Delete( db.BucketCards , cardKey( card.BoardID , card.ID ) )
 	return
 }

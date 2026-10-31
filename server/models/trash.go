@@ -64,7 +64,10 @@ func ListTrash( store *db.Store , board_id uint64 ) ( cards []*Card , err error 
 			} )
 		if tx_err != nil { return }
 		for _ , card := range expired {
-			if tx_err = tx.Delete( db.BucketTrash , cardKey( board_id , card.ID ) ); tx_err != nil { return }
+			key := cardKey( board_id , card.ID )
+			if tx_err = tx.Delete( db.BucketProductImages , key ); tx_err != nil { return }
+			if tx_err = tx.Delete( db.BucketCardImages , key ); tx_err != nil { return }
+			if tx_err = tx.Delete( db.BucketTrash , key ); tx_err != nil { return }
 		}
 		return
 	} )
@@ -125,6 +128,7 @@ func PurgeCard( store *db.Store , board_id uint64 , card_id uint64 ) ( err error
 	err = store.Write( func( tx *db.Tx ) ( tx_err error ) {
 		if _ , tx_err = getTrashedTx( tx , board_id , card_id ); tx_err != nil { return }
 		if tx_err = tx.Delete( db.BucketProductImages , cardKey( board_id , card_id ) ); tx_err != nil { return }
+		if tx_err = tx.Delete( db.BucketCardImages , cardKey( board_id , card_id ) ); tx_err != nil { return }
 		tx_err = tx.Delete( db.BucketTrash , cardKey( board_id , card_id ) )
 		return
 	} )
@@ -143,6 +147,7 @@ func EmptyTrash( store *db.Store , board_id uint64 ) ( removed int , err error )
 		if tx_err != nil { return }
 		for _ , key := range keys {
 			if tx_err = tx.Delete( db.BucketProductImages , key ); tx_err != nil { return }
+			if tx_err = tx.Delete( db.BucketCardImages , key ); tx_err != nil { return }
 		}
 		removed , tx_err = tx.DeletePrefix( db.BucketTrash , db.Key( board_id ) )
 		return

@@ -61,7 +61,7 @@ const CardExport = {
       meta.push( "**" + T( "export.md_assignees" ) + ":** " + card.assignees.map( function ( id ) { return ctx.people[ id ] || "?"; } ).join( ", " ) );
     }
     if ( card.done ) meta.push( "**" + T( "export.md_status" ) + ":** " + T( "card.done_label" ) );
-    if ( card.product && card.product.url ) meta.push( "**" + T( "export.md_product" ) + ":** " + ( card.product.price ? card.product.price + " " : "" ) + "<" + card.product.url + ">" );
+    if ( card.product && card.product.url ) meta.push( "**" + T( "export.md_product" ) + ":** " + ( CardBits.priceText( card ) ? CardBits.priceText( card ) + " " : "" ) + "<" + card.product.url + ">" );
     if ( meta.length ) {
       lines.push( meta.join( "  \n" ) );
       lines.push( "" );
@@ -85,7 +85,7 @@ const CardExport = {
   productLine( card ) {
     const product = card.product;
     if ( !product || !product.url ) return "";
-    const price = product.price ? product.price + " " : "";
+    const price = CardBits.priceText( card ) ? CardBits.priceText( card ) + " " : "";
     return T( "export.md_product" ) + ": " + price + ( product.title ? product.title + " -- " : "" ) + product.url;
   },
 

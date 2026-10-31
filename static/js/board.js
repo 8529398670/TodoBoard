@@ -201,6 +201,16 @@ const BoardPage = {
         if ( data.board.numbering ) return data.board.numbering === "on";
         return !!( page.me && page.me.display && page.me.display.number_cards );
       },
+      // Finished cards and ticked checklist items go to the top of their
+      // list, and the add-card box sits above the cards: the board's choice
+      // when it made one, else this person's account default.
+      doneOnTop() { return this.placedOnTop( "done_placement" , "done_on_top" ); },
+      addOnTop() { return this.placedOnTop( "add_placement" , "add_on_top" ); },
+      placedOnTop( boardKey , accountKey ) {
+        if ( !data ) return false;
+        if ( data.board[ boardKey ] ) return data.board[ boardKey ] === "top";
+        return !!( page.me && page.me.display && page.me.display[ accountKey ] );
+      },
       // Grey status icons: this person's choice for this board, else their
       // account default.
       plainIcons() {

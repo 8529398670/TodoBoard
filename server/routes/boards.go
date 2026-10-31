@@ -156,6 +156,8 @@ func ( handlers *Handlers ) boardPayload( principal *access.Principal , board *m
 			"slug":         board.Slug,
 			"layout":       board.Layout,
 			"numbering":    board.Numbering,
+			"done_placement": board.DonePlacement,
+			"add_placement":  board.AddPlacement,
 			"owner_id":     board.OwnerID,
 			"default_view": board.DefaultView,
 			"color":        board.Color,
@@ -205,6 +207,8 @@ func cardPayload( card *models.Card , level access.Level , board_level access.Le
 		"rev":         card.Rev,
 		"access":      level.String(),
 		"product":     card.Product,
+		"price":       card.Price,
+		"image_at":    card.ImageAt,
 	}
 	if board_level == access.Manage {
 		payload[ "shared_with" ] = card.SharedWith

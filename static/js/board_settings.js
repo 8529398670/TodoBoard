@@ -115,6 +115,16 @@ const BoardSettings = {
       { value: "on" , text: T( "settings.numbering_on" ) },
       { value: "off" , text: T( "settings.numbering_off" ) },
     ] , ctx.board.numbering || "" );
+    const placement = function ( current , accountKey ) {
+      const mine = !!( ctx.me && ctx.me.display && ctx.me.display[ accountKey ] );
+      return Ui.select( [
+        { value: "" , text: I18n.fill( "settings.placement_default" , { choice: T( mine ? "settings.placement_top" : "settings.placement_bottom" ) } ) },
+        { value: "top" , text: T( "settings.placement_top_all" ) },
+        { value: "bottom" , text: T( "settings.placement_bottom_all" ) },
+      ] , current || "" );
+    };
+    const donePlacement = placement( ctx.board.done_placement , "done_on_top" );
+    const addPlacement = placement( ctx.board.add_placement , "add_on_top" );
 
     const names = Dom.el( "div" , { class: "form-row" } );
     names.appendChild( Ui.field( "settings.board_title_label" , title ) );
@@ -128,6 +138,11 @@ const BoardSettings = {
     form.appendChild( BoardSettings.swatchField( "settings.color_label" , color ) );
     form.appendChild( Dom.el( "p" , { class: "muted small-print" , text: T( "settings.layout_hint" ) } ) );
     form.appendChild( Ui.field( "settings.numbering_label" , numbering ) );
+    const placements = Dom.el( "div" , { class: "form-row" } );
+    placements.appendChild( Ui.field( "settings.done_placement_label" , donePlacement ) );
+    placements.appendChild( Ui.field( "settings.add_placement_label" , addPlacement ) );
+    form.appendChild( placements );
+    form.appendChild( Dom.el( "p" , { class: "muted small-print" , text: T( "settings.placement_hint" ) } ) );
     form.appendChild( Ui.checkbox( "settings.shopping_label" , ctx.board.shopping , function ( checked ) { save( { shopping: checked } ); } ) );
     form.appendChild( Dom.el( "p" , { class: "muted small-print" , text: T( "settings.shopping_hint" ) } ) );
     // Every field saves by itself: choices as they are picked, the name as
@@ -163,6 +178,8 @@ const BoardSettings = {
     } );
     view.addEventListener( "change" , function () { save( { default_view: view.value } ); } );
     numbering.addEventListener( "change" , function () { save( { numbering: numbering.value } ); } );
+    donePlacement.addEventListener( "change" , function () { save( { done_placement: donePlacement.value } ); } );
+    addPlacement.addEventListener( "change" , function () { save( { add_placement: addPlacement.value } ); } );
     layout.addEventListener( "change" , function () {
       const changes = { layout: layout.value };
       // Lists to add if the three-column layout finds fewer than three.

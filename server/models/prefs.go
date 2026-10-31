@@ -54,6 +54,13 @@ type UserPrefs struct {
 	// person has not set otherwise (BoardRef.PlainIcons).
 	PlainIcons bool `json:"plain_icons"`
 
+	// DoneOnTop and AddOnTop are the person's defaults for boards whose own
+	// placement settings are left to each viewer (Board.DonePlacement,
+	// Board.AddPlacement): finished cards and ticked checklist items go to
+	// the top of their list, and the add-card box sits above the cards.
+	DoneOnTop bool `json:"done_on_top"`
+	AddOnTop  bool `json:"add_on_top"`
+
 	// SwipeColumns shows a board one full-width column at a time on a phone
 	// held upright, swiped between. nil -- never chosen -- means on. Stored
 	// under a new key: the old "swipe_columns" was saved as false by anyone

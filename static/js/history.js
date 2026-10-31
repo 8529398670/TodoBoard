@@ -192,6 +192,7 @@ const History = {
       due_at: this.encodeDate( copy.due_at , copy.due_all_day ),
       done: copy.done,
       archived: copy.archived,
+      price: copy.price || "",
     } ) );
     for ( const item of copy.checklist ) {
       const newId = await this.addItemBack( created.id , item );
@@ -237,7 +238,7 @@ const History = {
       const cardId = args[ 0 ];
       const card = this.findCard( before , cardId );
       if ( !card ) return null;
-      const keys = [ "title" , "description" , "list_id" , "position" , "label_ids" , "assignees" , "start_at" , "due_at" , "done" , "archived" ];
+      const keys = [ "title" , "description" , "list_id" , "position" , "label_ids" , "assignees" , "start_at" , "due_at" , "done" , "archived" , "price" ];
       const change = this.previous( card , args[ 1 ] , keys , ( source , key ) => this.cardValue( source , key ) );
       if ( !change ) return null;
       const fields = Object.keys( change.forward );
@@ -421,7 +422,7 @@ const History = {
     // should not take the board's link away from anyone who just got it.
     updateBoard( before , args ) {
       const fields = args[ 0 ];
-      const change = this.previous( before.board , fields , [ "title" , "default_view" , "color" , "layout" , "numbering" ] , function ( source , key ) {
+      const change = this.previous( before.board , fields , [ "title" , "default_view" , "color" , "layout" , "numbering" , "done_placement" , "add_placement" ] , function ( source , key ) {
         return source[ key ] || "";
       } );
       if ( !change ) return null;

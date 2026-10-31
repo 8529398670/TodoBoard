@@ -107,6 +107,10 @@ class BoardClient {
   refreshProduct( cardId )         { return this.post( "/" + this.boardId + "/cards/" + cardId + "/product/refresh" ); }
   removeProduct( cardId )          { return this.post( "/" + this.boardId + "/cards/" + cardId + "/product/delete" ); }
   productImage( cardId )           { return this.file( "/" + this.boardId + "/cards/" + cardId + "/product-image" ); }
+  // A picture pasted onto a card; data is the image's bytes as base64.
+  uploadImage( cardId , data )     { return this.post( "/" + this.boardId + "/cards/" + cardId + "/image" , { data: data } ); }
+  removeImage( cardId )            { return this.post( "/" + this.boardId + "/cards/" + cardId + "/image/delete" ); }
+  cardImage( cardId )              { return this.file( "/" + this.boardId + "/cards/" + cardId + "/image" ); }
   // Deleted cards wait in the board's trash (see trash.js).
   trash()                          { return this.get( "/" + this.boardId + "/trash" ); }
   restoreFromTrash( cardId )       { return this.post( "/" + this.boardId + "/trash/" + cardId + "/restore" ); }

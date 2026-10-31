@@ -44,6 +44,20 @@ const (
 	NumberingOff     = "off"
 )
 
+// Where finished cards go and where the add-card box sits. Default leaves
+// it to each viewer's account setting; Top and Bottom decide it for
+// everyone on the board.
+const (
+	PlacementDefault = ""
+	PlacementTop     = "top"
+	PlacementBottom  = "bottom"
+)
+
+func validPlacement( value string ) ( result bool ) {
+	result = value == PlacementDefault || value == PlacementTop || value == PlacementBottom
+	return
+}
+
 var (
 	ErrBoardNotFound = errors.New( "board not found" )
 	ErrListNotFound  = errors.New( "list not found" )
@@ -65,6 +79,10 @@ type Board struct {
 	Slug        string            `json:"slug"`
 	Layout      string            `json:"layout"`
 	Numbering   string            `json:"numbering"`
+	// DonePlacement: where a card marked done, or a ticked checklist item,
+	// lands in its list. AddPlacement: where the add-card box sits.
+	DonePlacement string          `json:"done_placement"`
+	AddPlacement  string          `json:"add_placement"`
 	OwnerID     uint64            `json:"owner_id"`
 	Members     map[uint64]string `json:"members"`
 	Lists       []*List           `json:"lists"`
@@ -295,6 +313,8 @@ type BoardSettings struct {
 	Theme       *Theme   `json:"theme"`
 	ClearTheme  bool     `json:"clear_theme"`
 	Shopping    *bool    `json:"shopping"`
+	DonePlacement *string `json:"done_placement"`
+	AddPlacement  *string `json:"add_placement"`
 }
 
 // UpdateBoardSettings applies settings in one transaction; the slug index
@@ -349,6 +369,14 @@ func ( settings *BoardSettings ) Apply( board *Board ) ( err error ) {
 		value := *settings.Numbering
 		if value != NumberingDefault && value != NumberingOn && value != NumberingOff { return ErrBadInput }
 		board.Numbering = value
+	}
+	if settings.DonePlacement != nil {
+		if validPlacement( *settings.DonePlacement ) == false { return ErrBadInput }
+		board.DonePlacement = *settings.DonePlacement
+	}
+	if settings.AddPlacement != nil {
+		if validPlacement( *settings.AddPlacement ) == false { return ErrBadInput }
+		board.AddPlacement = *settings.AddPlacement
 	}
 	return
 }
@@ -678,6 +706,7 @@ func deleteBoardTx( tx *db.Tx , board_id uint64 ) ( err error ) {
 	}
 	if _ , err = tx.DeletePrefix( db.BucketTrash , db.Key( board_id ) ); err != nil { return }
 	if _ , err = tx.DeletePrefix( db.BucketProductImages , db.Key( board_id ) ); err != nil { return }
+	if _ , err = tx.DeletePrefix( db.BucketCardImages , db.Key( board_id ) ); err != nil { return }
 
 	if err = tx.Delete( db.BucketUserBoards , db.Key( board.OwnerID , board_id ) ); err != nil { return }
 	for user_id := range board.Members {
