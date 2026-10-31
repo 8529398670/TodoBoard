@@ -106,8 +106,16 @@ const Markdown = {
       FORBID_TAGS: [ "style" , "form" ],
       FORBID_ATTR: [ "style" ],
     } );
+    this.isolateLinks( fragment );
     container.appendChild( fragment );
     this.renderMath( container );
+  },
+
+  // A link inside a clickable card or row opens the link, not the card too.
+  isolateLinks( fragment ) {
+    Dom.all( "a" , fragment ).forEach( function ( link ) {
+      link.addEventListener( "click" , function ( event ) { event.stopPropagation(); } );
+    } );
   },
 
   renderMath( root ) {
@@ -147,10 +155,7 @@ const Markdown = {
       ALLOWED_TAGS: this.inlineTags,
       ALLOWED_ATTR: [ "href" , "title" , "class" , "data-tex" , "data-display" , "target" , "rel" ],
     } );
-    // A link inside a clickable row opens the link, not the row as well.
-    Dom.all( "a" , fragment ).forEach( function ( link ) {
-      link.addEventListener( "click" , function ( event ) { event.stopPropagation(); } );
-    } );
+    this.isolateLinks( fragment );
     container.appendChild( fragment );
     this.renderMath( container );
   },

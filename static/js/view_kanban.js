@@ -231,7 +231,7 @@ const KanbanView = {
       class: "card-face has-status" + ( card.done ? " is-done" : "" ) + ( card.archived ? " is-archived" : "" ),
       attrs: { "data-card-id": card.id , "data-position": card.position , tabindex: "0" , role: "button" },
       on: {
-        click: function () { ctx.openCard( card.id ); },
+        click: function ( event ) { if ( !event.target.closest( "a" ) ) ctx.openCard( card.id ); },
         keydown: function ( event ) { if ( event.key === "Enter" ) ctx.openCard( card.id ); },
         contextmenu: function ( event ) { CardMenu.open( event , card , ctx ); },
       },
@@ -500,7 +500,8 @@ const ListMenu = {
       copy.appendChild( Dom.el( "div" , { class: "row-actions" , children: [
         Ui.button( "board.copy_bullets" , function () { Ui.copyText( ListMenu.markdownList( list , ctx , false ) ); } ),
         Ui.button( "board.copy_numbered" , function () { Ui.copyText( ListMenu.markdownList( list , ctx , true ) ); } ),
-        Ui.button( "board.copy_everything" , function () { Ui.copyText( BoardExport.listNumbered( ctx , list ) ); } ),
+        Ui.button( "board.copy_everything" , function () { Ui.copyText( BoardExport.listNumbered( ctx , list , true ) ); } ),
+        Ui.button( "board.copy_everything_bullets" , function () { Ui.copyText( BoardExport.listNumbered( ctx , list , false ) ); } ),
       ] } ) );
       body.appendChild( copy );
       // The column as a file, and cards back from one (appended).

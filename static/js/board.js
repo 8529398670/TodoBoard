@@ -374,7 +374,7 @@ const CardOnlyView = {
     const wrap = Dom.el( "section" , { class: "card-only" } );
     wrap.appendChild( Dom.el( "p" , { class: "muted" , text: T( "share.card_only_note" ) } ) );
     ctx.cards.forEach( function ( card ) {
-      const button = Dom.el( "button" , { class: "card-face standalone" , attrs: { type: "button" } , on: { click: function () { ctx.openCard( card.id ); } } } );
+      const button = Dom.el( "button" , { class: "card-face standalone" , attrs: { type: "button" } , on: { click: function ( event ) { if ( !event.target.closest( "a" ) ) ctx.openCard( card.id ); } } } );
       const title = Dom.el( "span" , { class: "card-title" } );
       Markdown.renderInline( card.title , title );
       button.appendChild( title );

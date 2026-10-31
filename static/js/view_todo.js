@@ -107,7 +107,7 @@ const TodoView = {
     if ( ctx.canEdit && !card.archived ) row.appendChild( Dom.el( "span" , { class: "todo-handle" , text: T( "todo.drag_symbol" ) , attrs: { "aria-hidden": "true" } } ) );
     if ( ctx.numbered() && !card.archived ) row.appendChild( CardBits.numberField( card , cards , ctx ) );
 
-    const body = Dom.el( "button" , { class: "todo-body" , attrs: { type: "button" } , on: { click: function () { ctx.openCard( card.id ); } } } );
+    const body = Dom.el( "button" , { class: "todo-body" , attrs: { type: "button" } , on: { click: function ( event ) { if ( !event.target.closest( "a" ) ) ctx.openCard( card.id ); } } } );
     const title = Dom.el( "span" , { class: "todo-title" } );
     Markdown.renderInline( card.title , title );
     body.appendChild( title );

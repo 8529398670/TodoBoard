@@ -266,13 +266,13 @@ const BoardExport = {
     return lines.join( "\n" ).replace( /\n{3,}/g , "\n\n" );
   },
 
-  // One column as a single numbered list, everything nested under its card:
-  // the details on one line, the product, the description (its own lists
-  // keep their nesting, renumbered), then the checklist. Three spaces a
-  // level, which is what a numbered item's children need in Markdown. What
-  // a column's "Copy everything" copies.
-  listNumbered( ctx , list ) {
-    const out = NumberedList.make();
+  // One column as a single list, everything nested under its card as
+  // bullets: the details on one line, the product, the description (its own
+  // lists keep their nesting), then the checklist. numbered numbers the
+  // cards themselves; otherwise they are bullets too. What a column's "Copy
+  // everything" buttons copy.
+  listNumbered( ctx , list , numbered ) {
+    const out = NumberedList.make( numbered );
     ctx.cardsIn( list.id ).forEach( function ( card ) {
       out.add( 0 , Ui.oneLine( card.title ) + ( card.done ? " " + T( "export.md_done_marker" ) : "" ) );
       const details = [];
@@ -296,22 +296,28 @@ const BoardExport = {
   },
 };
 
-// Builds a nested numbered Markdown list: add( depth , text ) numbers each
-// item within its parent, starting again at 1 under every new parent.
+// Builds a nested Markdown list: add( depth , text ) adds an item under the
+// last one a level up. With numbered, top-level items are numbered 1, 2, 3
+// and everything under them is a bullet; without, all are bullets. Each
+// level is indented to where its parent's text starts, which is what
+// Markdown needs to nest it ("1. " and "10. " differ).
 const NumberedList = {
-  make() {
+  make( numbered ) {
     const lines = [];
-    const counters = [];
+    const starts = [];
+    let count = 0;
     return {
       add( depth , text ) {
-        counters.length = depth + 1;
-        counters[ depth ] = ( counters[ depth ] || 0 ) + 1;
-        lines.push( "   ".repeat( depth ) + counters[ depth ] + ". " + text );
+        const indent = depth ? starts[ depth - 1 ] || 0 : 0;
+        const marker = numbered && depth === 0 ? ( ++count ) + ". " : "- ";
+        starts.length = depth + 1;
+        starts[ depth ] = indent + marker.length;
+        lines.push( " ".repeat( indent ) + marker + text );
       },
       // A line kept as written (inside a code block), indented under the
       // item before it.
       raw( depth , text ) {
-        lines.push( "   ".repeat( depth ) + text );
+        lines.push( " ".repeat( depth ? starts[ depth - 1 ] || 0 : 0 ) + text );
       },
       text() { return lines.join( "\n" ); },
     };

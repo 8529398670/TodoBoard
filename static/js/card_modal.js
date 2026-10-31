@@ -52,6 +52,17 @@ const CardModal = {
       url.searchParams.delete( "card" );
       window.history.replaceState( null , "" , url.pathname + url.search );
     } );
+    // There is no Done button: the title or description editor saves as it
+    // is typed, and closes once someone clicks anywhere outside it. Seen on
+    // the way down (capture), so the click still reaches what was clicked;
+    // a press that began inside the editor (selecting text) does not count.
+    let pressed = null;
+    dialog.addEventListener( "pointerdown" , ( event ) => { pressed = event.target; } , true );
+    dialog.addEventListener( "click" , ( event ) => {
+      const outside = ( selector ) => !event.target.closest( selector ) && !( pressed && pressed.closest && pressed.closest( selector ) );
+      if ( this.editingTitle && outside( ".card-dialog-title-wrap" ) ) this.finishTitle( false );
+      if ( this.editingDescription && outside( ".card-description" ) ) this.finishDescription();
+    } , true );
     dialog.addEventListener( "focusout" , () => {
       window.setTimeout( () => {
         if ( this.pendingRefresh && !this.typing() ) {
@@ -373,15 +384,6 @@ const CardModal = {
     tabs.appendChild( Ui.button( "card.write_tab" , () => { this.titlePreviewing = false; this.render(); } , "secondary small" + ( this.titlePreviewing ? "" : " active" ) ) );
     tabs.appendChild( Ui.button( "card.preview_tab" , () => { this.titlePreviewing = true; this.render(); } , "secondary small" + ( this.titlePreviewing ? " active" : "" ) ) );
     wrap.appendChild( tabs );
-    // Escape puts back the title editing started from; Enter or Done keeps
-    // what is there. Either way it is already saved, or about to be.
-    const finish = async ( revert ) => {
-      if ( revert && this.text.title ) this.titleDraft = this.text.title.original;
-      await this.flushText( "title" );
-      if ( this.titleConflict ) return;
-      this.editingTitle = false;
-      this.render();
-    };
     if ( this.titlePreviewing ) {
       const rendered = Dom.el( "h2" , { class: "card-dialog-title preview" } );
       Markdown.renderInline( this.titleDraft , rendered );
@@ -398,22 +400,37 @@ const CardModal = {
       area.addEventListener( "keydown" , ( event ) => {
         if ( event.key === "Enter" && !event.shiftKey && !event.isComposing ) {
           event.preventDefault();
-          finish( false );
+          this.finishTitle( false );
         } else if ( event.key === "Escape" ) {
           event.preventDefault();
           event.stopPropagation();
-          finish( true );
+          this.finishTitle( true );
         }
       } );
       wrap.appendChild( area );
       window.requestAnimationFrame( function () { Ui.autoGrow( area ); } );
       wrap.appendChild( Dom.el( "p" , { class: "muted small-print" , text: T( "card.markdown_hint" ) } ) );
     }
-    wrap.appendChild( Dom.el( "div" , { class: "row-actions" , children: [
-      Dom.el( "button" , { class: Ui.buttonClass( "small" ) , text: T( "card.done_editing" ) , attrs: { type: "button" } , on: { click: () => finish( false ) } } ),
-      this.textStatus( "title" ),
-    ] } ) );
+    wrap.appendChild( Dom.el( "div" , { class: "row-actions" , children: [ this.textStatus( "title" ) ] } ) );
     return wrap;
+  },
+
+  // Escape puts back the title editing started from; Enter, or clicking
+  // anywhere else, keeps what is there. Either way it is already saved, or
+  // about to be.
+  async finishTitle( revert ) {
+    if ( revert && this.text.title ) this.titleDraft = this.text.title.original;
+    await this.flushText( "title" );
+    if ( this.titleConflict || !this.editingTitle ) return;
+    this.editingTitle = false;
+    this.render();
+  },
+
+  async finishDescription() {
+    await this.flushText( "description" );
+    if ( this.conflict || !this.editingDescription ) return;
+    this.editingDescription = false;
+    this.render();
   },
 
   titleConflictBox() {
@@ -421,7 +438,7 @@ const CardModal = {
     const box = Dom.el( "div" , { class: "alert alert-warning conflict" } );
     box.appendChild( Dom.el( "p" , { text: I18n.fill( "card.title_conflict" , { name: CardBits.actorName( theirs.updated_by ) } ) } ) );
     box.appendChild( Dom.el( "div" , { class: "row-actions" , children: [
-      Ui.button( "card.conflict_keep_mine" , () => this.keepMine( "title" , theirs.rev ) ),
+      Ui.button( "card.conflict_keep_mine" , () => this.keepMine( "title" , theirs ) ),
       Ui.button( "card.conflict_take_theirs" , async () => {
         this.titleConflict = null;
         this.editingTitle = false;
@@ -544,7 +561,7 @@ const CardModal = {
   },
 
   description( card , canEdit ) {
-    const section = Dom.el( "section" , { class: "card-section" } );
+    const section = Dom.el( "section" , { class: "card-section card-description" } );
     const head = Dom.el( "div" , { class: "section-head" } );
     head.appendChild( Dom.el( "h3" , { text: T( "card.description_label" ) } ) );
     section.appendChild( head );
@@ -605,27 +622,20 @@ const CardModal = {
       section.appendChild( Dom.el( "p" , { class: "muted small-print" , text: T( "card.description_hint" ) } ) );
     }
 
-    section.appendChild( Dom.el( "div" , { class: "row-actions" , children: [
-      Dom.el( "button" , { class: Ui.buttonClass( "small" ) , text: T( "card.done_editing" ) , attrs: { type: "button" } , on: { click: async () => {
-        await this.flushText( "description" );
-        if ( this.conflict ) return;
-        this.editingDescription = false;
-        this.render();
-      } } } ),
-      this.textStatus( "description" ),
-    ] } ) );
+    section.appendChild( Dom.el( "div" , { class: "row-actions" , children: [ this.textStatus( "description" ) ] } ) );
     return section;
   },
 
   // ---- saving text as it is typed ---------------------------------------
   // Each save is checked against the revision the last one left (or editing
-  // started from). If someone else saved in between, the server answers 409
-  // with their copy and saving stops until the person chooses -- nothing is
-  // overwritten silently.
+  // started from). If the card changed in between, the server answers 409
+  // with its copy; when that copy's text for this field is not what we last
+  // saved, someone else rewrote it, and saving stops until the person
+  // chooses -- nothing is overwritten silently.
 
   startText( field , card ) {
     const value = field === "title" ? card.title : card.description;
-    this.text[ field ] = { cardId: card.id , ctx: this.ctx , rev: card.rev , original: value , saved: value , timer: null , inflight: null , again: false };
+    this.text[ field ] = { cardId: card.id , ctx: this.ctx , rev: card.rev , original: value , saved: value , server: value , timer: null , inflight: null , again: false };
   },
 
   scheduleText( field ) {
@@ -665,11 +675,30 @@ const CardModal = {
     this.showStatus( field , "card.autosave_saving" );
     state.inflight = ( async () => {
       try {
-        const fields = { rev: state.rev };
-        fields[ field ] = value;
-        const updated = await state.ctx.client.patchCard( state.cardId , fields );
+        // The card's rev moves with any change to it -- our own save of the
+        // other field, a label, a checklist tick. That is only a conflict
+        // when this field's text itself changed since we last saved it;
+        // otherwise take the newer rev and save again.
+        let updated = null;
+        for ( let tries = 0 ; !updated ; tries++ ) {
+          const fields = { rev: state.rev };
+          fields[ field ] = value;
+          try {
+            updated = await state.ctx.client.patchCard( state.cardId , fields );
+          } catch ( error ) {
+            const theirs = error.status === 409 && error.payload && error.payload.card;
+            if ( !theirs || tries >= 3 || theirs[ field ] !== state.server ) throw error;
+            state.rev = theirs.rev;
+          }
+        }
+        const before = state.rev;
         state.saved = value;
+        state.server = updated[ field ];
         state.rev = updated.rev;
+        // The other field, if it is being edited from the same rev, is not
+        // stale because of our own save.
+        const other = this.text[ field === "title" ? "description" : "title" ];
+        if ( other && other.cardId === state.cardId && other.rev === before ) other.rev = updated.rev;
         // Keep the board's copy current without re-reading it, which would
         // redraw the editor under the cursor. The next poll catches up.
         const card = state.ctx.card( state.cardId );
@@ -696,12 +725,13 @@ const CardModal = {
   },
 
   // "Keep mine" after a conflict: save over their revision.
-  keepMine( field , rev ) {
+  keepMine( field , theirs ) {
     const state = this.text[ field ];
     if ( field === "title" ) this.titleConflict = null;
     else this.conflict = null;
     if ( state ) {
-      state.rev = rev;
+      state.rev = theirs.rev;
+      state.server = theirs[ field ];
       state.saved = null;
     }
     this.render();
@@ -722,7 +752,7 @@ const CardModal = {
     const box = Dom.el( "div" , { class: "alert alert-warning conflict" } );
     box.appendChild( Dom.el( "p" , { text: I18n.fill( "card.conflict" , { name: CardBits.actorName( theirs.updated_by ) } ) } ) );
     box.appendChild( Dom.el( "div" , { class: "row-actions" , children: [
-      Ui.button( "card.conflict_keep_mine" , () => this.keepMine( "description" , theirs.rev ) ),
+      Ui.button( "card.conflict_keep_mine" , () => this.keepMine( "description" , theirs ) ),
       Ui.button( "card.conflict_take_theirs" , async () => {
         this.conflict = null;
         this.editingDescription = false;
