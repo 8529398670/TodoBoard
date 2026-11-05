@@ -9,6 +9,47 @@ import (
 
 // The whole permission table from the plan, row by row. If a row here
 // changes, it should be because the rules changed on purpose.
+func TestKeyBoardLimit( t *testing.T ) {
+	board := &models.Board{ ID: 1 , OwnerID: 10 , Lists: []*models.List{ { ID: 7 } } }
+	// Shared straight to user 13, who is not on the board: the grant Board
+	// never sees, so the limit has to hold in Card as well.
+	card := &models.Card{ ID: 5 , BoardID: 1 , ListID: 7 , SharedWith: map[uint64]string{ 13: models.ModeEdit } }
+
+	type row struct {
+		name  string
+		key   *models.APIKey
+		user  uint64
+		board Level
+		list  Level
+		card  Level
+	}
+	rows := []row{
+		{ "no key" , nil , 10 , Manage , Edit , Edit },
+		{ "key, no limit" , &models.APIKey{} , 10 , Manage , Edit , Edit },
+		{ "only this board" , &models.APIKey{ BoardAccess: models.BoardAccessOnly , BoardIDs: []uint64{ 1 } } , 10 , Manage , Edit , Edit },
+		{ "only another board" , &models.APIKey{ BoardAccess: models.BoardAccessOnly , BoardIDs: []uint64{ 2 } } , 10 , None , None , None },
+		{ "only nothing" , &models.APIKey{ BoardAccess: models.BoardAccessOnly } , 10 , None , None , None },
+		{ "except this board" , &models.APIKey{ BoardAccess: models.BoardAccessExcept , BoardIDs: []uint64{ 1 } } , 10 , None , None , None },
+		{ "except another board" , &models.APIKey{ BoardAccess: models.BoardAccessExcept , BoardIDs: []uint64{ 2 } } , 10 , Manage , Edit , Edit },
+		{ "unknown mode fails closed" , &models.APIKey{ BoardAccess: "someday" , BoardIDs: []uint64{ 1 } } , 10 , None , None , None },
+		{ "shared card, board allowed" , &models.APIKey{ BoardAccess: models.BoardAccessOnly , BoardIDs: []uint64{ 1 } } , 13 , None , None , Edit },
+		{ "shared card, board blocked" , &models.APIKey{ BoardAccess: models.BoardAccessExcept , BoardIDs: []uint64{ 1 } } , 13 , None , None , None },
+		{ "a limit adds nothing" , &models.APIKey{ BoardAccess: models.BoardAccessOnly , BoardIDs: []uint64{ 1 } } , 99 , None , None , None },
+	}
+	for _ , item := range rows {
+		principal := &Principal{ UserID: item.user , Key: item.key }
+		if got := Board( principal , board ); got != item.board {
+			t.Errorf( "%s: board level %v, want %v" , item.name , got , item.board )
+		}
+		if got := List( principal , board , 7 ); got != item.list {
+			t.Errorf( "%s: list level %v, want %v" , item.name , got , item.list )
+		}
+		if got := Card( principal , board , card ); got != item.card {
+			t.Errorf( "%s: card level %v, want %v" , item.name , got , item.card )
+		}
+	}
+}
+
 func TestLevels( t *testing.T ) {
 	board := &models.Board{ ID: 1 , OwnerID: 10 , Members: map[uint64]string{ 11: models.BoardRoleEditor , 12: models.BoardRoleViewer } ,
 		Lists: []*models.List{ { ID: 7 } , { ID: 8 } } }

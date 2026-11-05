@@ -7,7 +7,6 @@ import (
 
 	access "todoboard/server/access"
 	models "todoboard/server/models"
-	security "todoboard/server/security"
 )
 
 type createBoardRequest struct {
@@ -28,7 +27,7 @@ type labelRequest struct {
 // ListMyBoards is the home page: boards I own or am a member of, the folders
 // I sort them into, and single cards shared with me from boards I am not on.
 func ( handlers *Handlers ) ListMyBoards( c fiber.Ctx ) ( err error ) {
-	payload , list_err := handlers.myBoards( security.UserFrom( c ).ID )
+	payload , list_err := handlers.myBoards( principalFrom( c ) )
 	if list_err != nil {
 		err = serverError( c )
 		return
@@ -37,13 +36,34 @@ func ( handlers *Handlers ) ListMyBoards( c fiber.Ctx ) ( err error ) {
 	return
 }
 
-// myBoards is shared with the MCP list_boards tool.
-func ( handlers *Handlers ) myBoards( user_id uint64 ) ( payload fiber.Map , err error ) {
-	boards , cards , err := models.ListBoardsForUser( handlers.Store , user_id )
+// myBoards is shared with the MCP list_boards tool. This is a list rather
+// than one board, so a key's board limit is applied here by hand. A limited
+// key gets no folders: they are home-page settings that span boards.
+func ( handlers *Handlers ) myBoards( principal *access.Principal ) ( payload fiber.Map , err error ) {
+	boards , cards , err := handlers.boardsFor( principal )
 	if err != nil { return }
-	folders , err := models.ListFolders( handlers.Store , user_id )
-	if err != nil { return }
+	folders := []*models.Folder{}
+	if principal.Key.Limited() == false {
+		folders , err = models.ListFolders( handlers.Store , principal.UserID )
+		if err != nil { return }
+	}
 	payload = fiber.Map{ "boards": boards , "folders": folders , "shared_cards": cards }
+	return
+}
+
+// boardsFor is models.ListBoardsForUser cut down to what the principal's key
+// may reach. Anything listing boards for a member goes through here.
+func ( handlers *Handlers ) boardsFor( principal *access.Principal ) ( boards []*models.BoardSummary , cards []*models.SharedCardSummary , err error ) {
+	all_boards , all_cards , err := models.ListBoardsForUser( handlers.Store , principal.UserID )
+	if err != nil { return }
+	boards = []*models.BoardSummary{}
+	cards = []*models.SharedCardSummary{}
+	for _ , board := range all_boards {
+		if access.KeyAllows( principal , board.ID ) { boards = append( boards , board ) }
+	}
+	for _ , card := range all_cards {
+		if access.KeyAllows( principal , card.BoardID ) { cards = append( cards , card ) }
+	}
 	return
 }
 

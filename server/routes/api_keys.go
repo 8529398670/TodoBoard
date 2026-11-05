@@ -37,6 +37,15 @@ type createAPIKeyRequest struct {
 	// would be the same request.
 	ExpiresInDays *int   `json:"expires_in_days"`
 	CSRFToken     string `json:"csrf_token"`
+	// BoardAccess is "" for every board, or "only" / "except" with BoardIDs.
+	BoardAccess string   `json:"board_access"`
+	BoardIDs    []uint64 `json:"board_ids"`
+}
+
+type setKeyBoardsRequest struct {
+	BoardAccess string   `json:"board_access"`
+	BoardIDs    []uint64 `json:"board_ids"`
+	CSRFToken   string   `json:"csrf_token"`
 }
 
 // RequireAPIKeys hides the key-management endpoints when the feature is
@@ -56,6 +65,10 @@ func ( handlers *Handlers ) RequireAPIKeys( c fiber.Ctx ) ( err error ) {
 // apiKeyRow is the only shape a key is ever returned in. The secret hash is
 // not in it, and nor is the credential -- that exists in one response, from
 // CreateAPIKey, and is never recoverable afterwards.
+//
+// board_count is safe for anyone who may see the row. Which boards they are is
+// not -- app admins get no rights over other people's boards -- so the owner's
+// own listings add board_ids themselves (ownKeyRow).
 func apiKeyRow( key *models.APIKey , display_name string ) ( row fiber.Map ) {
 	row = fiber.Map{
 		"id":         key.ID,
@@ -66,6 +79,8 @@ func apiKeyRow( key *models.APIKey , display_name string ) ( row fiber.Map ) {
 		"revoked":    key.Revoked(),
 		"expired":    key.Expired(),
 		"live":       key.Live(),
+		"board_access": key.BoardAccess,
+		"board_count":  len( key.BoardIDs ),
 	}
 	if key.ExpiresAt != nil {
 		row[ "expires_at" ] = key.ExpiresAt
@@ -82,6 +97,14 @@ func apiKeyRow( key *models.APIKey , display_name string ) ( row fiber.Map ) {
 	return
 }
 
+func ownKeyRow( key *models.APIKey ) ( row fiber.Map ) {
+	row = apiKeyRow( key , "" )
+	ids := key.BoardIDs
+	if ids == nil { ids = []uint64{} }
+	row[ "board_ids" ] = ids
+	return
+}
+
 // ListMyAPIKeys answers "what has standing access as me". Revoked and expired
 // keys are included, marked as such, because a key that used to exist is part
 // of that answer.
@@ -94,7 +117,7 @@ func ( handlers *Handlers ) ListMyAPIKeys( c fiber.Ctx ) ( err error ) {
 	}
 	rows := []fiber.Map{}
 	for _ , key := range keys {
-		rows = append( rows , apiKeyRow( key , "" ) )
+		rows = append( rows , ownKeyRow( key ) )
 	}
 	err = c.JSON( rows )
 	return
@@ -138,11 +161,13 @@ func ( handlers *Handlers ) CreateMyAPIKey( c fiber.Ctx ) ( err error ) {
 	}
 
 	user := security.UserFrom( c )
-	credential , key , issue_err := models.IssueAPIKey( handlers.Store , user.ID , body.Name , role , ttl )
+	credential , key , issue_err := models.IssueAPIKey( handlers.Store , user.ID , body.Name , role , ttl , body.BoardAccess , body.BoardIDs )
 	if issue_err != nil {
 		switch {
 		case errors.Is( issue_err , models.ErrAPIKeyRole ):
 			err = forbidden( c , "you cannot create an API key with more permission than your own account" )
+		case errors.Is( issue_err , models.ErrAPIKeyBoards ):
+			err = badRequest( c , keyBoardsMessage )
 		case errors.Is( issue_err , models.ErrAPIKeyLimit ):
 			err = badRequest( c , "you already have the maximum number of live API keys -- revoke one first" )
 		case errors.Is( issue_err , models.ErrAPIKeyDisabled ):
@@ -157,9 +182,47 @@ func ( handlers *Handlers ) CreateMyAPIKey( c fiber.Ctx ) ( err error ) {
 	}
 
 	// The credential appears here and nowhere else, ever.
-	row := apiKeyRow( key , "" )
+	row := ownKeyRow( key )
 	row[ "credential" ] = credential
 	err = c.Status( fiber.StatusCreated ).JSON( row )
+	return
+}
+
+const keyBoardsMessage = "choose at least one of your boards; admin keys cannot be limited to boards"
+
+// SetMyAPIKeyBoards changes which boards one of your keys reaches, from its
+// next request on. Only a session gets here (see the group in routes.go), so a
+// leaked key cannot widen itself.
+func ( handlers *Handlers ) SetMyAPIKeyBoards( c fiber.Ctx ) ( err error ) {
+	var body setKeyBoardsRequest
+	if c.Bind().JSON( &body ) != nil {
+		err = badRequest( c , "malformed request body" )
+		return
+	}
+	if handlers.Guard.CheckCSRF( c , body.CSRFToken ) == false {
+		err = forbidden( c , "invalid csrf token" )
+		return
+	}
+
+	user := security.UserFrom( c )
+	key , get_err := models.GetAPIKey( handlers.Store , c.Params( "key_id" ) )
+	if get_err != nil || key.UserID != user.ID {
+		err = notFound( c , "no such api key" )
+		return
+	}
+	set_err := models.SetAPIKeyBoards( handlers.Store , key.ID , body.BoardAccess , body.BoardIDs )
+	switch {
+	case set_err == nil:
+		err = c.JSON( fiber.Map{ "ok": true } )
+	case errors.Is( set_err , models.ErrAPIKeyBoards ):
+		err = badRequest( c , keyBoardsMessage )
+	case errors.Is( set_err , models.ErrAPIKeyDead ):
+		err = badRequest( c , "this key is revoked or expired" )
+	case errors.Is( set_err , db.ErrNotFound ):
+		err = notFound( c , "no such api key" )
+	default:
+		err = serverError( c )
+	}
 	return
 }
 

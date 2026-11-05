@@ -56,7 +56,7 @@ func ( handlers *Handlers ) MemberPrincipal( c fiber.Ctx ) ( err error ) {
 			return
 		}
 	}
-	c.Locals( keyPrincipal , &access.Principal{ UserID: actor.User.ID , Name: actor.User.DisplayName } )
+	c.Locals( keyPrincipal , &access.Principal{ UserID: actor.User.ID , Key: actor.APIKey , Name: actor.User.DisplayName } )
 	err = c.Next()
 	return
 }
@@ -140,6 +140,9 @@ func ( handlers *Handlers ) loadBoard( principal *access.Principal , ref string 
 }
 
 func ( handlers *Handlers ) canSeeAnyCard( principal *access.Principal , board *models.Board ) ( result bool ) {
+	// Asked here because the lookup below reads the user's card index, not
+	// server/access, so it would otherwise let a limited key through.
+	if access.KeyAllows( principal , board.ID ) == false { return }
 	if principal.Share != nil {
 		result = principal.Share.BoardID == board.ID && ( principal.Share.CardID != 0 || principal.Share.ListID != 0 )
 		return

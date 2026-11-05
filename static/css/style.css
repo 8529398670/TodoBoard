@@ -201,6 +201,11 @@ a:not([class]):hover { color: var(--bs-link-hover-color); }
 .table { --bs-table-bg: transparent; }
 .row-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; }
 td .row-actions { flex-wrap: nowrap; }
+
+/* The board picker on the API keys screen. */
+.key-boards-mode { max-width: 26rem; }
+.key-board-list { display: grid; grid-template-columns: repeat( auto-fill , minmax( 14rem , 1fr ) ); gap: 0.25rem 1rem; max-height: 16rem; overflow-y: auto; margin-top: 0.5rem; }
+.key-board-list .form-check { margin: 0; overflow-wrap: anywhere; }
 th { color: var(--bs-secondary-color); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.03em; font-weight: 600; }
 
 /* A login link or API key, with its copy button. The value wraps rather

@@ -103,7 +103,9 @@ func ( handlers *Handlers ) Register( app *fiber.App ) {
 	// Notification settings are the caller's own; the test push needs a
 	// session only because it is a button in the account page.
 	account.Get( "/notify/prefs" , handlers.GetNotifyPrefs )
-	account.Post( "/notify/prefs" , handlers.SaveNotifyPrefs )
+	// A key held to some boards cannot change these: where reminders go is
+	// account-wide, so it could send itself news of boards it cannot open.
+	account.Post( "/notify/prefs" , handlers.Guard.RefuseLimitedKey , handlers.SaveNotifyPrefs )
 	account.Post( "/notify/test" , handlers.TestNotification )
 
 	// Boards, for signed-in people. MemberPrincipal checks the CSRF token on
@@ -111,10 +113,10 @@ func ( handlers *Handlers ) Register( app *fiber.App ) {
 	// given board is server/access's decision, not the route's.
 	boards := app.Group( "/api/boards" , handlers.Guard.RequireLogin , handlers.MemberPrincipal )
 	boards.Get( "" , handlers.ListMyBoards )
-	boards.Post( "" , handlers.CreateBoard )
+	boards.Post( "" , handlers.Guard.RefuseOnlyBoardsKey , handlers.CreateBoard )
 	handlers.registerBoardContent( boards )
 	boards.Post( "/:board_id/leave" , handlers.LeaveBoard )
-	boards.Post( "/:board_id/folder" , handlers.SetBoardFolder )
+	boards.Post( "/:board_id/folder" , handlers.Guard.RefuseLimitedKey , handlers.SetBoardFolder )
 	boards.Post( "/:board_id/my-view" , handlers.SetMyBoardView )
 	boards.Post( "/:board_id/delete" , handlers.Guard.RequireSession , handlers.DeleteBoard )
 	boards.Post( "/:board_id/members" , handlers.SetBoardMember )
@@ -131,11 +133,11 @@ func ( handlers *Handlers ) Register( app *fiber.App ) {
 	// Backups: every board you are on as one file, and boards back from it.
 	backup := app.Group( "/api/backup" , handlers.Guard.RequireLogin , handlers.MemberPrincipal )
 	backup.Get( "" , handlers.ExportBackup )
-	backup.Post( "/board" , handlers.ImportBoard )
+	backup.Post( "/board" , handlers.Guard.RefuseOnlyBoardsKey , handlers.ImportBoard )
 
 	// Home page folders: each person's own. MemberPrincipal is here for its
 	// CSRF check on writes.
-	folders := app.Group( "/api/folders" , handlers.Guard.RequireLogin , handlers.MemberPrincipal )
+	folders := app.Group( "/api/folders" , handlers.Guard.RequireLogin , handlers.Guard.RefuseLimitedKey , handlers.MemberPrincipal )
 	folders.Post( "" , handlers.CreateFolder )
 	folders.Post( "/order" , handlers.SetFolderOrder )
 	folders.Post( "/:folder_id" , handlers.RenameFolder )
@@ -154,6 +156,7 @@ func ( handlers *Handlers ) Register( app *fiber.App ) {
 	keys := app.Group( "/api/keys" , handlers.RequireAPIKeys , handlers.Guard.RequireLogin , handlers.Guard.RequireSession )
 	keys.Get( "" , handlers.ListMyAPIKeys )
 	keys.Post( "" , handlers.CreateMyAPIKey )
+	keys.Post( "/:key_id/boards" , handlers.SetMyAPIKeyBoards )
 	keys.Post( "/:key_id/revoke" , handlers.RevokeMyAPIKey )
 	keys.Post( "/:key_id/delete" , handlers.DeleteMyAPIKey )
 

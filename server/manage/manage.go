@@ -436,6 +436,8 @@ func fromKeyModel( key *models.APIKey , display_name string , credential string 
 		LastUsedAt:  key.LastUsedAt,
 		RevokedAt:   key.RevokedAt,
 		Credential:  credential,
+		BoardAccess: key.BoardAccess,
+		BoardCount:  len( key.BoardIDs ),
 	}
 	return
 }
@@ -489,7 +491,7 @@ func ( b *directBackend ) CreateAPIKey( user_id uint64 , name string , role stri
 		return
 	}
 
-	credential , created , err := models.IssueAPIKey( b.store , owner.ID , name , role , ttl )
+	credential , created , err := models.IssueAPIKey( b.store , owner.ID , name , role , ttl , models.BoardAccessAll , nil )
 	if err != nil { return }
 	key = fromKeyModel( created , owner.DisplayName , credential )
 	return
@@ -702,17 +704,21 @@ func commandListKeys( back backend , arguments []string ) ( err error ) {
 		return
 	}
 
-	fmt.Printf( "%-18s %-22s %-6s %-20s %-8s %-16s %s\n" ,
-		"KEY ID" , "NAME" , "ROLE" , "OWNER" , "STATUS" , "LAST USED" , "EXPIRES" )
+	fmt.Printf( "%-18s %-22s %-6s %-20s %-8s %-16s %-16s %s\n" ,
+		"KEY ID" , "NAME" , "ROLE" , "OWNER" , "STATUS" , "LAST USED" , "EXPIRES" , "BOARDS" )
 	for _ , key := range keys {
 		owner := key.DisplayName
 		if owner == "" {
 			owner = fmt.Sprintf( "#%d" , key.UserID )
 		}
-		fmt.Printf( "%-18s %-22s %-6s %-20s %-8s %-16s %s\n" ,
+		boards := "all"
+		if key.BoardAccess != models.BoardAccessAll {
+			boards = fmt.Sprintf( "%s %d" , key.BoardAccess , key.BoardCount )
+		}
+		fmt.Printf( "%-18s %-22s %-6s %-20s %-8s %-16s %-16s %s\n" ,
 			key.ID , key.Name , key.Role , owner , keyStatus( key ) ,
 			formatKeyTime( key.LastUsedAt , "never" ) ,
-			formatKeyTime( key.ExpiresAt , "never" ) )
+			formatKeyTime( key.ExpiresAt , "never" ) , boards )
 	}
 	return
 }

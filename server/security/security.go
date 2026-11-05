@@ -284,6 +284,35 @@ func UserFrom( c fiber.Ctx ) ( user *models.User ) {
 	return
 }
 
+// KeyBoardsRefusal is the same words wherever a board limit says no, on the
+// HTTP routes and on the MCP tools.
+const KeyBoardsRefusal = "this API key is limited to certain boards and cannot do this"
+
+// RefuseLimitedKey keeps a key with a board limit off anything that spans
+// boards or reaches them sideways: home-page folders, and notification
+// settings, where a key could send reminders about every board to a device of
+// its choosing without ever naming a board.
+func ( guard *Guard ) RefuseLimitedKey( c fiber.Ctx ) ( err error ) {
+	if APIKeyFrom( c ).Limited() {
+		err = c.Status( fiber.StatusForbidden ).JSON( fiber.Map{ "error": KeyBoardsRefusal } )
+		return
+	}
+	err = c.Next()
+	return
+}
+
+// RefuseOnlyBoardsKey keeps a key held to a chosen list from making new boards.
+// A board it made would be outside that list, and growing the list is for the
+// key's owner to do, in a browser session.
+func ( guard *Guard ) RefuseOnlyBoardsKey( c fiber.Ctx ) ( err error ) {
+	if APIKeyFrom( c ).OnlyBoards() {
+		err = c.Status( fiber.StatusForbidden ).JSON( fiber.Map{ "error": KeyBoardsRefusal } )
+		return
+	}
+	err = c.Next()
+	return
+}
+
 func SessionFrom( c fiber.Ctx ) ( session *models.Session ) {
 	if actor := ActorFrom( c ); actor != nil {
 		session = actor.Session

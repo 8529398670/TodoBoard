@@ -14,6 +14,7 @@ import (
 	access "todoboard/server/access"
 	mcp "todoboard/server/mcp"
 	models "todoboard/server/models"
+	security "todoboard/server/security"
 )
 
 // The board and card tools. Each one runs the same checks as its HTTP route
@@ -58,7 +59,7 @@ var labelColors = []string{ "blue" , "green" , "orange" , "red" , "purple" , "pi
 // mcpPrincipal is MemberPrincipal for a key: the same account, the same name
 // on its edits. No CSRF check -- a bearer key is not an ambient credential.
 func mcpPrincipal( call *mcp.Call ) ( principal *access.Principal ) {
-	principal = &access.Principal{ UserID: call.Actor.User.ID , Name: call.Actor.User.DisplayName }
+	principal = &access.Principal{ UserID: call.Actor.User.ID , Key: call.Actor.APIKey , Name: call.Actor.User.DisplayName }
 	return
 }
 
@@ -76,7 +77,7 @@ func ( handlers *Handlers ) registerBoardTools( server *mcp.Server ) {
 		ReadOnly:    true,
 		Call: func( call *mcp.Call ) ( result any , err error ) {
 			if err = call.Bind( &struct{}{} ); err != nil { return }
-			result , err = handlers.myBoards( call.Actor.User.ID )
+			result , err = handlers.myBoards( mcpPrincipal( call ) )
 			return
 		},
 	} )
@@ -171,6 +172,10 @@ func ( handlers *Handlers ) registerBoardTools( server *mcp.Server ) {
 				Lists []string `json:"lists"`
 			}
 			if err = call.Bind( &args ); err != nil { return }
+			if call.Actor.APIKey.OnlyBoards() {
+				err = refusalError( &refusal{ fiber.StatusForbidden , security.KeyBoardsRefusal } )
+				return
+			}
 			board , create_err := models.CreateBoard( handlers.Store , call.Actor.User.ID , args.Title , args.Lists )
 			if create_err != nil {
 				err = refusalError( modelRefusal( create_err ) )

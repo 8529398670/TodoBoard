@@ -88,9 +88,13 @@ const Api = {
   // because the server reads absent as "use the default" and 0 as "never
   // expires" -- collapsing them here would lose the distinction.
   listKeys()                   { return this.request( "/api/keys" ); },
-  createKey( name , role , expiresInDays ) {
-    return this.post( "/api/keys" , { name: name , role: role , expires_in_days: expiresInDays } );
+  createKey( name , role , expiresInDays , boardAccess , boardIds ) {
+    return this.post( "/api/keys" , { name: name , role: role , expires_in_days: expiresInDays , board_access: boardAccess , board_ids: boardIds } );
   },
+  setKeyBoards( keyId , boardAccess , boardIds ) {
+    return this.post( "/api/keys/" + encodeURIComponent( keyId ) + "/boards" , { board_access: boardAccess , board_ids: boardIds } );
+  },
+  listBoards()                 { return this.request( "/api/boards" ); },
   revokeKey( keyId )           { return this.post( "/api/keys/" + encodeURIComponent( keyId ) + "/revoke" ); },
   deleteKey( keyId )           { return this.post( "/api/keys/" + encodeURIComponent( keyId ) + "/delete" ); },
   listAllKeys()                { return this.request( "/api/admin/keys" ); },

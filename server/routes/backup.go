@@ -31,7 +31,7 @@ type importColumnRequest struct {
 // board itself. Boards reached through a single shared card are left out.
 func ( handlers *Handlers ) ExportBackup( c fiber.Ctx ) ( err error ) {
 	principal := principalFrom( c )
-	summaries , _ , list_err := models.ListBoardsForUser( handlers.Store , principal.UserID )
+	summaries , _ , list_err := handlers.boardsFor( principal )
 	if list_err != nil {
 		err = serverError( c )
 		return

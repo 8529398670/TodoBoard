@@ -53,10 +53,10 @@ func newMCPFixture( t *testing.T ) ( fixture *mcpFixture ) {
 	owner , _ := models.CreateUser( store , "Owner" , models.RoleAdmin )
 	if _ , err = models.EnsureOwner( store ); err != nil { t.Fatal( err ) }
 	member , _ := models.CreateUser( store , "Member" , models.RoleUser )
-	admin_key , _ , err := models.IssueAPIKey( store , owner.ID , "admin" , models.RoleAdmin , time.Hour )
+	admin_key , _ , err := models.IssueAPIKey( store , owner.ID , "admin" , models.RoleAdmin , time.Hour , models.BoardAccessAll , nil )
 	if err != nil { t.Fatal( err ) }
 	// An admin's user-scoped key: the ceiling is what is being tested.
-	user_key , _ , err := models.IssueAPIKey( store , owner.ID , "user" , models.RoleUser , time.Hour )
+	user_key , _ , err := models.IssueAPIKey( store , owner.ID , "user" , models.RoleUser , time.Hour , models.BoardAccessAll , nil )
 	if err != nil { t.Fatal( err ) }
 
 	static_server , _ := static.New( fstest.MapFS{ "index.html": { Data: []byte( "index" ) } } )

@@ -14,6 +14,10 @@
 //
 // App admins get nothing extra. Admin rights in this app decide who may sign
 // in, not whose boards they may read.
+//
+// A signed-in user reached through an API key may also be held to some boards
+// (models.APIKey.AllowsBoard). That limit is checked before anything else
+// here: outside it the key has no rights at all, whatever the account has.
 package access
 
 import (
@@ -47,6 +51,9 @@ func ( level Level ) String() ( result string ) {
 type Principal struct {
 	UserID uint64
 	Share  *models.ShareLink
+	// Key is the API key behind a signed-in user, nil for a browser session.
+	// Its board limit narrows what the account can do; it never adds to it.
+	Key *models.APIKey
 	// Name is what an edit is attributed to: the account's display name, or
 	// what a guest typed, marked as a guest by the caller.
 	Name string
@@ -54,6 +61,14 @@ type Principal struct {
 
 func ( principal *Principal ) IsGuest() ( result bool ) {
 	result = principal.Share != nil
+	return
+}
+
+// KeyAllows reports whether the principal's API key, if any, may touch this
+// board. Code that reaches a board without going through Board, List or Card
+// must ask this itself.
+func KeyAllows( principal *Principal , board_id uint64 ) ( result bool ) {
+	result = principal != nil && principal.Key.AllowsBoard( board_id )
 	return
 }
 
@@ -72,6 +87,7 @@ func modeLevel( mode string ) ( level Level ) {
 // None here -- see List and Card.
 func Board( principal *Principal , board *models.Board ) ( level Level ) {
 	if principal == nil || board == nil { return }
+	if KeyAllows( principal , board.ID ) == false { return }
 	if principal.Share != nil {
 		link := principal.Share
 		if link.BoardID != board.ID || link.CardID != 0 || link.ListID != 0 || link.Live() == false { return }
@@ -98,6 +114,7 @@ func Board( principal *Principal , board *models.Board ) ( level Level ) {
 // not renaming or removing the column itself, which stays a board edit.
 func List( principal *Principal , board *models.Board , list_id uint64 ) ( level Level ) {
 	if principal == nil || board == nil || board.List( list_id ) == nil { return }
+	if KeyAllows( principal , board.ID ) == false { return }
 	if HiddenList( principal , board , list_id ) { return }
 	level = Board( principal , board )
 	if level > Edit { level = Edit }
@@ -124,6 +141,9 @@ func HiddenList( principal *Principal , board *models.Board , list_id uint64 ) (
 // grants on the card's column, and anything granted on this card alone.
 func Card( principal *Principal , board *models.Board , card *models.Card ) ( level Level ) {
 	if principal == nil || board == nil || card == nil || card.BoardID != board.ID { return }
+	// Here as well as in Board: a card shared directly is granted below
+	// without Board's say.
+	if KeyAllows( principal , board.ID ) == false { return }
 	if HiddenList( principal , board , card.ListID ) { return }
 	level = Board( principal , board )
 	if level > Edit { level = Edit }

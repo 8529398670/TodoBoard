@@ -19,6 +19,19 @@ import (
 // and a user-scoped key is limited to exactly what a non-admin account is.
 // There is no separate scope language to keep in step with the role checks.
 //
+// # A key can be limited to some boards
+//
+// BoardAccess narrows a user-scoped key to chosen boards, or to every board
+// but the chosen ones. It only ever takes away: server/access applies it on
+// top of the account's own rights, so a key never reaches a board its owner
+// cannot. An admin-scoped key cannot carry a limit, because admin rights are
+// about accounts and a board limit would not touch them -- a key that looks
+// locked down should be.
+//
+// The mode is stored beside the list rather than read from it so that "only"
+// with an empty list means no boards at all. A list alone could not tell that
+// apart from a row written before limits existed.
+//
 // # A key can never outrank its owner
 //
 // The role here is a *request*, and it is bounded twice. IssueAPIKey refuses
@@ -44,12 +57,24 @@ type APIKey struct {
 	ExpiresAt  *time.Time `json:"expires_at,omitempty"`
 	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
 	RevokedAt  *time.Time `json:"revoked_at,omitempty"`
+	// BoardAccess is "" for every board, or BoardAccessOnly / BoardAccessExcept
+	// applied to BoardIDs.
+	BoardAccess string   `json:"board_access,omitempty"`
+	BoardIDs    []uint64 `json:"board_ids,omitempty"`
 }
+
+const (
+	BoardAccessAll    = ""
+	BoardAccessOnly   = "only"
+	BoardAccessExcept = "except"
+)
 
 var (
 	ErrAPIKeyLimit    = errors.New( "this account already holds the maximum number of live API keys" )
 	ErrAPIKeyRole     = errors.New( "an API key cannot be given a role its owner does not have" )
 	ErrAPIKeyDisabled = errors.New( "cannot issue an API key for a disabled account" )
+	ErrAPIKeyBoards   = errors.New( "invalid board limit for an API key" )
+	ErrAPIKeyDead     = errors.New( "this API key is revoked or expired" )
 )
 
 const (
@@ -85,6 +110,9 @@ const (
 	// expires", asked for deliberately; this only stops a typo from producing
 	// a date so far out that it is the same thing by accident.
 	APIKeyMaxDays = 3650
+
+	// APIKeyMaxBoards bounds a key's board list, which is read on every request.
+	APIKeyMaxBoards = 500
 )
 
 // APIKeyTTLFromDays turns a requested lifetime in days into a duration, and
@@ -124,6 +152,79 @@ func ( key *APIKey ) Live() ( result bool ) {
 	return
 }
 
+// Limited reports whether this key is held to some boards. A nil key -- a
+// session, or a guest on a share link -- is not.
+func ( key *APIKey ) Limited() ( result bool ) {
+	result = key != nil && key.BoardAccess != BoardAccessAll
+	return
+}
+
+// OnlyBoards reports whether this key reaches nothing but its listed boards,
+// so that a board made tomorrow would be out of its reach.
+func ( key *APIKey ) OnlyBoards() ( result bool ) {
+	result = key != nil && key.BoardAccess != BoardAccessAll && key.BoardAccess != BoardAccessExcept
+	return
+}
+
+// AllowsBoard is the board limit itself. An unknown mode refuses: a row this
+// code cannot read should fail closed, not open.
+func ( key *APIKey ) AllowsBoard( board_id uint64 ) ( result bool ) {
+	if key.Limited() == false {
+		result = true
+		return
+	}
+	listed := false
+	for _ , id := range key.BoardIDs {
+		if id == board_id {
+			listed = true
+			break
+		}
+	}
+	switch key.BoardAccess {
+	case BoardAccessOnly:
+		result = listed
+	case BoardAccessExcept:
+		result = listed == false
+	}
+	return
+}
+
+// cleanAPIKeyBoards is the one set of rules for a key's board limit, shared by
+// creating a key and editing one, so every route into either gets them. ids
+// comes back deduplicated and sorted, and empty for a key with no limit.
+//
+// Every board must be one the owner can reach, shared single cards included.
+// Otherwise this would be a way to test whether a board id exists.
+func cleanAPIKeyBoards( store *db.Store , user_id uint64 , role string , mode string , ids []uint64 ) ( cleaned []uint64 , err error ) {
+	if mode == BoardAccessAll { return }
+	if mode != BoardAccessOnly && mode != BoardAccessExcept {
+		err = ErrAPIKeyBoards
+		return
+	}
+	if role != RoleUser || len( ids ) == 0 || len( ids ) > APIKeyMaxBoards {
+		err = ErrAPIKeyBoards
+		return
+	}
+	boards , cards , err := ListBoardsForUser( store , user_id )
+	if err != nil { return }
+	reachable := map[ uint64 ]bool{}
+	for _ , board := range boards { reachable[ board.ID ] = true }
+	for _ , card := range cards { reachable[ card.BoardID ] = true }
+	seen := map[ uint64 ]bool{}
+	for _ , id := range ids {
+		if reachable[ id ] == false {
+			cleaned = nil
+			err = ErrAPIKeyBoards
+			return
+		}
+		if seen[ id ] { continue }
+		seen[ id ] = true
+		cleaned = append( cleaned , id )
+	}
+	sort.Slice( cleaned , func( i int , j int ) bool { return cleaned[ i ] < cleaned[ j ] } )
+	return
+}
+
 // ValidAPIKeyName bounds the label a key is given. It is free text a user
 // controls, same as a display name, and it exists only so a list of keys is
 // readable -- "deploy bot", "grafana", "my laptop".
@@ -157,7 +258,10 @@ func NarrowRole( account_role string , key_role string ) ( result string ) {
 // than an oversight: a CI job nobody will remember to re-key is worse served
 // by a credential that dies silently at 3am. It has to be asked for
 // explicitly; the default comes from configuration.
-func IssueAPIKey( store *db.Store , user_id uint64 , name string , role string , ttl time.Duration ) ( credential string , key *APIKey , err error ) {
+//
+// board_access and board_ids are the key's board limit: BoardAccessAll and nil
+// for none.
+func IssueAPIKey( store *db.Store , user_id uint64 , name string , role string , ttl time.Duration , board_access string , board_ids []uint64 ) ( credential string , key *APIKey , err error ) {
 	// The owner is loaded inside the transaction below rather than taking the
 	// caller's word for the role. Every route into this function -- the HTTP
 	// API, the control socket, the CLI -- then gets the same ceiling without
@@ -165,6 +269,8 @@ func IssueAPIKey( store *db.Store , user_id uint64 , name string , role string ,
 	if ValidRole( role ) == false {
 		role = RoleUser
 	}
+	board_ids , err = cleanAPIKeyBoards( store , user_id , role , board_access , board_ids )
+	if err != nil { return }
 
 	key_id := encryption.GenerateURLToken( 12 )
 	secret := encryption.GenerateURLToken( 32 )
@@ -176,6 +282,8 @@ func IssueAPIKey( store *db.Store , user_id uint64 , name string , role string ,
 		Role:       role,
 		SecretHash: encryption.Sha256Hex( secret ),
 		CreatedAt:  now,
+		BoardAccess: board_access,
+		BoardIDs:    board_ids,
 	}
 	if ttl > 0 {
 		expires := now.Add( ttl )
@@ -352,6 +460,30 @@ func RevokeAPIKey( store *db.Store , key_id string ) ( err error ) {
 				now := time.Now().UTC()
 				key.RevokedAt = &now
 			}
+			return
+		} )
+	return
+}
+
+// SetAPIKeyBoards replaces a key's board limit. It takes effect on the key's
+// next request, since LoadAPIKey reads the row every time. The role is read
+// inside the update, and through UpdateValue, so this cannot overwrite a
+// concurrent revoke or last-used write with a stale copy of the row.
+func SetAPIKeyBoards( store *db.Store , key_id string , board_access string , board_ids []uint64 ) ( err error ) {
+	found , err := GetAPIKey( store , key_id )
+	if err != nil { return }
+	if found.Live() == false {
+		err = ErrAPIKeyDead
+		return
+	}
+	cleaned , err := cleanAPIKeyBoards( store , found.UserID , found.Role , board_access , board_ids )
+	if err != nil { return }
+	err = store.UpdateValue( db.BucketAPIKeys , []byte( key_id ) ,
+		func() any { return &APIKey{} } ,
+		func( item any ) ( mutate_err error ) {
+			key := item.( *APIKey )
+			key.BoardAccess = board_access
+			key.BoardIDs = cleaned
 			return
 		} )
 	return

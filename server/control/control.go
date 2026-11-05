@@ -289,6 +289,10 @@ type APIKeyResponse struct {
 	LastUsedAt  *time.Time `json:"last_used_at,omitempty"`
 	RevokedAt   *time.Time `json:"revoked_at,omitempty"`
 	Credential  string     `json:"credential,omitempty"`
+	// BoardAccess is empty for every board, else "only" or "except" over
+	// BoardCount boards. Which boards is the owner's business, not an operator's.
+	BoardAccess string `json:"board_access,omitempty"`
+	BoardCount  int    `json:"board_count,omitempty"`
 }
 
 // CreateAPIKeyRequest is the body of POST /v1/api-keys. ExpiresInDays is a
@@ -317,6 +321,8 @@ func apiKeyResponse( key *models.APIKey , display_name string , credential strin
 		LastUsedAt:  key.LastUsedAt,
 		RevokedAt:   key.RevokedAt,
 		Credential:  credential,
+		BoardAccess: key.BoardAccess,
+		BoardCount:  len( key.BoardIDs ),
 	}
 	return
 }
@@ -409,7 +415,7 @@ func ( server *Server ) handleCreateAPIKey( w http.ResponseWriter , r *http.Requ
 		return
 	}
 
-	credential , key , err := models.IssueAPIKey( server.store , user.ID , body.Name , role , ttl )
+	credential , key , err := models.IssueAPIKey( server.store , user.ID , body.Name , role , ttl , models.BoardAccessAll , nil )
 	if err != nil {
 		writeError( w , http.StatusBadRequest , err.Error() )
 		return

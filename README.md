@@ -93,8 +93,18 @@ Tools: `whoami`, `list_team`, `list_boards`, `get_board`, `get_card`,
 `find_cards`, `create_board`, `create_list`, `update_list`, `create_label`,
 `create_card`, `update_card`, `add_checklist_item`, `update_checklist_item`,
 plus the `admin_*` account tools for an admin-scoped key. Every board tool
-goes through `server/access`, so a key sees and changes exactly what its
-account can on the web -- app admin rights grant nothing on boards.
+goes through `server/access`, so a key sees and changes what its account can
+on the web -- app admin rights grant nothing on boards.
+
+A user-scoped key can be limited on the Account page, when it is made or
+afterwards: to only the boards you pick, or to all your boards except those.
+Anywhere outside the limit a board answers `board_not_found`, as if it did not
+exist, and it is left out of `list_boards`, `find_cards` and `GET /api/backup`.
+A limited key cannot use home-page folders or change notification settings; an
+"only these" key also cannot create or import boards, so new boards stay out of
+its reach until you add them. Admin-scoped keys cannot be limited. Do not
+downgrade to a build without this feature while limited keys exist: an older
+binary drops the limit the next time it rewrites a key's row.
 
 Left out on purpose: deleting anything (archive a card with `update_card`
 instead), share links, board membership, backup import, and anything that
