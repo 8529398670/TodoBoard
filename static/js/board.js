@@ -208,6 +208,14 @@ const BoardPage = {
       isStaged() {
         return !!data && data.board.layout === "staged";
       },
+      // Whether a card is on a shopping board or in a shopping column: the
+      // same rule the server looks products up by (routes/products.go).
+      isShopping( card ) {
+        if ( !data ) return false;
+        if ( data.board.shopping ) return true;
+        const list = data.board.lists.find( function ( item ) { return item.id === card.list_id; } );
+        return !!( list && list.shopping );
+      },
       // Whether cards outside the All list show their rank (Board settings).
       showRank() {
         return this.isStaged() && !!data.board.show_rank;

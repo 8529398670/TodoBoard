@@ -106,7 +106,7 @@ const Backup = {
       this.status( I18n.fill( "backup.importing" , { n: done + 1 , total: boards.length , name: board.title } ) );
       try {
         const lists = board.lists || [];
-        const skeleton = Object.assign( {} , board , { lists: lists.map( function ( list ) { return { title: list.title , archived: !!list.archived }; } ) } );
+        const skeleton = Object.assign( {} , board , { lists: lists.map( function ( list ) { return { title: list.title , archived: !!list.archived , shopping: !!list.shopping }; } ) } );
         const made = await Api.post( "/api/backup/board" , { board: skeleton } );
         for ( let index = 0; index < lists.length; index += 1 ) {
           await this.sendCards( board.labels || [] , lists[ index ].cards || [] , function ( labels , cards ) {

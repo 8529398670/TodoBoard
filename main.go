@@ -66,6 +66,11 @@ var (
 	//go:embed config/language.yaml
 	embeddedLanguage []byte
 
+	// Embedded only, unlike language.yaml: it describes the routes compiled
+	// into this binary, so a copy on disk could only disagree with them.
+	//go:embed config/openapi.json
+	embeddedOpenAPI []byte
+
 	//go:embed config/defaults.yaml
 	embeddedDefaults []byte
 
@@ -160,6 +165,7 @@ func run() ( err error ) {
 
 	if err = bootstrap.EnsureFirstAdmin( store , cfg , "Admin" ); err != nil { return }
 	if err = models.EnsureBoardSlugs( store ); err != nil { return }
+	if err = models.EnsureCardIdentity( store ); err != nil { return }
 
 	// The control socket is what lets `manage` run against a live server.
 	// bolt hands the database to exactly one process, so without it every
@@ -179,6 +185,7 @@ func run() ( err error ) {
 	defer notifier.Stop()
 
 	handlers := routes.New( store , cfg , guard , lang , static_server , notifier , version )
+	handlers.OpenAPI = embeddedOpenAPI
 
 	app := fiber.New( fiber.Config{
 		AppName: cfg.ProjectName,

@@ -538,6 +538,8 @@ func ( handlers *Handlers ) findCards( principal *access.Principal , args *findC
 				"board_id":    board.ID,
 				"board_title": board.Title,
 				"card_id":     card.ID,
+				"serial":      card.Serial,
+				"uid":         card.UID,
 				"list_id":     card.ListID,
 				"list_title":  list_title,
 				"title":       card.Title,

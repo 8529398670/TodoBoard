@@ -1,8 +1,8 @@
 // Board settings: everything about the board in one panel. It opens on
 // tiles for sharing, notifications and export (each its own panel, with a
 // way back here), then which view to show, name, default view, colour,
-// numbering, theme, labels, archived lists and cards, and leaving or
-// deleting the board.
+// numbering, theme, labels, the way to the archive and the trash (each its
+// own panel too), and leaving or deleting the board.
 const BoardSettings = {
   open( ctx ) {
     Panel.open( "settings.title" , ( body ) => {
@@ -293,51 +293,20 @@ const BoardSettings = {
     return section;
   },
 
+  // The archive and the trash each open as their own panel, so a long
+  // archive never stretches this one.
   archived( ctx ) {
     const section = Dom.el( "section" , { class: "panel-section" } );
     section.appendChild( Dom.el( "h3" , { text: T( "settings.archived_heading" ) } ) );
+    const back = function () { BoardSettings.open( BoardPage.context() ); };
+    const actions = Dom.el( "div" , { class: "row-actions" } );
+    const view = Ui.button( "settings.archived_button" , function () { Archived.open( ctx , back ); } );
+    view.textContent = I18n.fill( "settings.archived_button" , { n: Archived.count( ctx ) } );
+    actions.appendChild( view );
     if ( ctx.canEdit && !ctx.fixedColumns ) {
-      section.appendChild( Dom.el( "div" , { class: "row-actions" , children: [
-        Ui.button( "trash.open_button" , function () { Trash.open( ctx , function () { BoardSettings.open( BoardPage.context() ); } ); } ),
-      ] } ) );
+      actions.appendChild( Ui.button( "trash.open_button" , function () { Trash.open( ctx , back ); } ) );
     }
-    const lists = ctx.board.lists.filter( function ( list ) { return list.archived; } );
-    const cards = ctx.cards.filter( function ( card ) { return card.archived; } );
-    if ( !lists.length && !cards.length ) {
-      section.appendChild( Dom.el( "p" , { class: "muted" , text: T( "settings.nothing_archived" ) } ) );
-      return section;
-    }
-    const list = Dom.el( "ul" , { class: "link-list" } );
-    const rendered = function ( text ) {
-      const span = Dom.el( "span" );
-      Markdown.renderInline( text , span );
-      return span;
-    };
-    lists.forEach( function ( item ) {
-      list.appendChild( Dom.el( "li" , { class: "link-row" , children: [
-        rendered( I18n.fill( "settings.archived_list" , { name: item.title } ) ),
-        Ui.button( "settings.restore" , async function () {
-          await ctx.mutate( function () { return ctx.client.updateList( item.id , { archived: false } ); } );
-          Panel.close();
-        } ),
-      ] } ) );
-    } );
-    cards.forEach( function ( card ) {
-      list.appendChild( Dom.el( "li" , { class: "link-row" , children: [
-        rendered( card.title ),
-        Dom.el( "div" , { class: "row-actions" , children: [
-          Ui.button( "settings.restore" , async function () {
-            await ctx.mutate( function () { return ctx.client.patchCard( card.id , { archived: false } ); } );
-            Panel.close();
-          } ),
-          Ui.button( "settings.open_card" , function () {
-            Panel.close();
-            ctx.openCard( card.id );
-          } ),
-        ] } ),
-      ] } ) );
-    } );
-    section.appendChild( list );
+    section.appendChild( actions );
     return section;
   },
 

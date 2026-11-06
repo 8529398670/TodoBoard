@@ -101,6 +101,9 @@ type Board struct {
 	ShowRank    bool              `json:"show_rank"`
 	Rev         uint64            `json:"rev"`
 	NextLocalID uint64            `json:"next_local_id"`
+	// NextCardSerial is the last number given to a card here; 0 until the
+	// board has numbered one (see card_identity.go).
+	NextCardSerial uint64         `json:"next_card_serial"`
 	CreatedAt   time.Time         `json:"created_at"`
 	UpdatedAt   time.Time         `json:"updated_at"`
 }

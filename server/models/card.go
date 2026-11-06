@@ -50,6 +50,10 @@ var (
 // move only rewrites the card that moved (see positionStep).
 type Card struct {
 	ID          uint64            `json:"id"`
+	// Serial and UID: the card's number on its board and its ULID (see
+	// card_identity.go).
+	Serial      uint64            `json:"serial"`
+	UID         string            `json:"uid"`
 	BoardID     uint64            `json:"board_id"`
 	ListID      uint64            `json:"list_id"`
 	Position    float64           `json:"position"`
@@ -190,6 +194,7 @@ func CreateCard( store *db.Store , board_id uint64 , list_id uint64 , title stri
 			ID: id , BoardID: board_id , ListID: list_id , Title: clean ,
 			CreatedBy: created_by , CreatedAt: now , UpdatedAt: now , UpdatedBy: actor_name , Rev: 1 ,
 		}
+		board.stampCard( card , now )
 		normalizeCard( card )
 		if position != nil {
 			card.Position = *position
@@ -417,11 +422,26 @@ func ( patch *CardPatch ) apply( board *Board , card *Card ) ( change CardChange
 		card.Archived = *patch.Archived
 	}
 	if patch.Price != nil {
-		clean := strings.TrimSpace( *patch.Price )
-		if utf8.RuneCountInString( clean ) > maxPriceChars || strings.ContainsAny( clean , "\r\n" ) { return change , ErrBadInput }
+		clean , ok := cleanPrice( *patch.Price )
+		if ok == false { return change , ErrBadInput }
 		change.Edited = change.Edited || clean != card.Price
 		card.Price = clean
 	}
+	return
+}
+
+// cleanPrice trims a typed price and says whether a card can hold it.
+func cleanPrice( value string ) ( clean string , ok bool ) {
+	clean = strings.TrimSpace( value )
+	ok = utf8.RuneCountInString( clean ) <= maxPriceChars && strings.ContainsAny( clean , "\r\n" ) == false
+	return
+}
+
+// PriceText is the price a card shows: the typed one, else the one its
+// product page gave, or "". CardBits.priceText is the same for the browser.
+func ( card *Card ) PriceText() ( price string ) {
+	price = card.Price
+	if price == "" && card.Product != nil && card.Product.Status == ProductOK { price = card.Product.Price }
 	return
 }
 

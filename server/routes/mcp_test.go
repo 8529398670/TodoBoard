@@ -27,6 +27,7 @@ import (
 
 type mcpFixture struct {
 	app       *fiber.App
+	handlers  *Handlers
 	store     *db.Store
 	cfg       *config.Config
 	owner     *models.User
@@ -64,7 +65,7 @@ func newMCPFixture( t *testing.T ) ( fixture *mcpFixture ) {
 	app := fiber.New()
 	handlers.Register( app )
 
-	fixture = &mcpFixture{ app: app , store: store , cfg: cfg , owner: owner , member: member , admin_key: admin_key , user_key: user_key }
+	fixture = &mcpFixture{ app: app , handlers: handlers , store: store , cfg: cfg , owner: owner , member: member , admin_key: admin_key , user_key: user_key }
 	return
 }
 

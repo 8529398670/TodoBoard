@@ -124,6 +124,7 @@ mints a credential. Only keys are accepted -- a browser session gets 403.
 | | |
 |---|---|
 | `server/models/board.go`, `card.go` | boards, lists, labels, cards, checklists |
+| `server/models/card_identity.go` | each card's per-board number and ULID |
 | `server/models/share_link.go` | share links (sha256-hashed `<id>.<secret>` credentials) |
 | `server/models/folder.go` | each person's home page folders |
 | `server/models/prefs.go` | notification preferences and per-board/per-card subscriptions |
@@ -134,11 +135,13 @@ mints a credential. Only keys are accepted -- a browser session gets 403.
 | `static/js/view_*.js` | Kanban, Todo, Timeline |
 | `static/js/stages.js` | a staged board's stage controls: bar, tabs, swipe, arrow keys |
 | `static/js/card_modal.js` | card editor |
+| `static/js/trash.js`, `archived.js` | the board's trash and archive panels |
 | `static/js/history.js` | undo / redo |
 | `static/js/markdown.js` | Markdown + KaTeX pipeline |
 | `static/js/card_export.js`, `print.js` | exports |
 | `server/sheet/`, `server/routes/export.go` | the .xlsx / .csv board export |
 | `server/mcp/`, `server/routes/mcp_tools*.go` | the `/mcp` protocol and its tools |
+| `config/openapi.json`, `server/routes/openapi.go` | the API as OpenAPI 3.1, by hand, served at `GET /api/openapi.json` to anyone signed in; `go test ./server/routes` fails until a new route is in it |
 | `config/language.yaml` | every string the UI or a notification shows |
 | `config/defaults.yaml` | every setting, documented, with its default |
 

@@ -79,7 +79,7 @@ const PrintPage = {
         article.appendChild( cardTitle );
 
         const meta = Dom.el( "div" , { class: "card-meta" } );
-        [ CardBits.labels( card , board ) , CardBits.due( card ) , CardBits.checklist( card ) ].filter( Boolean ).forEach( function ( node ) { meta.appendChild( node ); } );
+        [ CardBits.labels( card , board ) , CardBits.due( card ) , CardBits.checklist( card ) , CardBits.price( card ) ].filter( Boolean ).forEach( function ( node ) { meta.appendChild( node ); } );
         if ( card.assignees.length ) {
           meta.appendChild( Dom.el( "span" , { class: "muted" , text: card.assignees.map( function ( id ) { return data.people[ id ] || "?"; } ).join( ", " ) } ) );
         }

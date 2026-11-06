@@ -499,6 +499,7 @@ card:
   rank_placeholder: "Not ranked"
   rank_hint: "1 is the most important card on the board. Other cards shift to make room; leave it empty for no rank."
   price_label: "Price"
+  serial: "#{n}"
   price_placeholder: "Add a price"
   price_placeholder_fetched: "{price} (from the shop page)"
   price_overrides: "Shown instead of {price} from the shop page. Clear it to use that again."
@@ -664,9 +665,11 @@ settings:
   delete_label: "Delete"
   delete_label_confirm: "Delete the label \"{name}\"? It is removed from every card."
   archived_heading: "Archived"
+  archived_button: "View archived ({n})"
   nothing_archived: "Nothing archived."
   archived_list: "List: {name}"
   restore: "Restore"
+  restored: "Restored."
   open_card: "Open"
   delete_heading: "Delete this board"
   delete_hint: "Deletes every list, card and share link on it, for everyone. This cannot be undone."
@@ -774,6 +777,7 @@ export:
   md_status: "Status"
   md_rank: "Rank"
   md_product: "Buy"
+  md_price: "Price"
   md_code: "Code"
   md_empty_list: "No cards."
   # Spreadsheet export (.xlsx / .csv). The server writes these headings.
@@ -796,6 +800,8 @@ export:
   col_checklist: "Checklist"
   col_body: "Body"
   col_archived: "Archived"
+  col_serial: "Card no."
+  col_price: "Price"
   "yes": "Yes"
 
 notify:

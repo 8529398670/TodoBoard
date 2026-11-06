@@ -210,6 +210,8 @@ func ( handlers *Handlers ) boardPayload( principal *access.Principal , board *m
 func cardPayload( card *models.Card , level access.Level , board_level access.Level ) ( payload fiber.Map ) {
 	payload = fiber.Map{
 		"id":          card.ID,
+		"serial":      card.Serial,
+		"uid":         card.UID,
 		"board_id":    card.BoardID,
 		"list_id":     card.ListID,
 		"position":    card.Position,

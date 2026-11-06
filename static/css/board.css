@@ -678,6 +678,7 @@ p.due-chip { margin: 0.5rem 0; }
 }
 .title-input:hover, .title-input:focus { border-color: var(--border); background: var(--bg); }
 .card-dialog-title-wrap { flex: 1 1 auto; min-width: 0; }
+.card-serial { flex: none; margin-top: 0.75rem; white-space: nowrap; }
 .card-dialog-title-wrap .title-input { display: block; width: 100%; padding: 0.35rem 0.5rem; border-color: var(--border); background: var(--bg); line-height: 1.35; }
 .card-dialog-title-wrap .row-actions { margin-top: 0.5rem; }
 .card-dialog-title { flex: 1 1 auto; margin: 0.4rem 0; font-size: 1.15rem; overflow-wrap: anywhere; }

@@ -64,6 +64,7 @@ const CardExport = {
     if ( ctx.isStaged() && card.doing ) meta.push( "**" + T( "export.md_status" ) + ":** " + T( "board.status_doing" ) );
     if ( ctx.isStaged() && card.rank_place ) meta.push( "**" + T( "export.md_rank" ) + ":** " + card.rank_place );
     if ( card.product && card.product.url ) meta.push( "**" + T( "export.md_product" ) + ":** " + ( CardBits.priceText( card ) ? CardBits.priceText( card ) + " " : "" ) + "<" + card.product.url + ">" );
+    else if ( CardBits.priceText( card ) ) meta.push( "**" + T( "export.md_price" ) + ":** " + CardBits.priceText( card ) );
     if ( meta.length ) {
       lines.push( meta.join( "  \n" ) );
       lines.push( "" );
@@ -83,10 +84,11 @@ const CardExport = {
     return lines.join( "\n" );
   },
 
-  // "Price -- link" for a card with a product on it, or "".
+  // "Price -- link" for a card with a product on it, just the price for a
+  // card with only that, or "".
   productLine( card ) {
     const product = card.product;
-    if ( !product || !product.url ) return "";
+    if ( !product || !product.url ) return CardBits.priceText( card ) ? T( "export.md_price" ) + ": " + CardBits.priceText( card ) : "";
     const price = CardBits.priceText( card ) ? CardBits.priceText( card ) + " " : "";
     return T( "export.md_product" ) + ": " + price + ( product.title ? product.title + " -- " : "" ) + product.url;
   },

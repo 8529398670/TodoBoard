@@ -56,11 +56,15 @@ type CardSnapshot struct {
 	Archived    bool                 `json:"archived"`
 	Checklist   []*ChecklistSnapshot `json:"checklist"`
 	Assignees   []string             `json:"assignees,omitempty"`
+	// Price is what the card showed, typed or fetched: the product it may
+	// have come from is not in the file, so it comes back as a typed price.
+	Price       string               `json:"price,omitempty"`
 }
 
 type ListSnapshot struct {
 	Title    string          `json:"title"`
 	Archived bool            `json:"archived"`
+	Shopping bool            `json:"shopping,omitempty"`
 	Cards    []*CardSnapshot `json:"cards"`
 }
 
@@ -72,6 +76,7 @@ type BoardSnapshot struct {
 	DefaultView string           `json:"default_view"`
 	Color       string           `json:"color"`
 	Theme       *Theme           `json:"theme"`
+	Shopping    bool             `json:"shopping,omitempty"`
 	Labels      []*LabelSnapshot `json:"labels"`
 	Lists       []*ListSnapshot  `json:"lists"`
 }
@@ -99,7 +104,7 @@ type ColumnBackup struct {
 func SnapshotBoard( board *Board , cards []*Card , visible func( card *Card ) bool , only_list uint64 , person func( id uint64 ) string ) ( snap *BoardSnapshot ) {
 	snap = &BoardSnapshot{
 		Title: board.Title , Slug: board.Slug , Layout: board.Layout , Numbering: board.Numbering ,
-		DefaultView: board.DefaultView , Color: board.Color , Theme: board.Theme ,
+		DefaultView: board.DefaultView , Color: board.Color , Theme: board.Theme , Shopping: board.Shopping ,
 		Labels: snapshotLabels( board , nil ) , Lists: []*ListSnapshot{} ,
 	}
 	for _ , list := range board.SortedLists() {
@@ -111,7 +116,7 @@ func SnapshotBoard( board *Board , cards []*Card , visible func( card *Card ) bo
 
 // SnapshotList is one list with its visible cards, in column order.
 func SnapshotList( list *List , cards []*Card , visible func( card *Card ) bool , person func( id uint64 ) string ) ( snap *ListSnapshot ) {
-	snap = &ListSnapshot{ Title: list.Title , Archived: list.Archived , Cards: []*CardSnapshot{} }
+	snap = &ListSnapshot{ Title: list.Title , Archived: list.Archived , Shopping: list.Shopping , Cards: []*CardSnapshot{} }
 	mine := []*Card{}
 	for _ , card := range cards {
 		if card.ListID == list.ID && visible( card ) { mine = append( mine , card ) }
@@ -153,6 +158,7 @@ func snapshotCard( card *Card , person func( id uint64 ) string ) ( snap *CardSn
 		Title: card.Title , Description: card.Description , Labels: append( []uint64{} , card.LabelIDs... ) ,
 		StartAt: card.StartAt , StartTimed: card.StartTimed , DueAt: card.DueAt , DueAllDay: card.DueAllDay ,
 		Done: card.Done , DoneAt: card.DoneAt , Doing: card.Doing , Rank: card.Rank , Archived: card.Archived , Checklist: []*ChecklistSnapshot{} ,
+		Price: card.PriceText() ,
 	}
 	items := append( []*ChecklistItem{} , card.Checklist... )
 	sort.SliceStable( items , func( i int , j int ) bool { return items[ i ].Position < items[ j ].Position } )
@@ -182,7 +188,7 @@ func ImportBoardSkeleton( store *db.Store , owner_id uint64 , snap *BoardSnapsho
 		board = &Board{
 			ID: id , Title: title , OwnerID: owner_id , Members: map[uint64]string{} ,
 			Lists: []*List{} , Labels: []*Label{} , Layout: LayoutFree , DefaultView: ViewKanban ,
-			Rev: 1 , CreatedAt: now , UpdatedAt: now ,
+			Shopping: snap.Shopping , Rev: 1 , CreatedAt: now , UpdatedAt: now ,
 		}
 		if snap.Layout == LayoutThree || snap.Layout == LayoutStaged { board.Layout = snap.Layout }
 		if snap.Numbering == NumberingOn || snap.Numbering == NumberingOff { board.Numbering = snap.Numbering }
@@ -198,7 +204,7 @@ func ImportBoardSkeleton( store *db.Store , owner_id uint64 , snap *BoardSnapsho
 			if list == nil { return ErrBadInput }
 			list_title , list_ok := cleanTitle( list.Title , 120 )
 			if list_ok == false { return ErrBadInput }
-			added := &List{ ID: board.nextID() , Title: list_title , Position: float64( index + 1 ) * positionStep , Archived: list.Archived }
+			added := &List{ ID: board.nextID() , Title: list_title , Position: float64( index + 1 ) * positionStep , Archived: list.Archived , Shopping: list.Shopping }
 			board.Lists = append( board.Lists , added )
 			lists = append( lists , added.ID )
 		}
@@ -249,6 +255,7 @@ func ImportCards( store *db.Store , board_id uint64 , list_id uint64 , labels []
 			if seq_err != nil { return seq_err }
 			card.ID , card.BoardID , card.ListID , card.Position = id , board_id , list_id , position
 			card.CreatedBy , card.CreatedAt , card.UpdatedAt , card.UpdatedBy , card.Rev = created_by , now , now , actor_name , 1
+			board.stampCard( card , now )
 			position += positionStep
 			if tx_err = tx.Put( db.BucketCards , cardKey( board_id , id ) , card ); tx_err != nil { return }
 			count += 1
@@ -264,12 +271,13 @@ func ImportCards( store *db.Store , board_id uint64 , list_id uint64 , labels []
 // importedCard checks snap the way editing a card would and builds the card.
 func importedCard( snap *CardSnapshot , by_ref map[uint64]uint64 ) ( card *Card , err error ) {
 	title , ok := cleanTitle( snap.Title , maxCardTitleChars )
-	if ok == false || len( snap.Description ) > maxDescriptionBytes || utf8.ValidString( snap.Description ) == false || len( snap.Checklist ) > maxChecklistItems {
+	price , price_ok := cleanPrice( snap.Price )
+	if ok == false || price_ok == false || len( snap.Description ) > maxDescriptionBytes || utf8.ValidString( snap.Description ) == false || len( snap.Checklist ) > maxChecklistItems {
 		err = ErrBadInput
 		return
 	}
 	card = &Card{
-		Title: title , Description: snap.Description ,
+		Title: title , Description: snap.Description , Price: price ,
 		StartAt: utcTime( snap.StartAt ) , StartTimed: snap.StartTimed && snap.StartAt != nil ,
 		DueAt: utcTime( snap.DueAt ) , DueAllDay: snap.DueAllDay && snap.DueAt != nil ,
 		Done: snap.Done , Doing: snap.Doing && snap.Done == false , Archived: snap.Archived ,

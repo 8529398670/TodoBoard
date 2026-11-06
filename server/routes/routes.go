@@ -34,6 +34,8 @@ type Handlers struct {
 	Notify   *notify.Service
 	// Version is reported to MCP clients as serverInfo.version.
 	Version string
+	// OpenAPI is config/openapi.json, set by main.go.
+	OpenAPI []byte
 }
 
 func New( store *db.Store , cfg *config.Config , guard *security.Guard , lang *language.Language , static_server *static.Server , notifier *notify.Service , version string ) ( handlers *Handlers ) {
@@ -99,6 +101,7 @@ func ( handlers *Handlers ) Register( app *fiber.App ) {
 	account.Post( "/account/login-link" , handlers.Guard.RequireSession , handlers.CreateMyLoginLink )
 	account.Post( "/logout" , handlers.Logout )
 	account.Get( "/team" , handlers.ListTeam )
+	account.Get( "/openapi.json" , handlers.GetOpenAPI )
 
 	// Notification settings are the caller's own; the test push needs a
 	// session only because it is a button in the account page.

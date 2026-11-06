@@ -80,6 +80,26 @@ func ( handlers *Handlers ) exportTable( principal *access.Principal , board *mo
 		},
 		Numeric: map[int]bool{ 1: true },
 	}
+	// The card's lasting number, unlike the # column, which is its place.
+	table.Numeric[ len( table.Header ) ] = true
+	table.Header = append( table.Header , text( "col_serial" ) )
+
+	// What the caller is shown on the board is what they can export: a column
+	// link its column, a card-only caller their cards.
+	list_only := access.ListOnly( principal , board )
+	by_list := map[uint64][]*models.Card{}
+	priced := board.Shopping
+	for _ , list := range board.Lists { priced = priced || list.Shopping }
+	for _ , card := range all_cards {
+		if access.Card( principal , board , card ) == access.None { continue }
+		if card.Archived && with_archived == false { continue }
+		by_list[ card.ListID ] = append( by_list[ card.ListID ] , card )
+		priced = priced || card.PriceText() != ""
+	}
+
+	// Price is free text with its currency in it, so it is not Numeric. Any
+	// board can hold a priced card; a shopping board has the column regardless.
+	if priced { table.Header = append( table.Header , text( "col_price" ) ) }
 	// A staged board's stage and rank; other boards have neither to show.
 	staged := board.Layout == models.LayoutStaged
 	places := models.RankPlaces( board , all_cards )
@@ -89,15 +109,6 @@ func ( handlers *Handlers ) exportTable( principal *access.Principal , board *mo
 	}
 	if with_archived { table.Header = append( table.Header , text( "col_archived" ) ) }
 
-	// What the caller is shown on the board is what they can export: a column
-	// link its column, a card-only caller their cards.
-	list_only := access.ListOnly( principal , board )
-	by_list := map[uint64][]*models.Card{}
-	for _ , card := range all_cards {
-		if access.Card( principal , board , card ) == access.None { continue }
-		if card.Archived && with_archived == false { continue }
-		by_list[ card.ListID ] = append( by_list[ card.ListID ] , card )
-	}
 	labels := map[uint64]string{}
 	for _ , label := range board.Labels {
 		name := label.Name
@@ -142,7 +153,9 @@ func ( handlers *Handlers ) exportTable( principal *access.Principal , board *mo
 				exportDate( card.StartAt , card.StartAt != nil && card.StartTimed == false , location ) ,
 				exportDate( card.DueAt , card.DueAllDay , location ) ,
 				strings.Join( assignees , ", " ) , checklist , strings.TrimSpace( card.Description ) ,
+				strconv.FormatUint( card.Serial , 10 ) ,
 			}
+			if priced { row = append( row , card.PriceText() ) }
 			if staged {
 				rank := ""
 				if place := places[ card.ID ]; place > 0 { rank = strconv.Itoa( place ) }

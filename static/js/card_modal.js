@@ -193,6 +193,7 @@ const CardModal = {
       Markdown.renderInline( card.title , title );
       header.appendChild( title );
     }
+    if ( card.serial ) header.appendChild( Dom.el( "span" , { class: "muted small-print card-serial" , text: I18n.fill( "card.serial" , { n: card.serial } ) } ) );
     header.appendChild( Ui.closeButton( T( "ui.close" ) , () => this.close() , "mt-2" ) );
     return header;
   },
@@ -532,10 +533,13 @@ const CardModal = {
     return section;
   },
 
-  // A price typed by hand, for any card: one the shop page did not give,
-  // or a correction to one it got wrong. Empty falls back to the page's.
+  // A price typed by hand: one the shop page did not give, or a correction
+  // to one it got wrong. Empty falls back to the page's. Offered on shopping
+  // boards and columns; elsewhere only a card already holding one shows it,
+  // so that price can still be changed or cleared.
   priceSection( card , canEdit ) {
     if ( !canEdit ) return null;
+    if ( !card.price && !this.ctx.isShopping( card ) ) return null;
     const product = CardBits.product( card );
     const fetched = product && product.price ? product.price : "";
     const section = Dom.el( "section" , { class: "card-section card-price" } );
