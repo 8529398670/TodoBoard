@@ -97,13 +97,95 @@ func ( handlers *Handlers ) GetBoard( c fiber.Ctx ) ( err error ) {
 
 // GetBoardStamp is the cheap call a board view polls: the revision only.
 func ( handlers *Handlers ) GetBoardStamp( c fiber.Ctx ) ( err error ) {
-	_ , board , err := handlers.boardFor( c )
+	principal , board , err := handlers.boardFor( c )
 	if board == nil { return }
-	err = c.JSON( fiber.Map{ "rev": board.Rev } )
+	rev := board.Rev
+	// The board's revision moves with every other card, which is not a quick
+	// link's to know: it hears about its own card.
+	if access.QuickLink( principal ) {
+		card , get_err := models.GetCard( handlers.Store , board.ID , principal.Share.CardID )
+		if get_err != nil {
+			err = modelError( c , get_err )
+			return
+		}
+		rev = card.Rev
+	}
+	err = c.JSON( fiber.Map{ "rev": rev } )
+	return
+}
+
+// quickBoardPayload is all a quick link is shown, and takes its shape from
+// boardPayload so the page needs no second path. The fields are named one by
+// one rather than cut from the full payload, so that a field added to a card
+// or board later stays private until someone puts it here.
+func quickBoardPayload( principal *access.Principal , board *models.Board , all_cards []*models.Card ) ( payload fiber.Map ) {
+	cards := []fiber.Map{}
+	labels := []*models.Label{}
+	rev := uint64( 0 )
+	for _ , card := range all_cards {
+		if card.ID != principal.Share.CardID || access.Card( principal , board , card ) == access.None { continue }
+		rev = card.Rev
+		for _ , label := range board.Labels {
+			if containsLabel( card.LabelIDs , label.ID ) { labels = append( labels , label ) }
+		}
+		cards = append( cards , fiber.Map{
+			"id":          card.ID,
+			"list_id":     0,
+			"position":    0,
+			"title":       card.Title,
+			"description": card.Description,
+			"label_ids":   card.LabelIDs,
+			"assignees":   []uint64{},
+			"start_at":    card.StartAt,
+			"start_all_day": card.StartAt != nil && card.StartTimed == false,
+			"due_at":      card.DueAt,
+			"due_all_day": card.DueAllDay,
+			"done":        card.Done,
+			"doing":       card.Doing,
+			"checklist":   card.Checklist,
+			"archived":    card.Archived,
+			"rev":         card.Rev,
+			"access":      access.View.String(),
+			"product":     card.Product,
+			"price":       card.Price,
+			"image_at":    card.ImageAt,
+		} )
+	}
+	payload = fiber.Map{
+		"board": fiber.Map{
+			"id":      board.ID,
+			"title":   "",
+			"layout":  board.Layout,
+			"rev":     rev,
+			"lists":   []*models.List{},
+			"labels":  labels,
+			"members": []fiber.Map{},
+		},
+		"cards":     cards,
+		"people":    map[uint64]string{},
+		"access":    access.None.String(),
+		"card_only": true,
+		"list_only": 0,
+		"columns_only": false,
+		"hidden_lists": map[uint64]int{},
+		"me":        fiber.Map{ "guest": true },
+		"quick":     true,
+	}
+	return
+}
+
+func containsLabel( label_ids []uint64 , label_id uint64 ) ( result bool ) {
+	for _ , id := range label_ids {
+		if id == label_id { return true }
+	}
 	return
 }
 
 func ( handlers *Handlers ) boardPayload( principal *access.Principal , board *models.Board , all_cards []*models.Card ) ( payload fiber.Map ) {
+	if access.QuickLink( principal ) {
+		payload = quickBoardPayload( principal , board , all_cards )
+		return
+	}
 	board_level := access.Board( principal , board )
 	// A column link sees that one column as a board of its own; a card-only
 	// caller sees just their cards. Neither is shown the member list.
@@ -191,6 +273,9 @@ func ( handlers *Handlers ) boardPayload( principal *access.Principal , board *m
 		"labels":       board.Labels,
 		"members":      members,
 	}
+	// The people working on the board decide what to share; a guest has no
+	// use for it.
+	if principal.IsGuest() == false { board_payload[ "allow_quick_share" ] = board.AllowQuickShare }
 	// Left out for a link showing only part of the board: the notes are about
 	// all of it, and may point at things those columns were kept apart from.
 	if whole_board && columns_only == false {
@@ -274,6 +359,12 @@ func ( handlers *Handlers ) UpdateBoard( c fiber.Ctx ) ( err error ) {
 	// The purpose is what agents act on, so it is for the board's members: an
 	// edit link is handed around for changing cards, not for instructing them.
 	if principal.IsGuest() && ( body.PurposeEnabled != nil || body.Purpose != nil || body.Notes != nil ) {
+		err = c.Status( fiber.StatusForbidden ).JSON( fiber.Map{ "error": "forbidden" } )
+		return
+	}
+	// Opening a board's cards to the public is the owner's call, made in a
+	// browser: a leaked key cannot switch paused links back on.
+	if body.AllowQuickShare != nil && ( access.Board( principal , board ) != access.Manage || principal.Key != nil ) {
 		err = c.Status( fiber.StatusForbidden ).JSON( fiber.Map{ "error": "forbidden" } )
 		return
 	}

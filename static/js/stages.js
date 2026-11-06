@@ -8,6 +8,15 @@
 const Stages = {
   order: [ "todo" , "doing" , "done" ],
 
+  // One full-width column at a time. The query is board.css's for
+  // .swipe-columns, word for word. The bar is the only switch here, so every
+  // column follows it: see BoardPage.render.
+  query: window.matchMedia( "(max-width: 39.99rem) and (orientation: portrait)" ),
+
+  singleColumn() {
+    return document.body.classList.contains( "swipe-columns" ) && this.query.matches;
+  },
+
   of( card ) {
     if ( card.done ) return "done";
     return card.doing ? "doing" : "todo";
@@ -58,10 +67,22 @@ const Stages = {
   bind() {
     this.bindSwipe();
     this.bindKeys();
+    this.bindRotate();
+  },
+
+  // Turning a phone upright brings columns flipped on their own back in step
+  // with the bar. Only then, and never mid-drag: a keyboard opening can flip
+  // the orientation too, and a render would take a half-typed card with it.
+  bindRotate() {
+    this.query.addEventListener( "change" , () => {
+      if ( !BoardPage.data || BoardPage.dragging || !this.singleColumn() ) return;
+      if ( Object.keys( BoardPage.columnStages ).length ) BoardPage.render();
+    } );
   },
 
   // A sideways swipe on a column's cards flips that column, and on the All
-  // list flips that; CSS leaves sideways touches on the cards to us
+  // list or a phone's single column steps the whole board, as the bar there
+  // shows; CSS leaves sideways touches on the cards to us
   // (touch-action: pan-y). Touch only:
   // a mouse drags cards, and a trackpad pans the board. Holding still is
   // left to Sortable, which starts a drag; moving first cancels that.
@@ -86,7 +107,7 @@ const Stages = {
       const dx = event.clientX - from.x;
       const dy = event.clientY - from.y;
       if ( Math.abs( dx ) < 50 || Math.abs( dx ) < 1.5 * Math.abs( dy ) || stale( from.key ) ) return;
-      if ( from.key === "all" ) {
+      if ( from.key === "all" || this.singleColumn() ) {
         this.swallowClick();
         BoardPage.stepStage( dx < 0 ? 1 : -1 );
         return;

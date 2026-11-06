@@ -96,6 +96,7 @@ func shareLinkPayload( link *models.ShareLink ) ( payload fiber.Map ) {
 		"card_id":      link.CardID,
 		"list_id":      link.ListID,
 		"visible_list_ids": link.VisibleListIDs,
+		"quick":        link.Quick,
 		"mode":         link.Mode,
 		"label":        link.Label,
 		"created_at":   link.CreatedAt,
@@ -116,7 +117,12 @@ func ( handlers *Handlers ) ListShareLinks( c fiber.Ctx ) ( err error ) {
 		return
 	}
 	result := []fiber.Map{}
-	for _ , link := range links { result = append( result , shareLinkPayload( link ) ) }
+	for _ , link := range links {
+		row := shareLinkPayload( link )
+		// Editors make quick links, and only the owner sees this list.
+		if user , get_err := models.GetUser( handlers.Store , link.CreatedBy ); get_err == nil { row[ "created_by_name" ] = user.DisplayName }
+		result = append( result , row )
+	}
 	err = c.JSON( result )
 	return
 }
@@ -137,6 +143,27 @@ func ( handlers *Handlers ) CreateShareLink( c fiber.Ctx ) ( err error ) {
 	payload := shareLinkPayload( link )
 	payload[ "share_path" ] = "/s/" + credential
 	err = c.JSON( payload )
+	return
+}
+
+// QuickShareCard answers with the card's public link, for the board's owner
+// and editors. Asked of the board, not the card: someone with just this card
+// shared with them is not the one to publish it. A session only, because it
+// hands out a credential, as CreateShareLink does.
+func ( handlers *Handlers ) QuickShareCard( c fiber.Ctx ) ( err error ) {
+	principal , board , err := handlers.requireBoard( c , access.Edit )
+	if board == nil { return }
+	card_id , ok := paramID( c , "card_id" )
+	if ok == false {
+		err = notFound( c , "card_not_found" )
+		return
+	}
+	credential , _ , share_err := models.QuickShareLink( handlers.Store , board.ID , card_id , principal.UserID )
+	if share_err != nil {
+		err = modelError( c , share_err )
+		return
+	}
+	err = c.JSON( fiber.Map{ "share_path": "/s/" + credential } )
 	return
 }
 
@@ -181,6 +208,10 @@ func ( handlers *Handlers ) DeleteShareLink( c fiber.Ctx ) ( err error ) {
 func ( handlers *Handlers ) SharedInfo( c fiber.Ctx ) ( err error ) {
 	principal := principalFrom( c )
 	link := principal.Share
+	if link.Quick {
+		err = c.JSON( fiber.Map{ "board_id": link.BoardID , "card_id": link.CardID , "mode": link.Mode , "quick": true } )
+		return
+	}
 	board , get_err := models.GetBoard( handlers.Store , link.BoardID )
 	if get_err != nil {
 		err = notFound( c , "share_link_invalid" )
@@ -205,6 +236,7 @@ func ( handlers *Handlers ) SharedInfo( c fiber.Ctx ) ( err error ) {
 // it onward in a Referer header.
 func ( handlers *Handlers ) ShowSharePage( c fiber.Ctx ) ( err error ) {
 	c.Set( fiber.HeaderReferrerPolicy , "no-referrer" )
+	c.Set( "X-Robots-Tag" , "noindex" )
 	err = handlers.Static.ServeFile( c , "board.html" )
 	return
 }
@@ -216,6 +248,7 @@ func ( handlers *Handlers ) ShowBoardPage( c fiber.Ctx ) ( err error ) {
 
 func ( handlers *Handlers ) ShowPrintPage( c fiber.Ctx ) ( err error ) {
 	c.Set( fiber.HeaderReferrerPolicy , "no-referrer" )
+	c.Set( "X-Robots-Tag" , "noindex" )
 	err = handlers.Static.ServeFile( c , "print.html" )
 	return
 }

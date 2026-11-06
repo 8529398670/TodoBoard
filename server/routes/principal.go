@@ -69,6 +69,13 @@ func ( handlers *Handlers ) SharePrincipal( c fiber.Ctx ) ( err error ) {
 		err = notFound( c , "share_link_invalid" )
 		return
 	}
+	// Asked here so that one answer covers every route below, and a paused
+	// quick link looks the same as a link that never was.
+	board , get_err := models.GetBoard( handlers.Store , link.BoardID )
+	if get_err != nil || access.LinkUsable( link , board ) == false {
+		err = notFound( c , "share_link_invalid" )
+		return
+	}
 	name := strings.TrimSpace( c.Get( GuestNameHeader ) )
 	if utf8.RuneCountInString( name ) > 40 || utf8.ValidString( name ) == false { name = "" }
 	// Stored with a marker; the UI and push text word it ("Sam (guest)").
@@ -144,7 +151,7 @@ func ( handlers *Handlers ) canSeeAnyCard( principal *access.Principal , board *
 	// server/access, so it would otherwise let a limited key through.
 	if access.KeyAllows( principal , board.ID ) == false { return }
 	if principal.Share != nil {
-		result = principal.Share.BoardID == board.ID && ( principal.Share.CardID != 0 || principal.Share.ListID != 0 )
+		result = access.LinkUsable( principal.Share , board ) && ( principal.Share.CardID != 0 || principal.Share.ListID != 0 )
 		return
 	}
 	found := false
@@ -249,6 +256,10 @@ func modelRefusal( model_err error ) ( refused *refusal ) {
 		refused = &refusal{ fiber.StatusNotFound , "label_not_found" }
 	case errors.Is( model_err , models.ErrItemNotFound ):
 		refused = &refusal{ fiber.StatusNotFound , "item_not_found" }
+	case errors.Is( model_err , models.ErrQuickShareOff ):
+		refused = &refusal{ fiber.StatusForbidden , "quick_share_off" }
+	case errors.Is( model_err , models.ErrCardArchived ):
+		refused = &refusal{ fiber.StatusBadRequest , "card_archived" }
 	case errors.Is( model_err , models.ErrShareLinkNotFound ):
 		refused = &refusal{ fiber.StatusNotFound , "share_link_not_found" }
 	case errors.Is( model_err , models.ErrNotInTrash ):

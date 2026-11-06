@@ -24,6 +24,7 @@ import (
 	hex "encoding/hex"
 	errors "errors"
 
+	hmac "crypto/hmac"
 	random "crypto/rand"
 	sha256 "crypto/sha256"
 	subtle "crypto/subtle"
@@ -86,6 +87,16 @@ func Sha256Sum( entries [][]byte ) ( result []byte ) {
 // secret there is nothing to brute force, so a fast hash is the right call.
 func Sha256Hex( value string ) ( result string ) {
 	result = hex.EncodeToString( Sha256Sum( [][]byte{ []byte( value ) } ) )
+	return
+}
+
+// KeyedURLToken is a URL-safe 256-bit value only the holder of key can work
+// out from message: the same inputs always give the same token. It is for a
+// credential that must be shown again without being stored.
+func KeyedURLToken( key string , message string ) ( result string ) {
+	mac := hmac.New( sha256.New , []byte( key ) )
+	mac.Write( []byte( message ) )
+	result = base64.RawURLEncoding.EncodeToString( mac.Sum( nil ) )
 	return
 }
 

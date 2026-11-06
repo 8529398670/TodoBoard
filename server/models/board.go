@@ -109,6 +109,10 @@ type Board struct {
 	// ShowRank: on a staged board, cards show their board-wide rank outside
 	// the All list too. The All list always shows it.
 	ShowRank    bool              `json:"show_rank"`
+	// AllowQuickShare lets the owner and editors make a read-only public link
+	// to one card from its menu. Off pauses those links without revoking
+	// them. Backups leave it out, so a restored board starts closed.
+	AllowQuickShare bool          `json:"allow_quick_share"`
 	// Notes is the board's reference shelf: links, documents, an index.
 	// Purpose says what the board is for and how to work on it; it is what an
 	// agent reads before touching the board. Both are markdown.
@@ -350,6 +354,7 @@ type BoardSettings struct {
 	ClearTheme  bool     `json:"clear_theme"`
 	Shopping    *bool    `json:"shopping"`
 	ShowRank    *bool    `json:"show_rank"`
+	AllowQuickShare *bool `json:"allow_quick_share"`
 	DonePlacement *string `json:"done_placement"`
 	AddPlacement  *string `json:"add_placement"`
 	// PurposeRev and NotesRev, when sent, are the revs the text was read at:
@@ -405,6 +410,7 @@ func ( settings *BoardSettings ) Apply( board *Board ) ( err error ) {
 	if settings.ClearTheme { board.Theme = nil }
 	if settings.Shopping != nil { board.Shopping = *settings.Shopping }
 	if settings.ShowRank != nil { board.ShowRank = *settings.ShowRank }
+	if settings.AllowQuickShare != nil { board.AllowQuickShare = *settings.AllowQuickShare }
 	if settings.Layout != nil {
 		if *settings.Layout != LayoutFree && *settings.Layout != LayoutThree && *settings.Layout != LayoutStaged { return ErrBadInput }
 		board.Layout = *settings.Layout

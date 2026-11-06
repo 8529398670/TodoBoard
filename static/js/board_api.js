@@ -131,6 +131,7 @@ class BoardClient {
   }
   shareLinks()                     { return this.get( "/" + this.boardId + "/shares" ); }
   createShareLink( fields )        { return this.post( "/" + this.boardId + "/shares" , fields ); }
+  quickShare( cardId )             { return this.post( "/" + this.boardId + "/cards/" + cardId + "/quick-share" , {} ); }
   revokeShareLink( linkId )        { return this.post( "/" + this.boardId + "/shares/" + encodeURIComponent( linkId ) + "/revoke" ); }
   deleteShareLink( linkId )        { return this.post( "/" + this.boardId + "/shares/" + encodeURIComponent( linkId ) + "/delete" ); }
   boardSubscription()              { return this.get( "/" + this.boardId + "/subscription" ); }

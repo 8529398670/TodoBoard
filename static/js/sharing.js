@@ -15,12 +15,48 @@ const Sharing = {
   open( ctx , back ) {
     Panel.open( "share.board_title" , async ( body ) => {
       const members = Dom.el( "section" , { class: "panel-section" } );
+      const quick = Dom.el( "section" , { class: "panel-section" } );
       const links = Dom.el( "section" , { class: "panel-section" } );
       body.appendChild( members );
+      body.appendChild( quick );
       body.appendChild( links );
       await this.renderMembers( members , ctx );
+      this.renderQuickSetting( quick , links , ctx );
       await this.renderLinks( links , ctx , {} );
     } , back );
+  },
+
+  // Whether cards here can have public links. The owner's call: off pauses
+  // the ones there are, on brings them back.
+  renderQuickSetting( section , links , ctx ) {
+    section.appendChild( Dom.el( "h3" , { text: T( "share.quick_setting_heading" ) } ) );
+    section.appendChild( Ui.checkbox( "share.quick_allow" , ctx.board.allow_quick_share , async ( checked ) => {
+      await ctx.mutate( function () { return ctx.client.updateBoard( { allow_quick_share: checked } ); } );
+      this.renderLinks( links , BoardPage.context() , {} );
+    } ) );
+    section.appendChild( Dom.el( "p" , { class: "muted small-print" , text: T( "share.quick_allow_hint" ) } ) );
+  },
+
+  // From a card's menu: its public link, on the clipboard. Where the browser
+  // refuses that, the link is shown to copy by hand.
+  async quickShare( ctx , card ) {
+    const url = ctx.client.quickShare( card.id ).then( function ( link ) { return window.location.origin + link.share_path; } );
+    try {
+      if ( await Ui.copyLater( url ) ) Ui.toast( T( "share.quick_copied" ) , "ok" );
+      else this.showQuickLink( await url );
+    } catch ( error ) {
+      Ui.error( error );
+    }
+  },
+
+  showQuickLink( value ) {
+    Panel.open( "share.quick_title" , function ( body ) {
+      const url = Dom.el( "code" , { text: value } );
+      const notice = Dom.el( "span" , { class: "muted" , text: T( "share.copied" ) } );
+      notice.hidden = true;
+      body.appendChild( Dom.el( "div" , { class: "link-box" , children: [ url , Ui.button( "share.copy_link" , function () { Dom.copy( url , notice ); } ) ] } ) );
+      body.appendChild( notice );
+    } );
   },
 
   // Links to one column: whoever holds one sees that column as a board of
@@ -246,11 +282,12 @@ const Sharing = {
     }
     links.forEach( ( link ) => {
       const where = this.scopeText( ctx , link );
-      const status = link.live ? ( link.expires_at ? I18n.fill( "share.expires" , { when: Dates.format( link.expires_at ) } ) : T( "share.never_expires" ) ) : T( link.revoked_at ? "share.revoked" : "share.expired" );
+      const paused = link.quick && link.live && !ctx.board.allow_quick_share;
+      const status = paused ? T( "share.quick_paused" ) : link.live ? ( link.expires_at ? I18n.fill( "share.expires" , { when: Dates.format( link.expires_at ) } ) : T( "share.never_expires" ) ) : T( link.revoked_at ? "share.revoked" : "share.expired" );
       const row = Dom.el( "li" , { class: "link-row" + ( link.live ? "" : " is-dead" ) } );
       row.appendChild( Dom.el( "div" , { children: [
-        Dom.el( "strong" , { text: link.label || T( "share.unlabelled" ) } ),
-        Dom.el( "div" , { class: "muted" , text: [ where , T( "share.mode_" + link.mode ) , status ].join( " · " ) } ),
+        Dom.el( "strong" , { text: link.quick ? T( "share.quick_label" ) : link.label || T( "share.unlabelled" ) } ),
+        Dom.el( "div" , { class: "muted" , text: [ where , T( "share.mode_" + link.mode ) , status ].concat( link.quick && link.created_by_name ? I18n.fill( "share.made_by" , { name: link.created_by_name } ) : [] ).join( " · " ) } ),
         Dom.el( "div" , { class: "muted" , text: link.last_used_at ? I18n.fill( "share.last_used" , { when: Dates.format( link.last_used_at ) } ) : T( "share.never_used" ) } ),
       ] } ) );
       const actions = Dom.el( "div" , { class: "row-actions" } );

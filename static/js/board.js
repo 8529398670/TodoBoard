@@ -76,7 +76,7 @@ const BoardPage = {
       if ( this.client.info.mode === "edit" ) await this.askGuestName();
       const info = this.client.info;
       const banner = Dom.get( "guest-banner" );
-      Dom.text( banner , I18n.fill( info.mode === "edit" ? "share.banner_edit" : "share.banner_view" , {
+      Dom.text( banner , info.quick ? T( "share.banner_quick" ) : I18n.fill( info.mode === "edit" ? "share.banner_edit" : "share.banner_view" , {
         label: info.label || ( info.list_title ? info.board_title + " › " + info.list_title : info.board_title ),
       } ) );
       Dom.show( banner , true );
@@ -181,6 +181,8 @@ const BoardPage = {
       canEdit: level === "edit" || level === "manage",
       canManage: level === "manage",
       cardOnly: data ? data.card_only : false,
+      // A card's public link: the card, and nothing of the board around it.
+      quick: data ? !!data.quick : false,
       // A column share link: the one column is the whole board for them.
       listOnly: data ? !!data.list_only : false,
       // A board link showing only some columns: cards in those, nothing
@@ -320,10 +322,14 @@ const BoardPage = {
   render() {
     const ctx = this.context();
     const board = ctx.board;
-    document.title = board.title + " · " + T( "app.title" );
-    Markdown.renderInline( board.title , Dom.get( "board-title" ) );
+    // A public link is not told the board's name.
+    const heading = ctx.quick ? T( "share.quick_heading" ) : board.title;
+    document.title = heading + " · " + T( "app.title" );
+    Markdown.renderInline( heading , Dom.get( "board-title" ) );
     Theme.setBoard( board.theme );
     document.body.className = "board-page color-" + ( board.color || "none" ) + ( ctx.plainIcons() ? " plain-status" : "" ) + ( ctx.swipeColumns() ? " swipe-columns" : "" );
+    // A single column has no tabs of its own, so it shows what the bar says.
+    if ( Stages.singleColumn() ) this.columnStages = {};
 
     Dom.show( Dom.get( "settings-button" ) , !ctx.cardOnly );
     // The server leaves these out for a link showing only part of the board.
@@ -468,7 +474,7 @@ const BoardPage = {
 const CardOnlyView = {
   render( root , ctx ) {
     const wrap = Dom.el( "section" , { class: "card-only" } );
-    wrap.appendChild( Dom.el( "p" , { class: "muted" , text: T( "share.card_only_note" ) } ) );
+    if ( !ctx.quick ) wrap.appendChild( Dom.el( "p" , { class: "muted" , text: T( "share.card_only_note" ) } ) );
     ctx.cards.forEach( function ( card ) {
       const button = Dom.el( "button" , { class: "card-face standalone" , attrs: { type: "button" } , on: { click: function ( event ) { if ( !event.target.closest( "a" ) ) ctx.openCard( card.id ); } } } );
       const title = Dom.el( "span" , { class: "card-title" } );

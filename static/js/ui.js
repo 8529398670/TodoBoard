@@ -191,6 +191,26 @@ const Ui = {
       this.toast( T( "export.copy_failed" ) , "error" );
     }
   },
+
+  // Copies text still on its way from the server; true once it is copied.
+  // Safari only lets a click write to the clipboard if the write starts
+  // inside the click, so the promise goes straight in rather than being
+  // awaited first. A failed request rejects, as text itself does.
+  async copyLater( text ) {
+    try {
+      const blob = text.then( function ( value ) { return new Blob( [ value ] , { type: "text/plain" } ); } );
+      await navigator.clipboard.write( [ new ClipboardItem( { "text/plain": blob } ) ] );
+      return true;
+    } catch ( error ) {
+      const value = await text;
+      try {
+        await navigator.clipboard.writeText( value );
+        return true;
+      } catch ( copy_error ) {
+        return false;
+      }
+    }
+  },
 };
 
 // A right-click menu: a short list of actions at the pointer. Closes on a
@@ -284,6 +304,7 @@ const Panel = {
     Dom.text( Dom.get( "panel-title" ) , T( titleKey ) );
     const body = Dom.get( "panel-body" );
     Dom.clear( body );
+    Dom.clear( Dom.get( "panel-actions" ) );
     if ( back ) {
       body.appendChild( Dom.el( "button" , {
         class: Ui.buttonClass( "secondary small panel-back" ),

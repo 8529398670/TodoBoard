@@ -28,6 +28,8 @@ const PrintPage = {
         client = BoardApi.member( Number( match[ 1 ] ) );
       }
       this.data = await client.board();
+      // The print layout is the board's, which a public card link has none of.
+      if ( this.data.quick ) throw new Error( "share_link_invalid" );
     } catch ( error ) {
       Dom.get( "print-root" ).appendChild( Dom.el( "p" , { class: "alert alert-danger" , text: T( "errors." + error.message ) || T( "errors.board_not_found" ) } ) );
       return;

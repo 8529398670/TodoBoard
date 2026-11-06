@@ -23,6 +23,11 @@ import (
 func ( handlers *Handlers ) ExportBoard( c fiber.Ctx ) ( err error ) {
 	principal , board , err := handlers.boardFor( c )
 	if board == nil { return }
+	// A spreadsheet names the board and the card's column.
+	if access.QuickLink( principal ) {
+		err = notFound( c , "board_not_found" )
+		return
+	}
 	format := c.Query( "format" )
 	if format != "xlsx" && format != "csv" {
 		err = badRequest( c , "invalid_input" )

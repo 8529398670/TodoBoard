@@ -454,3 +454,35 @@ func TestBoardText( t *testing.T ) {
 	updated , err = write( &BoardSettings{ PurposeEnabled: &on } )
 	if err != nil || updated.Purpose != "one" { t.Errorf( "back on: %+v , %v" , updated , err ) }
 }
+
+func TestShareLinkCapCountsLiveLinksOnly( t *testing.T ) {
+	store := testStore( t )
+	owner , _ := CreateUser( store , "Owner" , RoleAdmin )
+	board , err := CreateBoard( store , owner.ID , "Links" , []string{ "To do" } )
+	if err != nil { t.Fatal( err ) }
+	for count := 0 ; count < maxShareLinksPerBoard ; count += 1 {
+		_ , link , issue_err := IssueShareLink( store , board.ID , 0 , 0 , nil , ModeView , "" , 0 , owner.ID )
+		if issue_err != nil { t.Fatal( issue_err ) }
+		if count == 0 {
+			if err = RevokeShareLink( store , link.ID ); err != nil { t.Fatal( err ) }
+		}
+	}
+	// One of the hundred is dead, so there is room for one more and no more.
+	if _ , _ , err = IssueShareLink( store , board.ID , 0 , 0 , nil , ModeView , "" , 0 , owner.ID ); err != nil { t.Errorf( "a revoked link still counts: %v" , err ) }
+	if _ , _ , err = IssueShareLink( store , board.ID , 0 , 0 , nil , ModeView , "" , 0 , owner.ID ); errors.Is( err , ErrBadInput ) == false { t.Errorf( "the cap did not hold: %v" , err ) }
+}
+
+func TestQuickLinksDoNotUseTheCap( t *testing.T ) {
+	store := testStore( t )
+	owner , _ := CreateUser( store , "Owner" , RoleAdmin )
+	board , err := CreateBoard( store , owner.ID , "Links" , []string{ "To do" } )
+	if err != nil { t.Fatal( err ) }
+	on := true
+	if _ , err = UpdateBoardSettings( store , board.ID , &BoardSettings{ AllowQuickShare: &on } ); err != nil { t.Fatal( err ) }
+	card , err := CreateCard( store , board.ID , board.Lists[ 0 ].ID , "Card" , nil , owner.ID , "Owner" )
+	if err != nil { t.Fatal( err ) }
+	if _ , _ , err = QuickShareLink( store , board.ID , card.ID , owner.ID ); err != nil { t.Fatal( err ) }
+	for count := 0 ; count < maxShareLinksPerBoard ; count += 1 {
+		if _ , _ , err = IssueShareLink( store , board.ID , 0 , 0 , nil , ModeView , "" , 0 , owner.ID ); err != nil { t.Fatalf( "link %d: %v" , count , err ) }
+	}
+}

@@ -49,7 +49,7 @@ const CardExport = {
     const hashes = "#".repeat( level );
     const lines = [ hashes + " " + ( card.done ? T( "export.md_done_marker" ) + " " : "" ) + card.title , "" ];
     const meta = [];
-    if ( level === 1 ) {
+    if ( level === 1 && !ctx.quick ) {
       meta.push( "**" + T( "export.md_board" ) + ":** " + ctx.board.title );
       meta.push( "**" + T( "export.md_list" ) + ":** " + this.listTitle( ctx , card ) );
     }
@@ -96,8 +96,7 @@ const CardExport = {
   // The element the PNG is drawn from.
   buildNode( ctx , card ) {
     const node = Dom.el( "article" , { class: "export-card" } );
-    const crumbs = Dom.el( "p" , { class: "export-crumbs" , text: ctx.board.title + " › " + this.listTitle( ctx , card ) } );
-    node.appendChild( crumbs );
+    if ( !ctx.quick ) node.appendChild( Dom.el( "p" , { class: "export-crumbs" , text: ctx.board.title + " › " + this.listTitle( ctx , card ) } ) );
     const labels = CardBits.labels( card , ctx.board );
     if ( labels ) node.appendChild( labels );
     const title = Dom.el( "h1" , { class: "export-title" + ( card.done ? " is-done" : "" ) } );

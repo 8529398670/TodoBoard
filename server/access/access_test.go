@@ -155,3 +155,39 @@ func TestVisibleColumns( t *testing.T ) {
 		t.Errorf( "an unrestricted link or a member hides nothing" )
 	}
 }
+
+func TestLinkUsable( t *testing.T ) {
+	past := time.Now().Add( -time.Hour )
+	closed := &models.Board{ ID: 1 }
+	open := &models.Board{ ID: 1 , AllowQuickShare: true }
+	cases := []struct {
+		name  string
+		link  *models.ShareLink
+		board *models.Board
+		want  bool
+	}{
+		{ "an owner's link, sharing off" , &models.ShareLink{ BoardID: 1 } , closed , true },
+		{ "a quick link, sharing on" , &models.ShareLink{ BoardID: 1 , Quick: true } , open , true },
+		{ "a quick link, sharing off" , &models.ShareLink{ BoardID: 1 , Quick: true } , closed , false },
+		{ "another board's link" , &models.ShareLink{ BoardID: 2 } , open , false },
+		{ "a revoked link" , &models.ShareLink{ BoardID: 1 , RevokedAt: &past } , open , false },
+		{ "an expired link" , &models.ShareLink{ BoardID: 1 , ExpiresAt: &past } , open , false },
+		{ "no link" , nil , open , false },
+		{ "no board" , &models.ShareLink{ BoardID: 1 } , nil , false },
+	}
+	for _ , item := range cases {
+		if got := LinkUsable( item.link , item.board ); got != item.want { t.Errorf( "%s: %v" , item.name , got ) }
+	}
+}
+
+func TestQuickLinkGrantsOnlyItsCardWhileAllowed( t *testing.T ) {
+	board := &models.Board{ ID: 1 , AllowQuickShare: true }
+	card := &models.Card{ ID: 5 , BoardID: 1 }
+	other := &models.Card{ ID: 6 , BoardID: 1 }
+	guest := &Principal{ Share: &models.ShareLink{ BoardID: 1 , CardID: 5 , Quick: true , Mode: models.ModeView } }
+	if Card( guest , board , card ) != View { t.Errorf( "its own card is not readable" ) }
+	if Card( guest , board , other ) != None { t.Errorf( "another card is readable" ) }
+	if Board( guest , board ) != None { t.Errorf( "the board is reachable" ) }
+	board.AllowQuickShare = false
+	if Card( guest , board , card ) != None { t.Errorf( "a paused link still reads its card" ) }
+}

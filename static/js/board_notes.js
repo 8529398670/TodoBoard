@@ -25,16 +25,14 @@ const BoardNotes = {
   section( ctx , field ) {
     const canEdit = ctx.canEdit && !ctx.isGuest;
     const section = Dom.el( "section" , { class: "panel-section board-notes-section" } );
-    const head = Dom.el( "div" , { class: "section-head board-notes-head" } );
-    if ( field === "purpose" ) head.appendChild( Dom.el( "p" , { class: "muted small-print" , text: T( "notes.purpose_hint" ) } ) );
-    section.appendChild( head );
+    if ( field === "purpose" ) section.appendChild( Dom.el( "p" , { class: "muted small-print" , text: T( "notes.purpose_hint" ) } ) );
 
     const draft = this.drafts[ field ];
     if ( draft && canEdit ) {
       this.editor( field , draft ).forEach( function ( node ) { section.appendChild( node ); } );
       return section;
     }
-    if ( canEdit ) head.appendChild( Ui.button( "notes.edit" , () => this.startEditing( field ) ) );
+    if ( canEdit ) Dom.get( "panel-actions" ).appendChild( Ui.button( "notes.edit" , () => this.startEditing( field ) ) );
     const rendered = Dom.el( "div" , { class: "description" } );
     if ( ctx.board[ field ] ) {
       Markdown.render( ctx.board[ field ] , rendered );

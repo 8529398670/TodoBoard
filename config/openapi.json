@@ -1754,6 +1754,10 @@
                   "csrf_token": {
                     "type": "string",
                     "description": "From GET /api/me. Browser sessions only."
+                  },
+                  "allow_quick_share": {
+                    "type": "boolean",
+                    "description": "Whether the owner and editors can copy a public link from a card's menu. Only the owner can change it, in a session. Not shown to share-link guests."
                   }
                 }
               }
@@ -7205,6 +7209,10 @@
                       "bottom"
                     ],
                     "description": "Empty leaves it to each viewer."
+                  },
+                  "allow_quick_share": {
+                    "type": "boolean",
+                    "description": "Whether the owner and editors can copy a public link from a card's menu. Only the owner can change it, in a session. Not shown to share-link guests."
                   }
                 }
               }
@@ -9703,6 +9711,102 @@
           }
         }
       }
+    },
+    "/api/boards/{board_id}/cards/{card_id}/quick-share": {
+      "post": {
+        "summary": "Get a card's public link",
+        "operationId": "post_api_boards_board_id_cards_card_id_quick_share",
+        "tags": [
+          "Sharing"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "description": "The card's one read-only public link, made the first time and the same URL after that. For the board's owner and editors while the board's allow_quick_share is on. Mints a credential, so it takes a session.",
+        "x-board-access": "edit",
+        "parameters": [
+          {
+            "name": "board_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "The board's number or URL slug."
+          },
+          {
+            "name": "card_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "csrf_token": {
+                    "type": "string",
+                    "description": "From GET /api/me. Browser sessions only."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "share_path": {
+                      "type": "string",
+                      "description": "The link's path, /s/<credential>."
+                    }
+                  },
+                  "required": [
+                    "share_path"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "404": {
+            "$ref": "#/components/responses/E404"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -10935,6 +11039,10 @@
                   "$ref": "#/components/schemas/BoardMember"
                 },
                 "description": "Empty for a caller who sees only a column or some cards."
+              },
+              "allow_quick_share": {
+                "type": "boolean",
+                "description": "Whether the owner and editors can copy a public link from a card's menu. Only the owner can change it, in a session. Not shown to share-link guests."
               }
             },
             "required": [
@@ -11122,6 +11230,14 @@
           },
           "live": {
             "type": "boolean"
+          },
+          "quick": {
+            "type": "boolean",
+            "description": "A card's public link."
+          },
+          "created_by_name": {
+            "type": "string",
+            "description": "Who made it. In the list only."
           }
         },
         "required": [
@@ -11149,6 +11265,10 @@
               "share_path": {
                 "type": "string",
                 "description": "The link to hand out, shown in this response only. A credential: treat it like a password."
+              },
+              "quick": {
+                "type": "boolean",
+                "description": "A card's public link."
               }
             },
             "required": [
@@ -11184,16 +11304,16 @@
           },
           "label": {
             "type": "string"
+          },
+          "quick": {
+            "type": "boolean",
+            "description": "A card's public link. Only board_id, card_id, mode and this are sent."
           }
         },
         "required": [
           "board_id",
-          "board_title",
           "card_id",
-          "list_id",
-          "list_title",
-          "mode",
-          "label"
+          "mode"
         ]
       },
       "Subscription": {

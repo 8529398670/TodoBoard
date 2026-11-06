@@ -124,6 +124,7 @@ func ( handlers *Handlers ) Register( app *fiber.App ) {
 	boards.Post( "/:board_id/delete" , handlers.Guard.RequireSession , handlers.DeleteBoard )
 	boards.Post( "/:board_id/members" , handlers.SetBoardMember )
 	boards.Post( "/:board_id/cards/:card_id/share-user" , handlers.ShareCardWithUser )
+	boards.Post( "/:board_id/cards/:card_id/quick-share" , handlers.Guard.RequireSession , handlers.QuickShareCard )
 	boards.Get( "/:board_id/shares" , handlers.ListShareLinks )
 	boards.Post( "/:board_id/shares" , handlers.Guard.RequireSession , handlers.CreateShareLink )
 	boards.Post( "/:board_id/shares/:link_id/revoke" , handlers.RevokeShareLink )

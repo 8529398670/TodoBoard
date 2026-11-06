@@ -283,6 +283,7 @@ p.due-chip { margin: 0.5rem 0; }
 .column-title { flex: 1 1 auto; margin: 0; font-size: 0.98rem; overflow-wrap: anywhere; }
 .column-handle { cursor: grab; }
 .count { font-size: 0.8rem; color: var(--fg-muted); }
+.stage-column-count { display: none; }
 .kanban-cards { display: flex; flex-direction: column; gap: 0.5rem; min-height: 2.5rem; }
 
 .card-face {
@@ -454,6 +455,9 @@ p.due-chip { margin: 0.5rem 0; }
 @media (max-width: 39.99rem) and (orientation: portrait) {
   /* Room to swipe even on a column with nothing showing. */
   .swipe-columns .kanban.staged .kanban-cards { min-height: 55vh; }
+  /* The navbar is the one stage switch here; the header keeps the count. */
+  .swipe-columns .kanban.staged .stage-tabs { display: none; }
+  .swipe-columns .kanban.staged .stage-column-count { display: inline; }
 }
 
 /* Three-column boards: To do / Doing / Done side by side, sharing the width. */
@@ -700,8 +704,6 @@ p.due-chip { margin: 0.5rem 0; }
 .description.editable { cursor: text; padding: 0.4rem 0.5rem; margin: 0 -0.5rem; border: 1px solid transparent; border-radius: 8px; }
 .description.editable:hover { border-color: var(--border); background: var(--bg); }
 .description.preview { padding: 0.6rem; border: 1px dashed var(--border); border-radius: 8px; min-height: 6rem; }
-.board-notes-head { justify-content: flex-end; margin-bottom: 0.5rem; }
-.board-notes-head .muted { flex: 1 1 auto; margin: 0; }
 .board-notes-actions { margin-top: 0.5rem; }
 .description-input { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.88rem; min-height: 12rem; }
 .conflict { margin-bottom: 0.75rem; }

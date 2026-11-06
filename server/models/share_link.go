@@ -29,6 +29,10 @@ type ShareLink struct {
 	// VisibleListIDs, on a board link, are the columns whose cards it shows;
 	// the rest show their titles only. Empty: every column.
 	VisibleListIDs []uint64 `json:"visible_list_ids,omitempty"`
+	// Quick is a card's one public link (QuickShareLink): read-only, showing
+	// the card and nothing of the board, and paused while the board's
+	// AllowQuickShare is off.
+	Quick      bool       `json:"quick,omitempty"`
 	Mode       string     `json:"mode"`
 	Label      string     `json:"label"`
 	CreatedBy  uint64     `json:"created_by"`
@@ -39,6 +43,8 @@ type ShareLink struct {
 }
 
 var ErrShareLinkNotFound = errors.New( "share link not found" )
+var ErrQuickShareOff = errors.New( "quick sharing is off on this board" )
+var ErrCardArchived = errors.New( "card is archived" )
 
 // Restricted is a board link that shows only some columns' cards.
 func ( link *ShareLink ) Restricted() ( result bool ) {
@@ -101,7 +107,10 @@ func IssueShareLink( store *db.Store , board_id uint64 , card_id uint64 , list_i
 		count := 0
 		tx_err = tx.ForEach( db.BucketShareLinks , func() any { return &ShareLink{} } ,
 			func( key []byte , item any ) bool {
-				if item.( *ShareLink ).BoardID == board_id { count += 1 }
+				found := item.( *ShareLink )
+				// Dead links are history and quick links are one per card, so
+				// neither uses up the owner's links.
+				if found.BoardID == board_id && found.Live() && found.Quick == false { count += 1 }
 				return true
 			} )
 		if tx_err != nil { return }
@@ -114,6 +123,52 @@ func IssueShareLink( store *db.Store , board_id uint64 , card_id uint64 , list_i
 		return
 	}
 	credential = link_id + "." + secret
+	return
+}
+
+// quickSecret is a quick link's secret. Worked out from the server's key
+// rather than stored, so sharing a card again can hand back the same URL
+// while the database still holds only a hash.
+func quickSecret( store *db.Store , link_id string ) ( secret string ) {
+	secret = store.KeyedToken( "quick-share/" + link_id )
+	return
+}
+
+// QuickShareLink returns the card's public link, making it the first time.
+// There is one per card, so a second share copies the same URL; once revoked
+// or deleted, the next share makes a new one.
+func QuickShareLink( store *db.Store , board_id uint64 , card_id uint64 , created_by uint64 ) ( credential string , link *ShareLink , err error ) {
+	fresh_id := encryption.GenerateURLToken( 12 )
+	err = store.Write( func( tx *db.Tx ) ( tx_err error ) {
+		board , tx_err := getBoardTx( tx , board_id )
+		if tx_err != nil { return }
+		if board.AllowQuickShare == false { return ErrQuickShareOff }
+		card , tx_err := getCardTx( tx , board_id , card_id )
+		if tx_err != nil { return }
+		if card.Archived { return ErrCardArchived }
+		tx_err = tx.ForEach( db.BucketShareLinks , func() any { return &ShareLink{} } ,
+			func( key []byte , item any ) bool {
+				found := item.( *ShareLink )
+				if found.Quick && found.BoardID == board_id && found.CardID == card_id && found.Live() {
+					link = found
+					return false
+				}
+				return true
+			} )
+		if tx_err != nil || link != nil { return }
+		link = &ShareLink{
+			ID: fresh_id , SecretHash: encryption.Sha256Hex( quickSecret( store , fresh_id ) ) ,
+			BoardID: board_id , CardID: card_id , Quick: true , Mode: ModeView ,
+			CreatedBy: created_by , CreatedAt: time.Now().UTC() ,
+		}
+		tx_err = tx.Put( db.BucketShareLinks , []byte( fresh_id ) , link )
+		return
+	} )
+	if err != nil {
+		link = nil
+		return
+	}
+	credential = link.ID + "." + quickSecret( store , link.ID )
 	return
 }
 

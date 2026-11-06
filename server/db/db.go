@@ -112,6 +112,13 @@ func ( store *Store ) LookupKey( value string ) ( result []byte ) {
 	return
 }
 
+// KeyedToken is a secret this server can always work out again from value,
+// and nobody can without the server's key -- a copy of the database included.
+func ( store *Store ) KeyedToken( value string ) ( result string ) {
+	result = encryption.KeyedURLToken( store.secretKey , value )
+	return
+}
+
 func ( store *Store ) Close() ( err error ) {
 	err = store.bolt.Close()
 	return

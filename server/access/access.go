@@ -72,6 +72,22 @@ func KeyAllows( principal *Principal , board_id uint64 ) ( result bool ) {
 	return
 }
 
+// LinkUsable reports whether a share link works on this board right now:
+// live, for this board, and if it is a quick link, on a board that allows
+// them. Every question below about a link starts here.
+func LinkUsable( link *models.ShareLink , board *models.Board ) ( result bool ) {
+	if link == nil || board == nil || link.BoardID != board.ID || link.Live() == false { return }
+	result = link.Quick == false || board.AllowQuickShare
+	return
+}
+
+// QuickLink reports whether the principal is a guest on a quick link, who is
+// shown the one card and nothing of the board around it.
+func QuickLink( principal *Principal ) ( result bool ) {
+	result = principal != nil && principal.Share != nil && principal.Share.Quick
+	return
+}
+
 func modeLevel( mode string ) ( level Level ) {
 	switch mode {
 	case models.ModeEdit:
@@ -90,7 +106,7 @@ func Board( principal *Principal , board *models.Board ) ( level Level ) {
 	if KeyAllows( principal , board.ID ) == false { return }
 	if principal.Share != nil {
 		link := principal.Share
-		if link.BoardID != board.ID || link.CardID != 0 || link.ListID != 0 || link.Live() == false { return }
+		if link.CardID != 0 || link.ListID != 0 || LinkUsable( link , board ) == false { return }
 		level = modeLevel( link.Mode )
 		// A link that shows only some columns reads the board's shape but
 		// changes nothing board-wide: its edit rights are per column (List).
@@ -118,7 +134,7 @@ func List( principal *Principal , board *models.Board , list_id uint64 ) ( level
 	if HiddenList( principal , board , list_id ) { return }
 	level = Board( principal , board )
 	if level > Edit { level = Edit }
-	if link := principal.Share; link != nil && link.BoardID == board.ID && link.Live() {
+	if link := principal.Share; link != nil && LinkUsable( link , board ) {
 		if link.ListID == list_id || ( link.Restricted() && link.Shows( list_id ) ) {
 			if direct := modeLevel( link.Mode ); direct > level { level = direct }
 		}
@@ -131,7 +147,7 @@ func List( principal *Principal , board *models.Board , list_id uint64 ) ( level
 func HiddenList( principal *Principal , board *models.Board , list_id uint64 ) ( result bool ) {
 	if principal == nil || principal.Share == nil || board == nil { return }
 	link := principal.Share
-	if link.BoardID != board.ID || link.CardID != 0 || link.ListID != 0 || link.Live() == false { return }
+	if link.CardID != 0 || link.ListID != 0 || LinkUsable( link , board ) == false { return }
 	result = link.Shows( list_id ) == false
 	return
 }
@@ -150,7 +166,7 @@ func Card( principal *Principal , board *models.Board , card *models.Card ) ( le
 	var direct Level
 	if principal.Share != nil {
 		link := principal.Share
-		if link.BoardID == board.ID && link.Live() && ( link.CardID == card.ID || ( link.ListID != 0 && link.ListID == card.ListID ) || ( link.Restricted() && link.Shows( card.ListID ) ) ) {
+		if LinkUsable( link , board ) && ( link.CardID == card.ID || ( link.ListID != 0 && link.ListID == card.ListID ) || ( link.Restricted() && link.Shows( card.ListID ) ) ) {
 			direct = modeLevel( link.Mode )
 		}
 	} else {
@@ -172,7 +188,7 @@ func CardOnly( principal *Principal , board *models.Board ) ( result bool ) {
 func ListOnly( principal *Principal , board *models.Board ) ( list_id uint64 ) {
 	if principal == nil || principal.Share == nil || board == nil { return }
 	link := principal.Share
-	if link.BoardID != board.ID || link.ListID == 0 || link.Live() == false || board.List( link.ListID ) == nil { return }
+	if link.ListID == 0 || LinkUsable( link , board ) == false || board.List( link.ListID ) == nil { return }
 	list_id = link.ListID
 	return
 }

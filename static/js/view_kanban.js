@@ -198,7 +198,7 @@ const KanbanView = {
     const title = Dom.el( "h2" , { class: "column-title" + ( ctx.canEdit ? " column-handle" : "" ) } );
     Markdown.renderInline( list.title , title );
     header.appendChild( title );
-    if ( !staged ) header.appendChild( Dom.el( "span" , { class: "count" , text: String( cards.length ) } ) );
+    header.appendChild( Dom.el( "span" , { class: "count" + ( staged ? " stage-column-count" : "" ) , text: String( cards.length ) } ) );
     header.appendChild( ListMenu.button( list , ctx ) );
     column.appendChild( header );
     if ( staged ) column.appendChild( Stages.tabs( list.id , ctx.cardsIn( list.id ) , ctx ) );
@@ -512,8 +512,12 @@ const CardMenu = {
         CardBits.toggleDone( card , ctx );
       } } );
     }
+    this.sendItems( card , ctx ).forEach( function ( item ) { items.push( item ); } );
     items.push( { key: "export.copy_card_markdown" , action: function () { Ui.copyText( CardExport.markdown( ctx , card ) ); } } );
     items.push( { key: "export.card_button" , action: function () { CardExport.open( ctx , card ); } } );
+    if ( ctx.board.allow_quick_share && ctx.canEdit && !ctx.isGuest && !card.archived ) {
+      items.push( { key: "share.quick_menu" , action: function () { Sharing.quickShare( ctx , card ); } } );
+    }
     if ( ctx.canEdit ) {
       items.push( { key: card.archived ? "card.unarchive" : "card.archive" , action: function () {
         ctx.mutate( function () { return ctx.client.patchCard( card.id , { archived: !card.archived } ); } );
@@ -524,6 +528,24 @@ const CardMenu = {
       } } );
     }
     ContextMenu.open( event , items );
+  },
+
+  // Send to top and bottom of the card's own list, for board editors: a
+  // position change is a move, which a card shared on its own cannot make.
+  // Not on the All list, which is ordered across lists, and an end the card
+  // already shows at is left out. On a staged board the ends are of the
+  // stage on show, and the whole list's end is the stage's end too.
+  sendItems( card , ctx ) {
+    if ( !ctx.canEdit || card.archived || ctx.isAllView() ) return [];
+    const shown = ctx.isStaged() ? ctx.cardsAt( card.list_id , Stages.of( card ) ) : ctx.cardsIn( card.list_id );
+    const others = ctx.cardsIn( card.list_id ).filter( function ( other ) { return other.id !== card.id; } );
+    const send = function ( top ) {
+      ctx.mutate( function () { return ctx.client.patchCard( card.id , { position: CardBits.edgePosition( others , top ) } ); } );
+    };
+    const items = [];
+    if ( shown.length && shown[ 0 ].id !== card.id ) items.push( { key: "board.card_menu_top" , action: function () { send( true ); } } );
+    if ( shown.length && shown[ shown.length - 1 ].id !== card.id ) items.push( { key: "board.card_menu_bottom" , action: function () { send( false ); } } );
+    return items;
   },
 };
 

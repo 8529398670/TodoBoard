@@ -177,7 +177,8 @@ const CardModal = {
     const labels = this.labels( card , canEdit );
     if ( labels ) body.appendChild( labels );
     body.appendChild( this.actions( card , canEdit , canMove ) );
-    body.appendChild( Dom.el( "p" , { class: "muted card-updated" , text: I18n.fill( "card.updated_by" , {
+    // A public link is not told who has been working on the card.
+    if ( card.updated_by !== undefined ) body.appendChild( Dom.el( "p" , { class: "muted card-updated" , text: I18n.fill( "card.updated_by" , {
       name: CardBits.actorName( card.updated_by ),
       when: Dates.format( card.updated_at , false , true ),
     } ) } ) );
