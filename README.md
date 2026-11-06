@@ -13,6 +13,12 @@ image or as one self-contained binary.
   cards sit in a tray you drag onto a day).
 - **New boards start as three columns** (To do / Doing / Done), and each card
   there has *Doing* and *Done* tick boxes that move it between them.
+- **Staged lists** (a layout in Board settings): any number of lists, each
+  with its own To do / Doing / Done. A column shows one stage at a time,
+  starting on To do; swipe it or use its tabs to flip it, or use the bar over
+  the board or the Left and Right arrow keys to flip every column. A pinned
+  *All* column merges every list, sorted by a board-wide rank: set a card's
+  rank in its details or drag it in All, and the others shift to make room.
 - **Card numbers**: each column numbered 1..n; type a new number and press
   Enter to move the card there. On or off per board, or left to each
   person's account default.
@@ -124,6 +130,7 @@ mints a credential. Only keys are accepted -- a browser session gets 403.
 | `server/routes/boards.go`, `cards.go`, `sharing.go`, `notify_prefs.go` | the board API, mounted for members at `/api/boards` and for share-link guests at `/api/shared` |
 | `static/js/board.js` | board page controller (members and guests) |
 | `static/js/view_*.js` | Kanban, Todo, Timeline |
+| `static/js/stages.js` | a staged board's stage controls: bar, tabs, swipe, arrow keys |
 | `static/js/card_modal.js` | card editor |
 | `static/js/history.js` | undo / redo |
 | `static/js/markdown.js` | Markdown + KaTeX pipeline |

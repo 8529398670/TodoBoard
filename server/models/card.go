@@ -66,6 +66,13 @@ type Card struct {
 	DueAllDay   bool              `json:"due_all_day"`
 	Done        bool              `json:"done"`
 	DoneAt      *time.Time        `json:"done_at"`
+	// Doing is the middle stage on a staged board: neither flag is To do,
+	// Doing is Doing, Done is Done. The two are never both set.
+	Doing       bool              `json:"doing"`
+	// Rank orders a card among all the board's cards, whatever list it is
+	// in: smaller is more important, 0 is unranked. It is a float for the
+	// same reason Position is; the number people see comes from RankPlaces.
+	Rank        float64           `json:"rank"`
 	Checklist   []*ChecklistItem  `json:"checklist"`
 	SharedWith  map[uint64]string `json:"shared_with"`
 	Archived    bool              `json:"archived"`
@@ -262,14 +269,27 @@ type CardPatch struct {
 	StartAt  *string `json:"start_at"`
 	DueAt    *string `json:"due_at"`
 	Done     *bool   `json:"done"`
+	Doing    *bool   `json:"doing"`
 	Archived *bool   `json:"archived"`
 	Price    *string `json:"price"`
+	// RankPlace puts the card at that place in the board's ranking, 1 being
+	// the most important, and 0 takes it out. Rank is the stored value
+	// itself, for putting a card back exactly as it was.
+	RankPlace *int     `json:"rank_place"`
+	Rank      *float64 `json:"rank"`
 }
 
 // Moves reports whether the patch relocates the card, which needs board-level
 // edit rights rather than just rights on this one card.
 func ( patch *CardPatch ) Moves() ( result bool ) {
 	result = patch.ListID != nil || patch.Position != nil || patch.Archived != nil
+	return
+}
+
+// Ranks reports whether the patch changes the card's rank, which reorders
+// the whole board and so needs edit rights on all of it.
+func ( patch *CardPatch ) Ranks() ( result bool ) {
+	result = patch.RankPlace != nil || patch.Rank != nil
 	return
 }
 
@@ -312,6 +332,7 @@ func ( patch *CardPatch ) apply( board *Board , card *Card ) ( change CardChange
 		err = ErrStale
 		return
 	}
+	if patch.Done != nil && *patch.Done && patch.Doing != nil && *patch.Doing { return change , ErrBadInput }
 	if patch.Title != nil {
 		clean , ok := cleanTitle( *patch.Title , maxCardTitleChars )
 		if ok == false { return change , ErrBadInput }
@@ -365,8 +386,18 @@ func ( patch *CardPatch ) apply( board *Board , card *Card ) ( change CardChange
 		change.DueChanged = timeChanged( card.DueAt , due ) || all_day != card.DueAllDay
 		card.DueAt , card.DueAllDay = due , all_day
 	}
-	if patch.Done != nil && *patch.Done != card.Done {
-		card.Done = *patch.Done
+	if patch.Doing != nil {
+		change.Edited = change.Edited || *patch.Doing != card.Doing
+		card.Doing = *patch.Doing
+	}
+	// Starting a finished card reopens it.
+	done := patch.Done
+	if done == nil && card.Doing {
+		reopened := false
+		done = &reopened
+	}
+	if done != nil && *done != card.Done {
+		card.Done = *done
 		if card.Done {
 			now := time.Now().UTC()
 			card.DoneAt = &now
@@ -375,6 +406,11 @@ func ( patch *CardPatch ) apply( board *Board , card *Card ) ( change CardChange
 			card.DoneAt = nil
 			change.Reopened = true
 		}
+	}
+	if card.Done { card.Doing = false }
+	if patch.Rank != nil {
+		if math.IsNaN( *patch.Rank ) || math.IsInf( *patch.Rank , 0 ) || *patch.Rank < 0 { return change , ErrBadInput }
+		card.Rank = *patch.Rank
 	}
 	if patch.Archived != nil {
 		change.Edited = change.Edited || *patch.Archived != card.Archived
@@ -407,17 +443,109 @@ func PatchCard( store *db.Store , board_id uint64 , card_id uint64 , patch *Card
 		if tx_err != nil { return }
 		change , tx_err = patch.apply( board , card )
 		if tx_err != nil { return }
+		if patch.RankPlace != nil {
+			tx_err = placeRankTx( tx , board , card , *patch.RankPlace )
+			if tx_err != nil { return }
+		}
 		tx_err = saveCardTx( tx , board , card , actor_name )
 		if tx_err != nil { return }
 		if patch.ListID != nil || patch.Position != nil {
 			tx_err = renormalizeCardsTx( tx , board_id , card.ListID )
 			if tx_err != nil { return }
-			// The renormalize may have rewritten this card's position.
+		}
+		if patch.Ranks() {
+			tx_err = renormalizeRanksTx( tx , board_id )
+			if tx_err != nil { return }
+		}
+		if patch.ListID != nil || patch.Position != nil || patch.Ranks() {
+			// A renormalize may have rewritten this card.
 			card , tx_err = getCardTx( tx , board_id , card_id )
 		}
 		return
 	} )
 	if err != nil { card = nil }
+	return
+}
+
+// rankable reports whether card takes a place in the board's ranking. A
+// finished, archived or shelved card keeps its Rank, so it comes back where
+// it was, but holds no number meanwhile: everyone below moves up.
+func rankable( board *Board , card *Card ) ( result bool ) {
+	list := board.List( card.ListID )
+	result = card.Done == false && card.Archived == false && list != nil && list.Archived == false
+	return
+}
+
+func sortByRank( cards []*Card ) {
+	sort.SliceStable( cards , func( i int , j int ) bool {
+		if cards[ i ].Rank != cards[ j ].Rank { return cards[ i ].Rank < cards[ j ].Rank }
+		return cards[ i ].ID < cards[ j ].ID
+	} )
+}
+
+// RankPlaces numbers the board's ranked cards 1, 2, 3 by card id. Cards
+// without a place are absent. cards is the whole board, whoever is asking,
+// so someone shown part of a board sees the same numbers as everyone else.
+func RankPlaces( board *Board , cards []*Card ) ( places map[uint64]int ) {
+	places = map[uint64]int{}
+	ranked := []*Card{}
+	for _ , card := range cards {
+		if card.Rank > 0 && rankable( board , card ) { ranked = append( ranked , card ) }
+	}
+	sortByRank( ranked )
+	for index , card := range ranked { places[ card.ID ] = index + 1 }
+	return
+}
+
+// placeRankTx gives card the rank that puts it at place, between the two
+// cards now either side of it, so one write moves it and the rest follow.
+// A place past the end means last. 0 takes the card out of the ranking.
+func placeRankTx( tx *db.Tx , board *Board , card *Card , place int ) ( err error ) {
+	if place < 0 { return ErrBadInput }
+	if place == 0 {
+		card.Rank = 0
+		return
+	}
+	if rankable( board , card ) == false { return ErrBadInput }
+	others := []*Card{}
+	err = tx.ForEachPrefix( db.BucketCards , db.Key( board.ID ) , func() any { return &Card{} } ,
+		func( key []byte , item any ) bool {
+			if other := item.( *Card ); other.ID != card.ID && other.Rank > 0 && rankable( board , other ) { others = append( others , other ) }
+			return true
+		} )
+	if err != nil { return }
+	sortByRank( others )
+	if place > len( others ) + 1 { place = len( others ) + 1 }
+	before := 0.0
+	if place > 1 { before = others[ place - 2 ].Rank }
+	if place <= len( others ) {
+		card.Rank = ( before + others[ place - 1 ].Rank ) / 2
+	} else {
+		card.Rank = before + positionStep
+	}
+	return
+}
+
+// renormalizeRanksTx respaces the board's ranks when two have crowded
+// together. It leaves each card's Rev alone: Rev guards title and description
+// edits, and someone mid-edit in an open card has nothing to do with a
+// ranking shuffling past it.
+func renormalizeRanksTx( tx *db.Tx , board_id uint64 ) ( err error ) {
+	cards := []*Card{}
+	err = tx.ForEachPrefix( db.BucketCards , db.Key( board_id ) , func() any { return &Card{} } ,
+		func( key []byte , item any ) bool {
+			if card := item.( *Card ); card.Rank > 0 { cards = append( cards , card ) }
+			return true
+		} )
+	if err != nil { return }
+	ranks := make( []float64 , len( cards ) )
+	for index , card := range cards { ranks[ index ] = card.Rank }
+	if needsRenormalize( ranks ) == false { return }
+	sortByRank( cards )
+	for index , card := range cards {
+		card.Rank = float64( index + 1 ) * positionStep
+		if err = tx.Put( db.BucketCards , cardKey( board_id , card.ID ) , card ); err != nil { return }
+	}
 	return
 }
 

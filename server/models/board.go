@@ -30,10 +30,13 @@ const (
 
 // Layouts. Free is any number of lists; Three pins the board to its first
 // three lists (to do / doing / done), shown as equal columns. New boards
-// start as Three.
+// start as Three. Staged is any number of lists again, each holding its own
+// to do / doing / done (see Card.Doing), with an All column in front that
+// merges them by rank (see Card.Rank).
 const (
-	LayoutFree  = ""
-	LayoutThree = "three"
+	LayoutFree   = ""
+	LayoutThree  = "three"
+	LayoutStaged = "staged"
 )
 
 // Card numbering. Default leaves it to each viewer's account setting; On and
@@ -364,7 +367,7 @@ func ( settings *BoardSettings ) Apply( board *Board ) ( err error ) {
 	if settings.ClearTheme { board.Theme = nil }
 	if settings.Shopping != nil { board.Shopping = *settings.Shopping }
 	if settings.Layout != nil {
-		if *settings.Layout != LayoutFree && *settings.Layout != LayoutThree { return ErrBadInput }
+		if *settings.Layout != LayoutFree && *settings.Layout != LayoutThree && *settings.Layout != LayoutStaged { return ErrBadInput }
 		board.Layout = *settings.Layout
 		if board.Layout == LayoutThree { err = ensureThreeLists( board , settings.ListTitles ) }
 	}

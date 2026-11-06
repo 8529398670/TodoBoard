@@ -1,6 +1,7 @@
 package models
 
 import (
+	math "math"
 	sort "sort"
 	strings "strings"
 	time "time"
@@ -50,6 +51,8 @@ type CardSnapshot struct {
 	DueAllDay   bool                 `json:"due_all_day"`
 	Done        bool                 `json:"done"`
 	DoneAt      *time.Time           `json:"done_at"`
+	Doing       bool                 `json:"doing,omitempty"`
+	Rank        float64              `json:"rank,omitempty"`
 	Archived    bool                 `json:"archived"`
 	Checklist   []*ChecklistSnapshot `json:"checklist"`
 	Assignees   []string             `json:"assignees,omitempty"`
@@ -121,6 +124,9 @@ func SnapshotList( list *List , cards []*Card , visible func( card *Card ) bool 
 // SnapshotColumn is a column file for list.
 func SnapshotColumn( board *Board , list *List , cards []*Card , visible func( card *Card ) bool , person func( id uint64 ) string ) ( backup *ColumnBackup ) {
 	snap := SnapshotList( list , cards , visible , person )
+	// A rank only means something next to the rest of its board; a column
+	// file lands on some other board.
+	for _ , card := range snap.Cards { card.Rank = 0 }
 	used := map[uint64]bool{}
 	for _ , card := range cards {
 		if card.ListID != list.ID || visible( card ) == false { continue }
@@ -146,7 +152,7 @@ func snapshotCard( card *Card , person func( id uint64 ) string ) ( snap *CardSn
 	snap = &CardSnapshot{
 		Title: card.Title , Description: card.Description , Labels: append( []uint64{} , card.LabelIDs... ) ,
 		StartAt: card.StartAt , StartTimed: card.StartTimed , DueAt: card.DueAt , DueAllDay: card.DueAllDay ,
-		Done: card.Done , DoneAt: card.DoneAt , Archived: card.Archived , Checklist: []*ChecklistSnapshot{} ,
+		Done: card.Done , DoneAt: card.DoneAt , Doing: card.Doing , Rank: card.Rank , Archived: card.Archived , Checklist: []*ChecklistSnapshot{} ,
 	}
 	items := append( []*ChecklistItem{} , card.Checklist... )
 	sort.SliceStable( items , func( i int , j int ) bool { return items[ i ].Position < items[ j ].Position } )
@@ -178,7 +184,7 @@ func ImportBoardSkeleton( store *db.Store , owner_id uint64 , snap *BoardSnapsho
 			Lists: []*List{} , Labels: []*Label{} , Layout: LayoutFree , DefaultView: ViewKanban ,
 			Rev: 1 , CreatedAt: now , UpdatedAt: now ,
 		}
-		if snap.Layout == LayoutThree { board.Layout = LayoutThree }
+		if snap.Layout == LayoutThree || snap.Layout == LayoutStaged { board.Layout = snap.Layout }
 		if snap.Numbering == NumberingOn || snap.Numbering == NumberingOff { board.Numbering = snap.Numbering }
 		if ValidBoardView( snap.DefaultView ) { board.DefaultView = snap.DefaultView }
 		if ValidColor( snap.Color ) { board.Color = snap.Color }
@@ -266,8 +272,9 @@ func importedCard( snap *CardSnapshot , by_ref map[uint64]uint64 ) ( card *Card 
 		Title: title , Description: snap.Description ,
 		StartAt: utcTime( snap.StartAt ) , StartTimed: snap.StartTimed && snap.StartAt != nil ,
 		DueAt: utcTime( snap.DueAt ) , DueAllDay: snap.DueAllDay && snap.DueAt != nil ,
-		Done: snap.Done , Archived: snap.Archived ,
+		Done: snap.Done , Doing: snap.Doing && snap.Done == false , Archived: snap.Archived ,
 	}
+	if snap.Rank > 0 && math.IsInf( snap.Rank , 0 ) == false { card.Rank = snap.Rank }
 	if snap.Done {
 		card.DoneAt = utcTime( snap.DoneAt )
 		if card.DoneAt == nil {

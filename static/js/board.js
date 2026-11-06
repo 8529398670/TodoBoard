@@ -14,6 +14,11 @@ const BoardPage = {
   dragging: false,
   loading: false,
   pollTimer: null,
+  // What a staged board is showing: stage on every column, except those in
+  // columnStages (by list id, or "all"). Kept out of load(), which runs on
+  // every poll; a fresh page starts on To do.
+  stage: "todo",
+  columnStages: {},
 
   views() {
     return { kanban: KanbanView , todo: TodoView , timeline: TimelineView };
@@ -45,6 +50,7 @@ const BoardPage = {
     History.attach( this.client , () => this.data , () => this.load() );
     History.onChange = () => this.showHistory();
     History.bindKeys();
+    Stages.bind();
     Dom.get( "undo-button" ).addEventListener( "click" , () => History.undo() );
     Dom.get( "redo-button" ).addEventListener( "click" , () => History.redo() );
 
@@ -194,6 +200,19 @@ const BoardPage = {
       isThree() {
         return !!data && data.board.layout === "three" && !data.list_only;
       },
+      // A staged board keeps its stages for someone shown a single column,
+      // but the All column, being every list, is only for the whole board.
+      isStaged() {
+        return !!data && data.board.layout === "staged";
+      },
+      showAll() {
+        return this.isStaged() && !data.list_only && !data.card_only;
+      },
+      // The ranking is the whole board's, so a link showing some columns
+      // cannot change it even where it edits their cards.
+      canRank: ( level === "edit" || level === "manage" ) && !( data && ( data.list_only || data.columns_only ) ),
+      boardStage() { return page.stage; },
+      stageIn( key ) { return page.stageOf( key ); },
       // Cards are numbered when the board says so, or, left to each person,
       // when their account does. A guest has no account to ask.
       numbered() {
@@ -232,6 +251,22 @@ const BoardPage = {
         return data.cards
           .filter( function ( card ) { return card.list_id === listId && !card.archived; } )
           .sort( function ( a , b ) { return a.position - b.position; } );
+      },
+      // cardsIn and shownIn, for the one stage.
+      cardsAt( listId , stage ) {
+        return this.cardsIn( listId ).filter( function ( card ) { return Stages.of( card ) === stage; } );
+      },
+      shownAt( listId , stage ) {
+        return this.shownIn( listId ).filter( function ( card ) { return Stages.of( card ) === stage; } );
+      },
+      // The All column's cards: every open card of every list shown, ranked
+      // ones first by place, the rest in board order after them.
+      allCards() {
+        const cards = [];
+        this.lists().forEach( ( list ) => { this.cardsIn( list.id ).forEach( function ( card ) { cards.push( card ); } ); } );
+        const ranked = cards.filter( function ( card ) { return card.rank_place > 0; } )
+          .sort( function ( a , b ) { return a.rank_place - b.rank_place; } );
+        return ranked.concat( cards.filter( function ( card ) { return !card.rank_place; } ) );
       },
       showArchived() { return page.showArchived(); },
       // What a column shows: its open cards, then -- with "Show archived"
@@ -329,6 +364,28 @@ const BoardPage = {
     this.view = view;
     try { window.localStorage.setItem( "view:" + this.data.board.id , view ); } catch ( error ) { /* per-tab only */ }
     this.render();
+  },
+
+  stageOf( key ) {
+    return this.columnStages[ key ] || this.stage;
+  },
+
+  // Every column to stage, and back in step with each other.
+  setStage( stage ) {
+    this.stage = stage;
+    this.columnStages = {};
+    this.render();
+  },
+
+  setColumnStage( key , stage ) {
+    if ( stage === this.stage ) delete this.columnStages[ key ];
+    else this.columnStages[ key ] = stage;
+    this.render();
+  },
+
+  stepStage( delta ) {
+    const index = Stages.order.indexOf( this.stage ) + delta;
+    this.setStage( Stages.order[ Math.min( Math.max( index , 0 ) , Stages.order.length - 1 ) ] );
   },
 
   openCard( cardId ) {

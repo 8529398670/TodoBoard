@@ -11,6 +11,9 @@ type createCardRequest struct {
 	ListID   uint64   `json:"list_id"`
 	Title    string   `json:"title"`
 	Position *float64 `json:"position"`
+	// The stage it starts in, on a staged board.
+	Doing    *bool    `json:"doing"`
+	Done     *bool    `json:"done"`
 }
 
 type checklistAddRequest struct {
@@ -25,6 +28,9 @@ func ( handlers *Handlers ) CreateCard( c fiber.Ctx ) ( err error ) {
 	var body createCardRequest
 	if ok , bind_err := bindBody( c , &body ); ok == false { return bind_err }
 	card , refused := handlers.createCard( principal , board , body.ListID , body.Title , body.Position )
+	if refused == nil && ( body.Doing != nil || body.Done != nil ) {
+		card , _ , refused = handlers.patchCard( principal , board , card , &models.CardPatch{ Doing: body.Doing , Done: body.Done } )
+	}
 	err = handlers.cardReply( c , principal , board , card , refused )
 	if refused == nil { handlers.lookUpProductLater( board , card ) }
 	return
@@ -51,7 +57,8 @@ func ( handlers *Handlers ) createCard( principal *access.Principal , board *mod
 // reordering or archiving it changes the column around it, so that needs
 // edit rights on the column, and moving it to another column needs them on
 // the board -- someone with one shared card or column cannot rearrange the
-// rest.
+// rest. A card's rank is a place on the whole board, so that needs edit
+// rights on the board too.
 func ( handlers *Handlers ) PatchCard( c fiber.Ctx ) ( err error ) {
 	principal , board , card , err := handlers.requireCard( c , access.Edit )
 	if card == nil { return }
@@ -82,6 +89,10 @@ func ( handlers *Handlers ) patchCard( principal *access.Principal , board *mode
 			refused = &refusal{ fiber.StatusForbidden , "forbidden" }
 			return
 		}
+	}
+	if patch.Ranks() && access.Board( principal , board ) < access.Edit {
+		refused = &refusal{ fiber.StatusForbidden , "forbidden" }
+		return
 	}
 	updated , change , patch_err := models.PatchCard( handlers.Store , board.ID , card.ID , patch , principal.Name )
 	if patch_err != nil {

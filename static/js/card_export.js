@@ -61,6 +61,8 @@ const CardExport = {
       meta.push( "**" + T( "export.md_assignees" ) + ":** " + card.assignees.map( function ( id ) { return ctx.people[ id ] || "?"; } ).join( ", " ) );
     }
     if ( card.done ) meta.push( "**" + T( "export.md_status" ) + ":** " + T( "card.done_label" ) );
+    if ( ctx.isStaged() && card.doing ) meta.push( "**" + T( "export.md_status" ) + ":** " + T( "board.status_doing" ) );
+    if ( ctx.isStaged() && card.rank_place ) meta.push( "**" + T( "export.md_rank" ) + ":** " + card.rank_place );
     if ( card.product && card.product.url ) meta.push( "**" + T( "export.md_product" ) + ":** " + ( CardBits.priceText( card ) ? CardBits.priceText( card ) + " " : "" ) + "<" + card.product.url + ">" );
     if ( meta.length ) {
       lines.push( meta.join( "  \n" ) );
@@ -105,6 +107,9 @@ const CardExport = {
     const due = CardBits.due( card );
     if ( due ) meta.appendChild( due );
     if ( card.done ) meta.appendChild( Dom.el( "span" , { class: "due-chip due-done" , text: T( "card.done_label" ) } ) );
+    if ( ctx.isStaged() && card.doing ) meta.appendChild( Dom.el( "span" , { class: "due-chip" , text: T( "board.status_doing" ) } ) );
+    const rank = CardBits.rank( card , ctx );
+    if ( rank ) meta.appendChild( rank );
     const people = CardBits.assignees( card , ctx.people );
     if ( people ) meta.appendChild( people );
     if ( meta.childNodes.length ) node.appendChild( meta );

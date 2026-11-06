@@ -4,16 +4,20 @@
 const KanbanView = {
   render( root , ctx ) {
     const three = ctx.isThree();
-    const scroller = Dom.el( "div" , { class: "kanban scroll-x" + ( three ? " three" : "" ) } );
+    const scroller = Dom.el( "div" , { class: "kanban scroll-x" + ( three ? " three" : "" ) + ( ctx.isStaged() ? " staged" : "" ) } );
     const lists = ctx.lists();
+    // What the dots count, in scroller order: the All column goes first.
+    const columns = ctx.showAll() ? [ { title: T( "board.all_column" ) } ].concat( lists ) : lists;
+    if ( ctx.showAll() ) scroller.appendChild( this.allColumn( ctx ) );
     lists.forEach( ( list ) => scroller.appendChild( this.column( list , ctx ) ) );
     if ( ctx.canEdit && !three && !ctx.fixedColumns ) scroller.appendChild( this.addListColumn( ctx ) );
-    if ( ctx.swipeColumns() && lists.length > 1 ) root.appendChild( this.dots( scroller , lists ) );
+    if ( ctx.isStaged() ) root.appendChild( Stages.bar( ctx ) );
+    if ( ctx.swipeColumns() && columns.length > 1 ) root.appendChild( this.dots( scroller , columns ) );
     root.appendChild( scroller );
 
     if ( !ctx.canEdit || typeof Sortable === "undefined" ) return;
 
-    Dom.all( ".kanban-cards:not(.is-obscured)" , scroller ).forEach( ( container ) => {
+    Dom.all( ".kanban-cards:not(.is-obscured):not(.all-cards)" , scroller ).forEach( ( container ) => {
       Sortable.create( container , {
         group: "cards",
         animation: 150,
@@ -37,6 +41,8 @@ const KanbanView = {
         },
       } );
     } );
+
+    this.rankDragging( scroller , ctx );
 
     // A three-column board's columns are fixed in place, and a single
     // shared column has nowhere to go.
@@ -121,26 +127,90 @@ const KanbanView = {
       return open( node ) ? Number( node.getAttribute( "data-position" ) ) : null;
     };
     const position = CardBits.positionBetween( neighbour( item.previousElementSibling ) , neighbour( item.nextElementSibling ) );
-    ctx.mutate( function () { return ctx.client.patchCard( cardId , { list_id: listId , position: position } ); } );
+    const fields = { list_id: listId , position: position };
+    // Into a column showing another stage, the card takes that stage. Only
+    // staged columns name one; TodoView shares this and has none.
+    const stage = event.to.getAttribute( "data-stage" );
+    const card = ctx.card( cardId );
+    if ( stage && card && Stages.of( card ) !== stage ) Object.assign( fields , Stages.fields( stage ) );
+    ctx.mutate( function () { return ctx.client.patchCard( cardId , fields ); } );
+  },
+
+  // Dragging in the All column changes rank and nothing else: cards neither
+  // leave it nor arrive, and Done cards hold no place to change.
+  rankDragging( scroller , ctx ) {
+    const container = scroller.querySelector( ".all-cards" );
+    if ( !container || !ctx.canRank || ctx.stageIn( "all" ) === "done" ) return;
+    Sortable.create( container , {
+      group: { name: "rank" , pull: false , put: false },
+      animation: 150,
+      forceFallback: true,
+      delay: 150,
+      delayOnTouchOnly: true,
+      ghostClass: "drag-ghost",
+      draggable: ".card-face",
+      filter: ".status-icons",
+      preventOnFilter: false,
+      onStart: function () { ctx.setDragging( true ); },
+      onEnd: function ( event ) {
+        ctx.setDragging( false );
+        if ( event.oldIndex === event.newIndex ) return;
+        KanbanView.ranked( event.item , ctx );
+      },
+    } );
+  },
+
+  // The place a card dropped in the All column has taken. Its neighbours'
+  // places are the board's, which also counts cards in other stages, so the
+  // drop is read from them rather than from where it sits in this column.
+  ranked( item , ctx ) {
+    const cardId = Number( item.getAttribute( "data-card-id" ) );
+    const card = ctx.card( cardId );
+    if ( !card ) return;
+    const placeOf = function ( node ) { return node ? Number( node.getAttribute( "data-rank-place" ) ) || 0 : 0; };
+    const own = card.rank_place || 0;
+    const before = item.previousElementSibling;
+    const above = placeOf( before );
+    const below = placeOf( item.nextElementSibling );
+    let place;
+    // Moving down, the cards it passes each shift up one.
+    if ( below ) place = own && own < below ? below - 1 : below;
+    else if ( above ) place = own && own < above ? above : above + 1;
+    else if ( !before ) place = 1;
+    // Under an unranked card is no rank at all.
+    else place = 0;
+    if ( place === own ) {
+      BoardPage.render();
+      return;
+    }
+    ctx.mutate( function () { return ctx.client.patchCard( cardId , { rank_place: place } ); } );
   },
 
   column( list , ctx ) {
     const hidden = ctx.hiddenCount( list.id );
     if ( hidden !== null ) return this.obscuredColumn( list , hidden );
-    const cards = ctx.cardsIn( list.id );
+    // On a staged board a column is the one stage it is showing: counted,
+    // numbered and added to as such.
+    const staged = ctx.isStaged();
+    const stage = staged ? ctx.stageIn( list.id ) : null;
+    const cards = staged ? ctx.cardsAt( list.id , stage ) : ctx.cardsIn( list.id );
     const column = Dom.el( "section" , { class: "kanban-column" , attrs: { "data-list-id": list.id , "data-position": list.position } } );
+    if ( staged ) column.setAttribute( "data-stage-key" , String( list.id ) );
 
     const header = Dom.el( "header" , { class: "column-header" } );
     const title = Dom.el( "h2" , { class: "column-title" + ( ctx.canEdit ? " column-handle" : "" ) } );
     Markdown.renderInline( list.title , title );
     header.appendChild( title );
-    header.appendChild( Dom.el( "span" , { class: "count" , text: String( cards.length ) } ) );
+    if ( !staged ) header.appendChild( Dom.el( "span" , { class: "count" , text: String( cards.length ) } ) );
     header.appendChild( ListMenu.button( list , ctx ) );
     column.appendChild( header );
+    if ( staged ) column.appendChild( Stages.tabs( list.id , ctx.cardsIn( list.id ) , ctx ) );
 
     const container = Dom.el( "div" , { class: "kanban-cards" , attrs: { "data-list-id": list.id } } );
-    ctx.shownIn( list.id ).forEach( ( card ) => container.appendChild( this.face( card , ctx , cards ) ) );
-    const add = ctx.canEdit ? QuickAdd.forCards( list , ctx , "board.add_card" ) : null;
+    if ( staged ) container.setAttribute( "data-stage" , stage );
+    const shown = staged ? ctx.shownAt( list.id , stage ) : ctx.shownIn( list.id );
+    shown.forEach( ( card ) => container.appendChild( this.face( card , ctx , cards ) ) );
+    const add = ctx.canEdit ? QuickAdd.forCards( list , ctx , "board.add_card" , stage ) : null;
     if ( add && ctx.addOnTop() ) column.appendChild( add );
     column.appendChild( container );
     if ( add && !ctx.addOnTop() ) column.appendChild( add );
@@ -148,6 +218,32 @@ const KanbanView = {
     // CSS ignores it on a phone and on a three-column board).
     if ( !ctx.isThree() && list.width ) column.style.setProperty( "--col-w" , list.width + "px" );
     if ( ctx.canEdit && !ctx.isThree() && !ctx.fixedColumns ) column.appendChild( this.resizer( column , list , ctx ) );
+    return column;
+  },
+
+  // The All column: every list's cards in one, ranked ones first. It is no
+  // list, so it has no menu, no add box, and nothing to resize or drag.
+  allColumn( ctx ) {
+    const cards = ctx.allCards();
+    const stage = ctx.stageIn( "all" );
+    const column = Dom.el( "section" , { class: "kanban-column all-column" , attrs: { "data-stage-key": "all" } } );
+    const header = Dom.el( "header" , { class: "column-header" } );
+    header.appendChild( Dom.el( "h2" , { class: "column-title" , text: T( "board.all_column" ) } ) );
+    column.appendChild( header );
+    column.appendChild( Stages.tabs( "all" , cards , ctx ) );
+    const container = Dom.el( "div" , { class: "kanban-cards all-cards" } );
+    cards.filter( function ( card ) { return Stages.of( card ) === stage; } ).forEach( ( card ) => {
+      const face = this.face( card , ctx , null );
+      face.setAttribute( "data-rank-place" , String( card.rank_place || 0 ) );
+      const list = ctx.board.lists.find( function ( item ) { return item.id === card.list_id; } );
+      if ( list ) {
+        const from = Dom.el( "span" , { class: "card-source" } );
+        Markdown.renderInline( list.title , from );
+        face.appendChild( from );
+      }
+      container.appendChild( face );
+    } );
+    column.appendChild( container );
     return column;
   },
 
@@ -244,6 +340,8 @@ const KanbanView = {
 
     const title = Dom.el( "div" , { class: "card-title" } );
     if ( cards && !card.archived && ctx.numbered() ) title.appendChild( CardBits.numberField( card , cards , ctx ) );
+    const rank = CardBits.rank( card , ctx );
+    if ( rank ) title.appendChild( rank );
     const text = Dom.el( "span" );
     Markdown.renderInline( card.title , text );
     title.appendChild( text );
@@ -292,7 +390,9 @@ const QuickAdd = {
   // sends what is added to the other end instead, for as long as it is on.
   // A picture pasted into the box is held, shown small, and put on the
   // card once it is added.
-  forCards( list , ctx , buttonKey ) {
+  // stage, on a staged board, is the one the column is showing: new cards
+  // start there.
+  forCards( list , ctx , buttonKey , stage ) {
     const key = "card-" + list.id;
     const onTop = function () { return ctx.addOnTop() !== !!QuickAdd.flipped[ key ]; };
     const flip = Ui.iconButton( "arrow-bar-up" , "" , function () {
@@ -312,7 +412,7 @@ const QuickAdd = {
     const wrap = this.build( key , buttonKey , "board.card_title_placeholder" , function ( title , image ) {
       const position = onTop() ? CardBits.edgePosition( ctx.cardsIn( list.id ) , true ) : undefined;
       return ctx.mutate( async function () {
-        const card = await ctx.client.createCard( list.id , title || T( "board.image_card_title" ) , position );
+        const card = await ctx.client.createCard( list.id , title || T( "board.image_card_title" ) , position , stage && stage !== "todo" ? Stages.fields( stage ) : undefined );
         if ( image ) await ctx.client.uploadImage( card.id , await CardBits.shrinkImage( image ) );
         return card;
       } );
@@ -453,7 +553,7 @@ const ListMenu = {
   // Tick the cards to archive from one column. Nothing is ticked to start
   // with; "Select all" ticks the lot.
   pickToArchive( list , ctx ) {
-    const cards = ctx.cardsIn( list.id );
+    const cards = ctx.isStaged() ? ctx.cardsAt( list.id , ctx.stageIn( list.id ) ) : ctx.cardsIn( list.id );
     Panel.open( "board.archive_pick_title" , function ( body ) {
       const form = Dom.el( "form" , { class: "archive-pick" , attrs: { autocomplete: "off" } } );
       const boxes = [];
@@ -514,14 +614,18 @@ const ListMenu = {
       body.appendChild( file );
       // Clearing out a column -- Done, usually. Archived cards come back with
       // "Show archived", undo, or Board settings.
-      const open = ctx.cardsIn( list.id );
+      // On a staged board that means what the column is showing, not the
+      // stages out of sight behind it.
+      const staged = ctx.isStaged();
+      const open = staged ? ctx.cardsAt( list.id , ctx.stageIn( list.id ) ) : ctx.cardsIn( list.id );
       if ( ctx.canEdit && open.length ) {
         body.appendChild( Dom.el( "section" , { class: "panel-section" , children: [
           Dom.el( "div" , { class: "row-actions" , children: [
-            Ui.button( "board.archive_cards" , async function () {
+            Ui.button( staged ? "board.archive_shown" : "board.archive_cards" , async function () {
               if ( !window.confirm( I18n.fill( "board.archive_cards_confirm" , { n: open.length , list: list.title } ) ) ) return;
               Panel.close();
-              await ctx.mutate( function () { return ctx.client.archiveCards( list.id ); } );
+              const ids = staged ? open.map( function ( card ) { return card.id; } ) : undefined;
+              await ctx.mutate( function () { return ctx.client.archiveCards( list.id , ids ); } );
             } ),
             Ui.button( "board.archive_pick" , function () { ListMenu.pickToArchive( list , ctx ); } ),
           ] } ),

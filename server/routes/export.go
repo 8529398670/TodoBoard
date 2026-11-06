@@ -80,6 +80,13 @@ func ( handlers *Handlers ) exportTable( principal *access.Principal , board *mo
 		},
 		Numeric: map[int]bool{ 1: true },
 	}
+	// A staged board's stage and rank; other boards have neither to show.
+	staged := board.Layout == models.LayoutStaged
+	places := models.RankPlaces( board , all_cards )
+	if staged {
+		table.Numeric[ len( table.Header ) + 1 ] = true
+		table.Header = append( table.Header , text( "col_doing" ) , text( "col_rank" ) )
+	}
 	if with_archived { table.Header = append( table.Header , text( "col_archived" ) ) }
 
 	// What the caller is shown on the board is what they can export: a column
@@ -135,6 +142,11 @@ func ( handlers *Handlers ) exportTable( principal *access.Principal , board *mo
 				exportDate( card.StartAt , card.StartAt != nil && card.StartTimed == false , location ) ,
 				exportDate( card.DueAt , card.DueAllDay , location ) ,
 				strings.Join( assignees , ", " ) , checklist , strings.TrimSpace( card.Description ) ,
+			}
+			if staged {
+				rank := ""
+				if place := places[ card.ID ]; place > 0 { rank = strconv.Itoa( place ) }
+				row = append( row , yes( card.Doing , text( "yes" ) ) , rank )
 			}
 			if with_archived { row = append( row , yes( card.Archived , text( "yes" ) ) ) }
 			table.Rows = append( table.Rows , row )

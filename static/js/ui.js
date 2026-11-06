@@ -770,6 +770,28 @@ const CardBits = {
     ctx.mutate( function () { return ctx.client.patchCard( card.id , fields ); } );
   },
 
+  // Moves a card to a stage of its list, at the end of it; into Done,
+  // done-on-top puts it first. Placing it is a move, so only for board
+  // editors -- anyone else's card just changes stage where it is.
+  setStage( card , stage , ctx ) {
+    const fields = Stages.fields( stage );
+    if ( ctx.canEdit ) {
+      const others = ctx.cardsIn( card.list_id ).filter( function ( other ) { return other.id !== card.id; } );
+      fields.position = this.edgePosition( others , stage === "done" && ctx.doneOnTop() );
+    }
+    ctx.mutate( function () { return ctx.client.patchCard( card.id , fields ); } );
+  },
+
+  // A card's place in the board's ranking; nothing on a card without one.
+  rank( card , ctx ) {
+    if ( !ctx.isStaged() || !card.rank_place ) return null;
+    return Dom.el( "span" , {
+      class: "rank-chip",
+      text: I18n.fill( "board.rank_chip" , { n: card.rank_place } ),
+      attrs: { title: I18n.fill( "board.rank_title" , { n: card.rank_place } ) },
+    } );
+  },
+
   positionBetween( before , after ) {
     if ( before == null && after == null ) return 1024;
     if ( before == null ) return after / 2;
@@ -829,8 +851,9 @@ const CardBits = {
 
   // Doing / Done icons, top right of a card. On a three-column board they
   // move the card to the second or third column, and pressing the lit one
-  // sends it back to the first; they never touch the done flag. On any other
-  // board there is just Done, which ticks the card's done flag.
+  // sends it back to the first; they never touch the done flag. On a staged
+  // board they change the card's stage in its own list the same way. On any
+  // other board there is just Done, which ticks the card's done flag.
   statusIcons( card , ctx ) {
     const wrap = this.inert( Dom.el( "div" , { class: "status-icons" } ) );
     const icon = function ( kind , pressed , enabled , onClick ) {
@@ -856,6 +879,11 @@ const CardBits = {
           const position = CardBits.edgePosition( there , pair[ 0 ] === "done" && !here && ctx.doneOnTop() );
           ctx.mutate( function () { return ctx.client.patchCard( card.id , { list_id: target.id , position: position } ); } );
         } );
+      } );
+    } else if ( ctx.isStaged() ) {
+      [ "doing" , "done" ].forEach( function ( stage ) {
+        const here = Stages.of( card ) === stage;
+        icon( stage , here , card.access === "edit" , function () { CardBits.setStage( card , here ? "todo" : stage , ctx ); } );
       } );
     } else {
       icon( "done" , card.done , card.access === "edit" , function () { CardBits.toggleDone( card , ctx ); } );

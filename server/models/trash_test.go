@@ -71,3 +71,18 @@ func TestTrashExpires( t *testing.T ) {
 		t.Errorf( "cards past retention should be purged on read" )
 	}
 }
+
+func TestTrashKeepsRank( t *testing.T ) {
+	store := testStore( t )
+	owner , _ := CreateUser( store , "Owner" , RoleAdmin )
+	board , _ := CreateBoard( store , owner.ID , "B" , []string{ "To do" } )
+	list := board.SortedLists()[ 0 ].ID
+	card , _ := CreateCard( store , board.ID , list , "Ranked" , nil , owner.ID , "Owner" )
+	place := 1
+	ranked , _ , err := PatchCard( store , board.ID , card.ID , &CardPatch{ RankPlace: &place } , "Owner" )
+	if err != nil { t.Fatal( err ) }
+	if err = TrashCard( store , board.ID , card.ID , "Owner" ); err != nil { t.Fatal( err ) }
+	restored , err := RestoreCard( store , board.ID , card.ID , "Owner" )
+	if err != nil { t.Fatal( err ) }
+	if restored.Rank != ranked.Rank { t.Errorf( "rank lost in the trash: %v, was %v" , restored.Rank , ranked.Rank ) }
+}

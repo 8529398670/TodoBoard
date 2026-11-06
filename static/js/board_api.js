@@ -98,8 +98,9 @@ class BoardClient {
   updateLabel( labelId , fields )  { return this.post( "/" + this.boardId + "/labels/" + labelId , fields ); }
   deleteLabel( labelId )           { return this.post( "/" + this.boardId + "/labels/" + labelId + "/delete" ); }
 
-  createCard( listId , title , position ) {
-    return this.post( "/" + this.boardId + "/cards" , { list_id: listId , title: title , position: position } );
+  // stage, on a staged board, is the Stages.fields of where the card starts.
+  createCard( listId , title , position , stage ) {
+    return this.post( "/" + this.boardId + "/cards" , Object.assign( { list_id: listId , title: title , position: position } , stage ) );
   }
   patchCard( cardId , fields )     { return this.post( "/" + this.boardId + "/cards/" + cardId , fields ); }
   deleteCard( cardId )             { return this.post( "/" + this.boardId + "/cards/" + cardId + "/delete" ); }

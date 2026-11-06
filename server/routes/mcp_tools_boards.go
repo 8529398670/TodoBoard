@@ -53,6 +53,8 @@ var boardRefSchema = fiber.Map{ "type": []string{ "integer" , "string" } , "desc
 var cardIDSchema = fiber.Map{ "type": "integer" , "minimum": 1 , "description": "The card's id, from get_board or find_cards." }
 var listIDSchema = fiber.Map{ "type": "integer" , "minimum": 1 , "description": "The column's id, from get_board." }
 var positionSchema = fiber.Map{ "type": "number" , "description": "Sort position within the column; lower comes first. Leave out to put it at the end." }
+var doingSchema = fiber.Map{ "type": "boolean" , "description": "On a staged board, the Doing stage. true starts the card (reopening it if done); done: true moves it on to Done." }
+var rankPlaceSchema = fiber.Map{ "type": "integer" , "minimum": 0 , "description": "Importance across the whole board: 1 is the most important, and other cards shift to make room. 0 takes the card out of the ranking. Needs edit rights on the board." }
 var dateSchema = fiber.Map{ "type": "string" , "description": `"2026-10-30" for an all-day date, an RFC 3339 timestamp for a time, "" to clear.` }
 var labelColors = []string{ "blue" , "green" , "orange" , "red" , "purple" , "pink" , "teal" , "gray" , "yellow" }
 
@@ -60,6 +62,18 @@ var labelColors = []string{ "blue" , "green" , "orange" , "red" , "purple" , "pi
 // on its edits. No CSRF check -- a bearer key is not an ambient credential.
 func mcpPrincipal( call *mcp.Call ) ( principal *access.Principal ) {
 	principal = &access.Principal{ UserID: call.Actor.User.ID , Key: call.Actor.APIKey , Name: call.Actor.User.DisplayName }
+	return
+}
+
+// rankedCardPayload is cardPayload with the card's place in the board's
+// ranking, which takes the rest of the board to work out.
+func ( handlers *Handlers ) rankedCardPayload( principal *access.Principal , board *models.Board , card *models.Card ) ( payload fiber.Map ) {
+	payload = cardPayload( card , access.Card( principal , board , card ) , access.Board( principal , board ) )
+	payload[ "rank_place" ] = 0
+	if card.Rank == 0 { return }
+	if cards , err := models.ListCards( handlers.Store , board.ID ); err == nil {
+		payload[ "rank_place" ] = models.RankPlaces( board , cards )[ card.ID ]
+	}
 	return
 }
 
@@ -131,7 +145,7 @@ func ( handlers *Handlers ) registerBoardTools( server *mcp.Server ) {
 			if err = call.Bind( &args ); err != nil { return }
 			principal , board , card , err := handlers.mcpCard( call , args.Board , args.CardID , access.View )
 			if err != nil { return }
-			result = cardPayload( card , access.Card( principal , board , card ) , access.Board( principal , board ) )
+			result = handlers.rankedCardPayload( principal , board , card )
 			return
 		},
 	} )
@@ -281,6 +295,8 @@ func ( handlers *Handlers ) registerBoardTools( server *mcp.Server ) {
 			"assignees":   fiber.Map{ "type": "array" , "items": fiber.Map{ "type": "integer" } , "description": "User ids, from get_board's members or list_team." },
 			"start_at":    dateSchema,
 			"due_at":      dateSchema,
+			"doing":       doingSchema,
+			"rank_place":  rankPlaceSchema,
 		} , "board" , "list_id" , "title" ),
 		Call: func( call *mcp.Call ) ( result any , err error ) {
 			var args struct {
@@ -293,6 +309,8 @@ func ( handlers *Handlers ) registerBoardTools( server *mcp.Server ) {
 				Assignees   *[]uint64 `json:"assignees"`
 				StartAt     *string   `json:"start_at"`
 				DueAt       *string   `json:"due_at"`
+				Doing       *bool     `json:"doing"`
+				RankPlace   *int      `json:"rank_place"`
 			}
 			if err = call.Bind( &args ); err != nil { return }
 			principal := mcpPrincipal( call )
@@ -306,7 +324,7 @@ func ( handlers *Handlers ) registerBoardTools( server *mcp.Server ) {
 				err = refusalError( refused )
 				return
 			}
-			patch := models.CardPatch{ Description: args.Description , LabelIDs: args.LabelIDs , Assignees: args.Assignees , StartAt: args.StartAt , DueAt: args.DueAt }
+			patch := models.CardPatch{ Description: args.Description , LabelIDs: args.LabelIDs , Assignees: args.Assignees , StartAt: args.StartAt , DueAt: args.DueAt , Doing: args.Doing , RankPlace: args.RankPlace }
 			if patch != ( models.CardPatch{} ) {
 				updated , _ , patch_refused := handlers.patchCard( principal , board , card , &patch )
 				if patch_refused != nil {
@@ -316,7 +334,7 @@ func ( handlers *Handlers ) registerBoardTools( server *mcp.Server ) {
 				card = updated
 			}
 			handlers.lookUpProductLater( board , card )
-			result = cardPayload( card , access.Card( principal , board , card ) , access.Board( principal , board ) )
+			result = handlers.rankedCardPayload( principal , board , card )
 			return
 		},
 	} )
@@ -324,7 +342,7 @@ func ( handlers *Handlers ) registerBoardTools( server *mcp.Server ) {
 	server.Register( &mcp.Tool{
 		Name:        "update_card",
 		Title:       "Change a card",
-		Description: "Change any of a card's fields; leave out what should not change. Moving it (list_id, position) or archiving it needs edit rights on its column, and on the whole board to move it to another column. done marks it complete. archived: true hides it from the board (reversible). Pass the card's rev when changing title or description: if someone edited it since, the change is refused rather than written over theirs.",
+		Description: "Change any of a card's fields; leave out what should not change. Moving it (list_id, position) or archiving it needs edit rights on its column, and on the whole board to move it to another column. done marks it complete; doing and rank_place are the Doing stage and board-wide importance of a staged board. archived: true hides it from the board (reversible). Pass the card's rev when changing title or description: if someone edited it since, the change is refused rather than written over theirs.",
 		InputSchema: objectSchema( fiber.Map{
 			"board":       boardRefSchema,
 			"card_id":     cardIDSchema,
@@ -338,6 +356,8 @@ func ( handlers *Handlers ) registerBoardTools( server *mcp.Server ) {
 			"start_at":    dateSchema,
 			"due_at":      dateSchema,
 			"done":        fiber.Map{ "type": "boolean" },
+			"doing":       doingSchema,
+			"rank_place":  rankPlaceSchema,
 			"archived":    fiber.Map{ "type": "boolean" },
 		} , "board" , "card_id" ),
 		Call: func( call *mcp.Call ) ( result any , err error ) {
@@ -359,7 +379,7 @@ func ( handlers *Handlers ) registerBoardTools( server *mcp.Server ) {
 				return
 			}
 			handlers.lookUpProductLater( board , updated )
-			result = cardPayload( updated , access.Card( principal , board , updated ) , access.Board( principal , board ) )
+			result = handlers.rankedCardPayload( principal , board , updated )
 			return
 		},
 	} )
@@ -504,6 +524,7 @@ func ( handlers *Handlers ) findCards( principal *access.Principal , args *findC
 			err = list_err
 			return
 		}
+		places := models.RankPlaces( board , cards )
 		for _ , card := range cards {
 			if access.Card( principal , board , card ) == access.None { continue }
 			if card.Archived && args.IncludeArchived == false { continue }
@@ -522,6 +543,8 @@ func ( handlers *Handlers ) findCards( principal *access.Principal , args *findC
 				"title":       card.Title,
 				"due_at":      card.DueAt,
 				"done":        card.Done,
+				"doing":       card.Doing,
+				"rank_place":  places[ card.ID ],
 				"archived":    card.Archived,
 				"assignees":   card.Assignees,
 			} } )

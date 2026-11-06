@@ -109,6 +109,7 @@ const BoardSettings = {
     const layout = Ui.select( [
       { value: "" , text: T( "settings.layout_free" ) },
       { value: "three" , text: T( "settings.layout_three" ) },
+      { value: "staged" , text: T( "settings.layout_staged" ) },
     ] , ctx.board.layout || "" );
     const numbering = Ui.select( [
       { value: "" , text: T( "settings.numbering_default" ) },

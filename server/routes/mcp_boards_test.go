@@ -2,6 +2,8 @@ package routes
 
 import (
 	json "encoding/json"
+	httptest "net/http/httptest"
+	strconv "strconv"
 	strings "strings"
 	testing "testing"
 	time "time"
@@ -125,4 +127,66 @@ func TestMCPBoardAccess( t *testing.T ) {
 	for _ , name := range toolNames( reply ) {
 		if strings.Contains( name , "delete" ) { t.Errorf( "deleting tool offered: %s" , name ) }
 	}
+}
+
+func TestMCPCardStageAndRank( t *testing.T ) {
+	fixture := newMCPFixture( t )
+	key := fixture.user_key
+	_ , reply := fixture.post( t , key , callTool( "create_board" , `{"title":"Staged","lists":["Work","Home","Later"]}` ) )
+	board_id := itoa( uint64( toolResult( t , reply )[ "id" ].( float64 ) ) )
+	_ , reply = fixture.post( t , key , callTool( "get_board" , `{"board":`+board_id+`}` ) )
+	lists := toolResult( t , reply )[ "board" ].( map[ string ]any )[ "lists" ].( []any )
+	work := itoa( uint64( lists[ 0 ].( map[ string ]any )[ "id" ].( float64 ) ) )
+	home := itoa( uint64( lists[ 1 ].( map[ string ]any )[ "id" ].( float64 ) ) )
+
+	_ , reply = fixture.post( t , key , callTool( "create_card" , `{"board":`+board_id+`,"list_id":`+work+`,"title":"First","doing":true,"rank_place":1}` ) )
+	first := toolResult( t , reply )
+	if first[ "doing" ] != true || first[ "rank_place" ] != float64( 1 ) { t.Fatalf( "create_card: %v" , first ) }
+	_ , reply = fixture.post( t , key , callTool( "create_card" , `{"board":`+board_id+`,"list_id":`+home+`,"title":"Second","rank_place":1}` ) )
+	second := toolResult( t , reply )
+	if second[ "rank_place" ] != float64( 1 ) { t.Fatalf( "the new card takes first place: %v" , second ) }
+
+	first_id := itoa( uint64( first[ "id" ].( float64 ) ) )
+	_ , reply = fixture.post( t , key , callTool( "get_card" , `{"board":`+board_id+`,"card_id":`+first_id+`}` ) )
+	if place := toolResult( t , reply )[ "rank_place" ]; place != float64( 2 ) { t.Errorf( "the other card shifts down, got %v" , place ) }
+	_ , reply = fixture.post( t , key , callTool( "update_card" , `{"board":`+board_id+`,"card_id":`+first_id+`,"rank_place":1}` ) )
+	if place := toolResult( t , reply )[ "rank_place" ]; place != float64( 1 ) { t.Errorf( "update_card: %v" , place ) }
+
+	_ , reply = fixture.post( t , key , callTool( "find_cards" , `{"board":`+board_id+`,"query":"First"}` ) )
+	text , _ := json.Marshal( toolResult( t , reply ) )
+	if strings.Contains( string( text ) , `"rank_place":1` ) == false || strings.Contains( string( text ) , `"doing":true` ) == false {
+		t.Errorf( "find_cards rows: %s" , text )
+	}
+
+	// Someone who can only view the board cannot change its ranking.
+	member := fixture.memberKey( t )
+	numeric , _ := strconv.ParseUint( board_id , 10 , 64 )
+	if _ , err := models.SetMember( fixture.store , numeric , fixture.member.ID , models.BoardRoleViewer ); err != nil { t.Fatal( err ) }
+	_ , reply = fixture.post( t , member , callTool( "update_card" , `{"board":`+board_id+`,"card_id":`+first_id+`,"rank_place":2}` ) )
+	if failed , _ := toolFailed( t , reply ); failed == false { t.Errorf( "a viewer set a rank" ) }
+}
+
+// A column edit link works its own column's cards, stages included, but the
+// ranking runs across the whole board.
+func TestColumnLinkCannotRank( t *testing.T ) {
+	fixture := newMCPFixture( t )
+	board , err := models.CreateBoard( fixture.store , fixture.owner.ID , "Staged" , []string{ "Work" , "Home" , "Later" } )
+	if err != nil { t.Fatal( err ) }
+	list := board.SortedLists()[ 0 ].ID
+	card , err := models.CreateCard( fixture.store , board.ID , list , "Task" , nil , fixture.owner.ID , "Owner" )
+	if err != nil { t.Fatal( err ) }
+	credential , _ , err := models.IssueShareLink( fixture.store , board.ID , 0 , list , nil , models.ModeEdit , "" , 1 , fixture.owner.ID )
+	if err != nil { t.Fatal( err ) }
+	patch := func( body string ) int {
+		request := httptest.NewRequest( "POST" , "/api/shared/"+itoa( board.ID )+"/cards/"+itoa( card.ID ) , strings.NewReader( body ) )
+		request.Header.Set( "Content-Type" , "application/json" )
+		request.Header.Set( "X-Share-Token" , credential )
+		response , test_err := fixture.app.Test( request )
+		if test_err != nil { t.Fatal( test_err ) }
+		return response.StatusCode
+	}
+	if status := patch( `{"doing":true}` ); status != 200 { t.Errorf( "doing on a column link: %d" , status ) }
+	if status := patch( `{"rank_place":1}` ); status != 403 { t.Errorf( "rank on a column link: %d, want 403" , status ) }
+	updated , _ := models.GetCard( fixture.store , board.ID , card.ID )
+	if updated.Doing == false || updated.Rank != 0 { t.Errorf( "card: %+v" , updated ) }
 }

@@ -171,6 +171,8 @@ const CardModal = {
     body.appendChild( this.dates( card , canEdit ) );
     const people = this.assignees( card , canEdit );
     if ( people ) body.appendChild( people );
+    const rank = this.rankSection( card );
+    if ( rank ) body.appendChild( rank );
     body.appendChild( this.placement( card , canEdit , canMove ) );
     const labels = this.labels( card , canEdit );
     if ( labels ) body.appendChild( labels );
@@ -557,6 +559,45 @@ const CardModal = {
     row.appendChild( input );
     section.appendChild( row );
     if ( card.price && fetched && fetched !== card.price ) section.appendChild( Dom.el( "p" , { class: "muted small-print" , text: I18n.fill( "card.price_overrides" , { price: fetched } ) } ) );
+    return section;
+  },
+
+  // The card's place in the board's ranking, on a staged board: type a
+  // number and the others make room, or clear it. A text box, not a number
+  // one, so a refresh holds off while it is being typed in (see typing).
+  // A finished or archived card holds no place until it is back.
+  rankSection( card ) {
+    const ctx = this.ctx;
+    if ( !ctx.isStaged() ) return null;
+    const place = card.rank_place || 0;
+    const section = Dom.el( "section" , { class: "card-section card-price" } );
+    if ( !ctx.canRank || card.done || card.archived ) {
+      if ( !place ) return null;
+      section.appendChild( Dom.el( "p" , { class: "muted" , text: I18n.fill( "board.rank_title" , { n: place } ) } ) );
+      return section;
+    }
+    const input = Dom.el( "input" , { class: "form-control form-control-sm card-price-input" , attrs: {
+      type: "text" , inputmode: "numeric" , maxlength: "5" , autocomplete: "off",
+      placeholder: T( "card.rank_placeholder" ), "aria-label": T( "card.rank_label" ),
+    } } );
+    input.value = place ? String( place ) : "";
+    input.addEventListener( "change" , () => {
+      const text = input.value.trim();
+      const wanted = text === "" ? 0 : parseInt( text , 10 );
+      if ( isNaN( wanted ) || wanted < 0 ) {
+        input.value = place ? String( place ) : "";
+        return;
+      }
+      if ( wanted !== place ) this.save( { rank_place: wanted } );
+    } );
+    input.addEventListener( "keydown" , function ( event ) {
+      if ( event.key === "Enter" ) { event.preventDefault(); input.blur(); }
+    } );
+    const row = Dom.el( "label" , { class: "card-price-row" } );
+    row.appendChild( Dom.el( "span" , { class: "card-price-label" , text: T( "card.rank_label" ) } ) );
+    row.appendChild( input );
+    section.appendChild( row );
+    section.appendChild( Dom.el( "p" , { class: "muted small-print" , text: T( "card.rank_hint" ) } ) );
     return section;
   },
 

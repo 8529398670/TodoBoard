@@ -191,9 +191,11 @@ const History = {
       start_at: this.encodeDate( copy.start_at , copy.start_all_day ),
       due_at: this.encodeDate( copy.due_at , copy.due_all_day ),
       done: copy.done,
+      doing: !!copy.doing,
       archived: copy.archived,
       price: copy.price || "",
     } ) );
+    if ( copy.rank ) await this.raw.patchCard( created.id , { rank: copy.rank } );
     for ( const item of copy.checklist ) {
       const newId = await this.addItemBack( created.id , item );
       this.remap( "item" , item.id , newId );
@@ -238,7 +240,7 @@ const History = {
       const cardId = args[ 0 ];
       const card = this.findCard( before , cardId );
       if ( !card ) return null;
-      const keys = [ "title" , "description" , "list_id" , "position" , "label_ids" , "assignees" , "start_at" , "due_at" , "done" , "archived" , "price" ];
+      const keys = [ "title" , "description" , "list_id" , "position" , "label_ids" , "assignees" , "start_at" , "due_at" , "done" , "doing" , "archived" , "price" , "rank_place" ];
       const change = this.previous( card , args[ 1 ] , keys , ( source , key ) => this.cardValue( source , key ) );
       if ( !change ) return null;
       const fields = Object.keys( change.forward );
@@ -256,7 +258,7 @@ const History = {
       return {
         undo: () => this.raw.deleteCard( this.id( "card" , cardId ) ),
         redo: async () => {
-          const created = await this.raw.createCard( this.id( "list" , listId ) , args[ 1 ] , args[ 2 ] );
+          const created = await this.raw.createCard( this.id( "list" , listId ) , args[ 1 ] , args[ 2 ] , args[ 3 ] );
           this.remap( "card" , cardId , created.id );
         },
       };

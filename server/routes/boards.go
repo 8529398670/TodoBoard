@@ -123,6 +123,7 @@ func ( handlers *Handlers ) boardPayload( principal *access.Principal , board *m
 	// Columns a link shows by title only: how many open cards are in each,
 	// and nothing else about them.
 	hidden_lists := map[uint64]int{}
+	places := models.RankPlaces( board , all_cards )
 	for _ , card := range all_cards {
 		if access.HiddenList( principal , board , card.ListID ) {
 			if card.Archived == false { hidden_lists[ card.ListID ] += 1 }
@@ -132,7 +133,9 @@ func ( handlers *Handlers ) boardPayload( principal *access.Principal , board *m
 		if level == access.None { continue }
 		visible_lists[ card.ListID ] = true
 		for _ , id := range card.Assignees { people_ids[ id ] = true }
-		visible = append( visible , cardPayload( card , level , board_level ) )
+		row := cardPayload( card , level , board_level )
+		row[ "rank_place" ] = places[ card.ID ]
+		visible = append( visible , row )
 	}
 
 	lists := []*models.List{}
@@ -219,6 +222,8 @@ func cardPayload( card *models.Card , level access.Level , board_level access.Le
 		"due_all_day": card.DueAllDay,
 		"done":        card.Done,
 		"done_at":     card.DoneAt,
+		"doing":       card.Doing,
+		"rank":        card.Rank,
 		"checklist":   card.Checklist,
 		"archived":    card.Archived,
 		"created_at":  card.CreatedAt,

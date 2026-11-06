@@ -135,3 +135,38 @@ func TestSnapshotKeepsSlugWhenFree( t *testing.T ) {
 	second , _ , _ := ImportBoardSkeleton( store , owner.ID , snap )
 	if second.Slug == "summer-trip" { t.Error( "a taken slug must not be reused" ) }
 }
+
+func TestSnapshotKeepsStagesAndRanks( t *testing.T ) {
+	store := testStore( t )
+	owner , _ := CreateUser( store , "Owner" , RoleAdmin )
+	board , _ := CreateBoard( store , owner.ID , "Staged" , []string{ "Work" , "Home" } )
+	layout := LayoutStaged
+	board , _ = UpdateBoardSettings( store , board.ID , &BoardSettings{ Layout: &layout } )
+	list := board.SortedLists()[ 0 ]
+	card , _ := CreateCard( store , board.ID , list.ID , "Task" , nil , owner.ID , "Owner" )
+	yes , place := true , 1
+	if _ , _ , err := PatchCard( store , board.ID , card.ID , &CardPatch{ Doing: &yes , RankPlace: &place } , "Owner" ); err != nil { t.Fatal( err ) }
+
+	cards , _ := ListCards( store , board.ID )
+	snap := SnapshotBoard( board , cards , everyCard , 0 , nil )
+	copy , lists , err := ImportBoardSkeleton( store , owner.ID , snap )
+	if err != nil { t.Fatal( err ) }
+	if copy.Layout != LayoutStaged { t.Errorf( "layout lost: %q" , copy.Layout ) }
+	if _ , err = ImportCards( store , copy.ID , lists[ 0 ] , snap.Labels , snap.Lists[ 0 ].Cards , owner.ID , "Owner" ); err != nil { t.Fatal( err ) }
+	again , _ := ListCards( store , copy.ID )
+	if len( again ) != 1 || again[ 0 ].Doing == false || again[ 0 ].Rank != cards[ 0 ].Rank {
+		t.Fatalf( "stage or rank lost: %+v" , again )
+	}
+
+	// A file can claim both stages; Done wins.
+	both := &CardSnapshot{ Title: "Both" , Done: true , Doing: true }
+	if _ , err = ImportCards( store , copy.ID , lists[ 0 ] , nil , []*CardSnapshot{ both } , owner.ID , "Owner" ); err != nil { t.Fatal( err ) }
+	again , _ = ListCards( store , copy.ID )
+	if again[ 1 ].Doing { t.Errorf( "a done card is not also doing: %+v" , again[ 1 ] ) }
+
+	// A column file lands on another board, where the rank means nothing.
+	column := SnapshotColumn( board , list , cards , everyCard , nil )
+	if column.List.Cards[ 0 ].Rank != 0 || column.List.Cards[ 0 ].Doing == false {
+		t.Errorf( "column file keeps the stage and drops the rank: %+v" , column.List.Cards[ 0 ] )
+	}
+}
