@@ -77,6 +77,9 @@ type BoardSnapshot struct {
 	Color       string           `json:"color"`
 	Theme       *Theme           `json:"theme"`
 	Shopping    bool             `json:"shopping,omitempty"`
+	PurposeEnabled bool          `json:"purpose_enabled,omitempty"`
+	Purpose     string           `json:"purpose,omitempty"`
+	Notes       string           `json:"notes,omitempty"`
 	Labels      []*LabelSnapshot `json:"labels"`
 	Lists       []*ListSnapshot  `json:"lists"`
 }
@@ -105,6 +108,7 @@ func SnapshotBoard( board *Board , cards []*Card , visible func( card *Card ) bo
 	snap = &BoardSnapshot{
 		Title: board.Title , Slug: board.Slug , Layout: board.Layout , Numbering: board.Numbering ,
 		DefaultView: board.DefaultView , Color: board.Color , Theme: board.Theme , Shopping: board.Shopping ,
+		PurposeEnabled: board.PurposeEnabled , Purpose: board.Purpose , Notes: board.Notes ,
 		Labels: snapshotLabels( board , nil ) , Lists: []*ListSnapshot{} ,
 	}
 	for _ , list := range board.SortedLists() {
@@ -188,13 +192,15 @@ func ImportBoardSkeleton( store *db.Store , owner_id uint64 , snap *BoardSnapsho
 		board = &Board{
 			ID: id , Title: title , OwnerID: owner_id , Members: map[uint64]string{} ,
 			Lists: []*List{} , Labels: []*Label{} , Layout: LayoutFree , DefaultView: ViewKanban ,
-			Shopping: snap.Shopping , Rev: 1 , CreatedAt: now , UpdatedAt: now ,
+			Shopping: snap.Shopping , PurposeEnabled: snap.PurposeEnabled , Rev: 1 , CreatedAt: now , UpdatedAt: now ,
 		}
 		if snap.Layout == LayoutThree || snap.Layout == LayoutStaged { board.Layout = snap.Layout }
 		if snap.Numbering == NumberingOn || snap.Numbering == NumberingOff { board.Numbering = snap.Numbering }
 		if ValidBoardView( snap.DefaultView ) { board.DefaultView = snap.DefaultView }
 		if ValidColor( snap.Color ) { board.Color = snap.Color }
 		if snap.Theme != nil && snap.Theme.Validate() == nil { board.Theme = snap.Theme }
+		if validBoardText( snap.Purpose ) { board.Purpose = snap.Purpose }
+		if validBoardText( snap.Notes ) { board.Notes = snap.Notes }
 		for _ , label := range snap.Labels {
 			// A label this server would refuse is dropped; its cards lose it.
 			if label != nil && labelMatch( board , label.Name , label.Color ) == nil { AddLabel( board , label.Name , label.Color ) }

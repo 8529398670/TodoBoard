@@ -1710,6 +1710,26 @@
                   "shopping": {
                     "type": "boolean"
                   },
+                  "purpose_enabled": {
+                    "type": "boolean",
+                    "description": "Turns the board's Purpose section on or off; off keeps the text. Members only."
+                  },
+                  "purpose": {
+                    "type": "string",
+                    "description": "Markdown: what the board is for and how to work on it. Members only; needs the section on, or answers 409 purpose_off."
+                  },
+                  "purpose_rev": {
+                    "type": "integer",
+                    "description": "The rev purpose was read at; a newer one answers 409 board_text_stale."
+                  },
+                  "notes": {
+                    "type": "string",
+                    "description": "Markdown: links, documents, an index. Members only."
+                  },
+                  "notes_rev": {
+                    "type": "integer",
+                    "description": "The rev notes was read at; a newer one answers 409 board_text_stale."
+                  },
                   "show_rank": {
                     "type": "boolean"
                   },
@@ -10854,6 +10874,24 @@
               },
               "shopping": {
                 "type": "boolean"
+              },
+              "purpose_enabled": {
+                "type": "boolean",
+                "description": "Left out for a share link showing only part of the board."
+              },
+              "purpose": {
+                "type": "string",
+                "description": "Left out while the Purpose section is off, and for a share link showing only part of the board."
+              },
+              "purpose_rev": {
+                "type": "integer"
+              },
+              "notes": {
+                "type": "string",
+                "description": "Left out for a share link showing only part of the board."
+              },
+              "notes_rev": {
+                "type": "integer"
               },
               "show_rank": {
                 "type": "boolean"

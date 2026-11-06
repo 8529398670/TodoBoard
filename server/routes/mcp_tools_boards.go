@@ -99,7 +99,7 @@ func ( handlers *Handlers ) registerBoardTools( server *mcp.Server ) {
 	server.Register( &mcp.Tool{
 		Name:        "get_board",
 		Title:       "Read a board",
-		Description: "A board as you can see it: its columns (lists), labels, members, and the cards you may see, with each card's column, labels, assignees, dates, checklist and rev. people maps user ids to names. Archived cards are left out unless include_archived is true.",
+		Description: "A board as you can see it: its notes, its purpose if the board has that section on (board.purpose says what the board is for and how to work on it, so read it first), columns (lists), labels, members, and the cards you may see, with each card's column, labels, assignees, dates, checklist and rev. people maps user ids to names. Archived cards are left out unless include_archived is true.",
 		ReadOnly:    true,
 		InputSchema: objectSchema( fiber.Map{
 			"board":            boardRefSchema,
@@ -127,6 +127,81 @@ func ( handlers *Handlers ) registerBoardTools( server *mcp.Server ) {
 				cards = open
 			}
 			result = handlers.boardPayload( principal , board , cards )
+			return
+		},
+	} )
+
+	server.Register( &mcp.Tool{
+		Name:        "get_board_notes",
+		Title:       "Read a board's purpose and notes",
+		Description: "Just the board's notes and purpose, without its cards. notes holds links, documents and reference material. purpose says what the board is for and how to work on it, and is only there when purpose_enabled is true. Both are markdown, and may be empty. Read them before working on a board. The revs go back to update_board_notes.",
+		ReadOnly:    true,
+		InputSchema: objectSchema( fiber.Map{ "board": boardRefSchema } , "board" ),
+		Call: func( call *mcp.Call ) ( result any , err error ) {
+			var args struct {
+				Board boardRef `json:"board"`
+			}
+			if err = call.Bind( &args ); err != nil { return }
+			board , refused := handlers.loadBoardAt( mcpPrincipal( call ) , string( args.Board ) , access.View )
+			if refused != nil {
+				err = refusalError( refused )
+				return
+			}
+			result = boardTextPayload( board )
+			return
+		},
+	} )
+
+	server.Register( &mcp.Tool{
+		Name:        "update_board_notes",
+		Title:       "Change a board's purpose or notes",
+		Description: "Replace a board's notes, its purpose, or both; leave out what should not change. A board's purpose can only be written while its Purpose section is on, which a person does in Board settings. Each is the whole new markdown text, so to add a link, send the old notes with it added. Each needs the rev it was read at, from get_board_notes or get_board: if someone edited the text since, the change is refused rather than written over theirs. Needs edit rights on the board.",
+		InputSchema: objectSchema( fiber.Map{
+			"board":       boardRefSchema,
+			"purpose":     fiber.Map{ "type": "string" , "description": "Markdown: what the board is for and how to work on it." },
+			"purpose_rev": fiber.Map{ "type": "integer" , "description": "Required with purpose." },
+			"notes":       fiber.Map{ "type": "string" , "description": "Markdown: links, documents, an index." },
+			"notes_rev":   fiber.Map{ "type": "integer" , "description": "Required with notes." },
+		} , "board" ),
+		Call: func( call *mcp.Call ) ( result any , err error ) {
+			var args struct {
+				Board      boardRef `json:"board"`
+				Purpose    *string  `json:"purpose"`
+				PurposeRev *uint64  `json:"purpose_rev"`
+				Notes      *string  `json:"notes"`
+				NotesRev   *uint64  `json:"notes_rev"`
+			}
+			if err = call.Bind( &args ); err != nil { return }
+			if args.Purpose == nil && args.Notes == nil {
+				err = mcp.Refuse( "send purpose, notes, or both" )
+				return
+			}
+			// Required here though optional on the web: a change through a key
+			// has no undo, so it must be made on top of what is there.
+			if ( args.Purpose != nil && args.PurposeRev == nil ) || ( args.Notes != nil && args.NotesRev == nil ) {
+				err = mcp.Refuse( "purpose needs purpose_rev and notes needs notes_rev; read them with get_board_notes" )
+				return
+			}
+			board , refused := handlers.loadBoardAt( mcpPrincipal( call ) , string( args.Board ) , access.Edit )
+			if refused != nil {
+				err = refusalError( refused )
+				return
+			}
+			settings := &models.BoardSettings{ Purpose: args.Purpose , PurposeRev: args.PurposeRev , Notes: args.Notes , NotesRev: args.NotesRev }
+			updated , update_err := models.UpdateBoardSettings( handlers.Store , board.ID , settings )
+			if errors.Is( update_err , models.ErrBoardTextStale ) {
+				err = mcp.Refuse( "board_text_stale: someone changed this since that rev. Read it again with get_board_notes and redo your change on top." )
+				return
+			}
+			if errors.Is( update_err , models.ErrPurposeOff ) {
+				err = mcp.Refuse( "purpose_off: this board's Purpose section is off. Someone with edit rights can turn it on in Board settings." )
+				return
+			}
+			if update_err != nil {
+				err = refusalError( modelRefusal( update_err ) )
+				return
+			}
+			result = fiber.Map{ "purpose_rev": updated.PurposeRev , "notes_rev": updated.NotesRev }
 			return
 		},
 	} )

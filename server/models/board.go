@@ -66,7 +66,17 @@ var (
 	ErrListNotFound  = errors.New( "list not found" )
 	ErrLabelNotFound = errors.New( "label not found" )
 	ErrBadInput      = errors.New( "invalid input" )
+	// ErrBoardTextStale: the purpose or notes changed since the rev the
+	// caller read, so the write was refused rather than landing on top.
+	ErrBoardTextStale = errors.New( "board text changed" )
+	// ErrPurposeOff: the board's Purpose section is switched off.
+	ErrPurposeOff = errors.New( "purpose is off" )
 )
+
+// maxBoardTextBytes bounds the purpose and the notes, each. They ride inside
+// the board record, which is rewritten on every card change, so this is well
+// under a card description's limit.
+const maxBoardTextBytes = 64 * 1024
 
 // Board holds its lists and labels inline: they are small, always read
 // together with the board, and edited rarely compared to cards. Cards live in
@@ -99,6 +109,20 @@ type Board struct {
 	// ShowRank: on a staged board, cards show their board-wide rank outside
 	// the All list too. The All list always shows it.
 	ShowRank    bool              `json:"show_rank"`
+	// Notes is the board's reference shelf: links, documents, an index.
+	// Purpose says what the board is for and how to work on it; it is what an
+	// agent reads before touching the board. Both are markdown.
+	//
+	// Purpose is a section a board opts into with PurposeEnabled. Switched
+	// off, nobody is shown it, but the text is kept for switching back on.
+	//
+	// Each has its own rev because Rev moves on every card change and so
+	// cannot tell whether this text was edited.
+	PurposeEnabled bool           `json:"purpose_enabled"`
+	Purpose     string            `json:"purpose"`
+	PurposeRev  uint64            `json:"purpose_rev"`
+	Notes       string            `json:"notes"`
+	NotesRev    uint64            `json:"notes_rev"`
 	Rev         uint64            `json:"rev"`
 	NextLocalID uint64            `json:"next_local_id"`
 	// NextCardSerial is the last number given to a card here; 0 until the
@@ -328,6 +352,13 @@ type BoardSettings struct {
 	ShowRank    *bool    `json:"show_rank"`
 	DonePlacement *string `json:"done_placement"`
 	AddPlacement  *string `json:"add_placement"`
+	// PurposeRev and NotesRev, when sent, are the revs the text was read at:
+	// a change on top of a newer version is refused (ErrBoardTextStale).
+	PurposeEnabled *bool `json:"purpose_enabled"`
+	Purpose     *string  `json:"purpose"`
+	PurposeRev  *uint64  `json:"purpose_rev"`
+	Notes       *string  `json:"notes"`
+	NotesRev    *uint64  `json:"notes_rev"`
 }
 
 // UpdateBoardSettings applies settings in one transaction; the slug index
@@ -392,6 +423,27 @@ func ( settings *BoardSettings ) Apply( board *Board ) ( err error ) {
 		if validPlacement( *settings.AddPlacement ) == false { return ErrBadInput }
 		board.AddPlacement = *settings.AddPlacement
 	}
+	if settings.PurposeEnabled != nil { board.PurposeEnabled = *settings.PurposeEnabled }
+	if settings.Purpose != nil && board.PurposeEnabled == false { return ErrPurposeOff }
+	if err = applyBoardText( &board.Purpose , &board.PurposeRev , settings.Purpose , settings.PurposeRev ); err != nil { return }
+	err = applyBoardText( &board.Notes , &board.NotesRev , settings.Notes , settings.NotesRev )
+	return
+}
+
+func validBoardText( value string ) ( result bool ) {
+	result = len( value ) <= maxBoardTextBytes && utf8.ValidString( value )
+	return
+}
+
+// applyBoardText writes value over text, moving rev only if the text really
+// changed. A nil value leaves it alone; a nil read_rev skips the stale check.
+func applyBoardText( text *string , rev *uint64 , value *string , read_rev *uint64 ) ( err error ) {
+	if value == nil { return }
+	if validBoardText( *value ) == false { return ErrBadInput }
+	if read_rev != nil && *read_rev != *rev { return ErrBoardTextStale }
+	if *value == *text { return }
+	*text = *value
+	*rev += 1
 	return
 }
 

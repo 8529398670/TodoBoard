@@ -2,6 +2,7 @@ package models
 
 import (
 	errors "errors"
+	strings "strings"
 	testing "testing"
 )
 
@@ -390,4 +391,66 @@ func TestListWidth( t *testing.T ) {
 	if err := set( -1 ); !errors.Is( err , ErrBadInput ) { t.Errorf( "a negative width is refused: %v" , err ) }
 	set( 0 )
 	if board.Lists[ 0 ].Width != 0 { t.Errorf( "0 goes back to the standard width: %d" , board.Lists[ 0 ].Width ) }
+}
+
+func TestBoardText( t *testing.T ) {
+	store := testStore( t )
+	owner , _ := CreateUser( store , "Owner" , RoleUser )
+	board , err := CreateBoard( store , owner.ID , "Text" , []string{ "A" , "B" , "C" } )
+	if err != nil { t.Fatal( err ) }
+	write := func( settings *BoardSettings ) ( updated *Board , write_err error ) {
+		updated , write_err = UpdateBoardSettings( store , board.ID , settings )
+		return
+	}
+	text := func( value string ) *string { return &value }
+	rev := func( value uint64 ) *uint64 { return &value }
+
+	// Off by default, and writing to it is refused until it is on.
+	if board.PurposeEnabled { t.Errorf( "a new board has the Purpose section on" ) }
+	if _ , err = write( &BoardSettings{ Purpose: text( "one" ) } ); errors.Is( err , ErrPurposeOff ) == false {
+		t.Errorf( "purpose while off: %v" , err )
+	}
+	on , off := true , false
+
+	updated , err := write( &BoardSettings{ PurposeEnabled: &on , Purpose: text( "one" ) , PurposeRev: rev( 0 ) } )
+	if err != nil || updated.Purpose != "one" || updated.PurposeRev != 1 || updated.NotesRev != 0 { t.Fatalf( "first write: %+v , %v" , updated , err ) }
+
+	// The same text again is not an edit: nobody else's draft goes stale.
+	updated , err = write( &BoardSettings{ Purpose: text( "one" ) , PurposeRev: rev( 1 ) } )
+	if err != nil || updated.PurposeRev != 1 { t.Errorf( "same text: %+v , %v" , updated , err ) }
+
+	if _ , err = write( &BoardSettings{ Purpose: text( "two" ) , PurposeRev: rev( 0 ) } ); errors.Is( err , ErrBoardTextStale ) == false {
+		t.Errorf( "stale rev: %v" , err )
+	}
+	// One stale half refuses the whole change.
+	if _ , err = write( &BoardSettings{ Notes: text( "n" ) , NotesRev: rev( 0 ) , Purpose: text( "two" ) , PurposeRev: rev( 9 ) } ); errors.Is( err , ErrBoardTextStale ) == false {
+		t.Errorf( "half stale: %v" , err )
+	}
+	stored , _ := GetBoard( store , board.ID )
+	if stored.Purpose != "one" || stored.Notes != "" { t.Errorf( "after refusals: %+v" , stored ) }
+
+	if _ , err = write( &BoardSettings{ Notes: text( strings.Repeat( "x" , maxBoardTextBytes + 1 ) ) } ); errors.Is( err , ErrBadInput ) == false {
+		t.Errorf( "too long: %v" , err )
+	}
+	if _ , err = write( &BoardSettings{ Notes: text( "\xff" ) } ); errors.Is( err , ErrBadInput ) == false {
+		t.Errorf( "not utf-8: %v" , err )
+	}
+
+	// A card change moves the board's rev but not the text's.
+	list := stored.SortedLists()[ 0 ].ID
+	if _ , err = CreateCard( store , board.ID , list , "Card" , nil , owner.ID , "Owner" ); err != nil { t.Fatal( err ) }
+	after , _ := GetBoard( store , board.ID )
+	if after.Rev == stored.Rev || after.PurposeRev != stored.PurposeRev { t.Errorf( "revs after a card: %d %d" , after.Rev , after.PurposeRev ) }
+
+	// A backup carries both across; one too long to keep is dropped alone.
+	snap := SnapshotBoard( after , nil , func( *Card ) bool { return true } , 0 , func( uint64 ) string { return "" } )
+	snap.Notes = strings.Repeat( "x" , maxBoardTextBytes + 1 )
+	imported , _ , err := ImportBoardSkeleton( store , owner.ID , snap )
+	if err != nil { t.Fatal( err ) }
+	if imported.Purpose != "one" || imported.Notes != "" || imported.PurposeEnabled == false { t.Errorf( "imported: %+v" , imported ) }
+
+	// Switching it off keeps the text for switching back on.
+	if _ , err = write( &BoardSettings{ PurposeEnabled: &off } ); err != nil { t.Fatal( err ) }
+	updated , err = write( &BoardSettings{ PurposeEnabled: &on } )
+	if err != nil || updated.Purpose != "one" { t.Errorf( "back on: %+v , %v" , updated , err ) }
 }

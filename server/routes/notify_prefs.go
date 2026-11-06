@@ -69,16 +69,20 @@ func ( handlers *Handlers ) SaveNotifyPrefs( c fiber.Ctx ) ( err error ) {
 		err = serverError( c )
 		return
 	}
-	prefs := body.UserPrefs
-	// Display settings have their own endpoint; this form does not send them.
-	prefs.DisplayTimezone , prefs.Hour12 = current.DisplayTimezone , current.Hour12
-	prefs.NumberCards , prefs.PlainIcons = current.NumberCards , current.PlainIcons
-	prefs.DoneOnTop , prefs.AddOnTop = current.DoneOnTop , current.AddOnTop
-	switch prefs.PushoverUserKey {
+	// Start from what is saved and take only what this form owns. Display
+	// settings have their own endpoint, and this way one added later is kept
+	// without anyone having to remember to list it here.
+	prefs := *current
+	prefs.PushoverDevice , prefs.Timezone = body.PushoverDevice , body.Timezone
+	prefs.ReminderLeadMinutes , prefs.AllDayReminderHour = body.ReminderLeadMinutes , body.AllDayReminderHour
+	prefs.AssigneeDefaults , prefs.WatchDefaults = body.AssigneeDefaults , body.WatchDefaults
+	prefs.SharedWithMe , prefs.Paused = body.SharedWithMe , body.Paused
+	switch body.PushoverUserKey {
 	case "":
-		prefs.PushoverUserKey = current.PushoverUserKey
 	case "-":
 		prefs.PushoverUserKey = ""
+	default:
+		prefs.PushoverUserKey = body.PushoverUserKey
 	}
 	if save_err := models.SaveUserPrefs( handlers.Store , user.ID , &prefs ); save_err != nil {
 		err = badRequest( c , "invalid_prefs" )

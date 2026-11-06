@@ -700,6 +700,9 @@ p.due-chip { margin: 0.5rem 0; }
 .description.editable { cursor: text; padding: 0.4rem 0.5rem; margin: 0 -0.5rem; border: 1px solid transparent; border-radius: 8px; }
 .description.editable:hover { border-color: var(--border); background: var(--bg); }
 .description.preview { padding: 0.6rem; border: 1px dashed var(--border); border-radius: 8px; min-height: 6rem; }
+.board-notes-head { justify-content: flex-end; margin-bottom: 0.5rem; }
+.board-notes-head .muted { flex: 1 1 auto; margin: 0; }
+.board-notes-actions { margin-top: 0.5rem; }
 .description-input { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.88rem; min-height: 12rem; }
 .conflict { margin-bottom: 0.75rem; }
 .checklist { list-style: none; margin: 0 0 0.5rem; padding: 0; }

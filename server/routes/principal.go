@@ -235,6 +235,10 @@ func modelRefusal( model_err error ) ( refused *refusal ) {
 		refused = &refusal{ fiber.StatusBadRequest , "invalid_input" }
 	case errors.Is( model_err , models.ErrStale ):
 		refused = &refusal{ fiber.StatusConflict , "card_stale" }
+	case errors.Is( model_err , models.ErrBoardTextStale ):
+		refused = &refusal{ fiber.StatusConflict , "board_text_stale" }
+	case errors.Is( model_err , models.ErrPurposeOff ):
+		refused = &refusal{ fiber.StatusConflict , "purpose_off" }
 	case errors.Is( model_err , models.ErrBoardNotFound ):
 		refused = &refusal{ fiber.StatusNotFound , "board_not_found" }
 	case errors.Is( model_err , models.ErrCardNotFound ):

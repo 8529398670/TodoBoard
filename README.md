@@ -25,6 +25,14 @@ image or as one self-contained binary.
   Enter to move the card there. On or off per board, or left to each
   person's account default.
 - **Copy a column** as a Markdown bullet or numbered list of its card titles.
+- **Notes** on every board, from the journal icon in the navbar or Board
+  settings: markdown for links, documents and an index.
+- **Purpose**, a section each board can turn on in Board settings (off by
+  default), which adds its own navbar icon. It says what the board is for and
+  how to work on it, and agents are told to read it first. Turned off, it is
+  hidden from everyone, agents included, and the text is kept.
+- Members edit both, whole-board share links read them, and links showing only
+  part of a board do not get them.
 - **Undo / redo** every board change from the tab (Ctrl+Z / Ctrl+Y, ⌘Z /
   ⇧⌘Z, or the arrows in the header) -- deleted cards, lists and labels
   included.
@@ -97,7 +105,8 @@ read and edit your boards as you. Make a key on the Account page, then:
 claude mcp add --transport http todoboard http://localhost:8080/mcp --header "Authorization: Bearer <key>"
 ```
 
-Tools: `whoami`, `list_team`, `list_boards`, `get_board`, `get_card`,
+Tools: `whoami`, `list_team`, `list_boards`, `get_board`, `get_board_notes`,
+`update_board_notes`, `get_card`,
 `find_cards`, `create_board`, `create_list`, `update_list`, `create_label`,
 `create_card`, `update_card`, `add_checklist_item`, `update_checklist_item`,
 plus the `admin_*` account tools for an admin-scoped key. Every board tool
@@ -136,6 +145,7 @@ mints a credential. Only keys are accepted -- a browser session gets 403.
 | `static/js/stages.js` | a staged board's stage controls: bar, tabs, swipe, arrow keys |
 | `static/js/card_modal.js` | card editor |
 | `static/js/trash.js`, `archived.js` | the board's trash and archive panels |
+| `static/js/board_notes.js` | the board's Notes and Purpose panels |
 | `static/js/history.js` | undo / redo |
 | `static/js/markdown.js` | Markdown + KaTeX pipeline |
 | `static/js/card_export.js`, `print.js` | exports |

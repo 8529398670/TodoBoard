@@ -50,6 +50,9 @@ const (
 type Server struct {
 	Name    string
 	Version string
+	// Instructions is what a client is told about using this server as a
+	// whole, at initialize; most put it in the model's context.
+	Instructions string
 	tools   []*Tool
 	by_name map[ string ]*Tool
 }
@@ -211,6 +214,7 @@ func ( server *Server ) initialize( params json.RawMessage ) ( result any , err 
 		// never changes under one.
 		"capabilities": fiber.Map{ "tools": fiber.Map{ "listChanged": false } },
 		"serverInfo":   fiber.Map{ "name": server.Name , "version": server.Version },
+		"instructions": server.Instructions,
 	}
 	return
 }

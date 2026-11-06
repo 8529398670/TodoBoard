@@ -46,6 +46,8 @@ const BoardPage = {
     }
 
     Dom.get( "settings-button" ).addEventListener( "click" , () => BoardSettings.open( this.context() ) );
+    Dom.get( "notes-button" ).addEventListener( "click" , () => BoardNotes.open( "notes" ) );
+    Dom.get( "purpose-button" ).addEventListener( "click" , () => BoardNotes.open( "purpose" ) );
     Dom.get( "trash-button" ).addEventListener( "click" , () => Trash.open( this.context() ) );
     UserSettings.bind( () => this.me );
 
@@ -324,6 +326,9 @@ const BoardPage = {
     document.body.className = "board-page color-" + ( board.color || "none" ) + ( ctx.plainIcons() ? " plain-status" : "" ) + ( ctx.swipeColumns() ? " swipe-columns" : "" );
 
     Dom.show( Dom.get( "settings-button" ) , !ctx.cardOnly );
+    // The server leaves these out for a link showing only part of the board.
+    Dom.show( Dom.get( "notes-button" ) , board.notes !== undefined );
+    Dom.show( Dom.get( "purpose-button" ) , !!board.purpose_enabled );
     // The trash is the whole board's, so it is for board editors only.
     Dom.show( Dom.get( "trash-button" ) , ctx.canEdit && !ctx.cardOnly && !ctx.fixedColumns );
     Dom.show( Dom.get( "account-link" ) , !ctx.isGuest );

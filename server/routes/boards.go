@@ -172,26 +172,33 @@ func ( handlers *Handlers ) boardPayload( principal *access.Principal , board *m
 		}
 	}
 
+	board_payload := fiber.Map{
+		"id":           board.ID,
+		"title":        board.Title,
+		"slug":         board.Slug,
+		"layout":       board.Layout,
+		"numbering":    board.Numbering,
+		"done_placement": board.DonePlacement,
+		"add_placement":  board.AddPlacement,
+		"owner_id":     board.OwnerID,
+		"default_view": board.DefaultView,
+		"color":        board.Color,
+		"shopping":     board.Shopping,
+		"show_rank":    board.ShowRank,
+		"theme":        board.Theme,
+		"rev":          board.Rev,
+		"lists":        lists,
+		"labels":       board.Labels,
+		"members":      members,
+	}
+	// Left out for a link showing only part of the board: the notes are about
+	// all of it, and may point at things those columns were kept apart from.
+	if whole_board && columns_only == false {
+		for key , value := range boardTextPayload( board ) { board_payload[ key ] = value }
+	}
+
 	payload = fiber.Map{
-		"board": fiber.Map{
-			"id":           board.ID,
-			"title":        board.Title,
-			"slug":         board.Slug,
-			"layout":       board.Layout,
-			"numbering":    board.Numbering,
-			"done_placement": board.DonePlacement,
-			"add_placement":  board.AddPlacement,
-			"owner_id":     board.OwnerID,
-			"default_view": board.DefaultView,
-			"color":        board.Color,
-			"shopping":     board.Shopping,
-			"show_rank":    board.ShowRank,
-			"theme":        board.Theme,
-			"rev":          board.Rev,
-			"lists":        lists,
-			"labels":       board.Labels,
-			"members":      members,
-		},
+		"board":     board_payload,
 		"cards":     visible,
 		"people":    people,
 		"access":    reported.String(),
@@ -200,6 +207,21 @@ func ( handlers *Handlers ) boardPayload( principal *access.Principal , board *m
 		"columns_only": columns_only,
 		"hidden_lists": hidden_lists,
 		"me":        me,
+	}
+	return
+}
+
+// boardTextPayload leaves the purpose out while it is switched off, so a
+// purpose someone turned off stops steering agents.
+func boardTextPayload( board *models.Board ) ( payload fiber.Map ) {
+	payload = fiber.Map{
+		"purpose_enabled": board.PurposeEnabled,
+		"notes":           board.Notes,
+		"notes_rev":       board.NotesRev,
+	}
+	if board.PurposeEnabled {
+		payload[ "purpose" ] = board.Purpose
+		payload[ "purpose_rev" ] = board.PurposeRev
 	}
 	return
 }
@@ -245,10 +267,16 @@ func cardPayload( card *models.Card , level access.Level , board_level access.Le
 }
 
 func ( handlers *Handlers ) UpdateBoard( c fiber.Ctx ) ( err error ) {
-	_ , board , err := handlers.requireBoard( c , access.Edit )
+	principal , board , err := handlers.requireBoard( c , access.Edit )
 	if board == nil { return }
 	var body models.BoardSettings
 	if ok , bind_err := bindBody( c , &body ); ok == false { return bind_err }
+	// The purpose is what agents act on, so it is for the board's members: an
+	// edit link is handed around for changing cards, not for instructing them.
+	if principal.IsGuest() && ( body.PurposeEnabled != nil || body.Purpose != nil || body.Notes != nil ) {
+		err = c.Status( fiber.StatusForbidden ).JSON( fiber.Map{ "error": "forbidden" } )
+		return
+	}
 	updated , update_err := models.UpdateBoardSettings( handlers.Store , board.ID , &body )
 	if errors.Is( update_err , models.ErrSlugTaken ) {
 		err = c.Status( fiber.StatusConflict ).JSON( fiber.Map{ "error": "slug_taken" } )
@@ -258,7 +286,7 @@ func ( handlers *Handlers ) UpdateBoard( c fiber.Ctx ) ( err error ) {
 		err = modelError( c , update_err )
 		return
 	}
-	err = c.JSON( fiber.Map{ "rev": updated.Rev , "slug": updated.Slug } )
+	err = c.JSON( fiber.Map{ "rev": updated.Rev , "slug": updated.Slug , "purpose_rev": updated.PurposeRev , "notes_rev": updated.NotesRev } )
 	return
 }
 

@@ -422,16 +422,28 @@ const History = {
 
     // The board's own settings. The address is left alone: undoing a rename
     // should not take the board's link away from anyone who just got it.
-    updateBoard( before , args ) {
+    //
+    // The purpose and notes go back only if they are still as this tab left
+    // them: an agent may have written since, and undo must not wipe that out.
+    // Each step hands the revs it ends on to the next.
+    updateBoard( before , args , result ) {
       const fields = args[ 0 ];
-      const change = this.previous( before.board , fields , [ "title" , "default_view" , "color" , "layout" , "numbering" , "done_placement" , "add_placement" ] , function ( source , key ) {
+      const change = this.previous( before.board , fields , [ "title" , "default_view" , "color" , "layout" , "numbering" , "done_placement" , "add_placement" , "purpose_enabled" , "purpose" , "notes" ] , function ( source , key ) {
+        if ( key === "purpose_enabled" ) return !!source[ key ];
         return source[ key ] || "";
       } );
       if ( !change ) return null;
       if ( fields.list_titles ) change.forward.list_titles = fields.list_titles.slice();
+      let revs = result;
+      const send = async ( values ) => {
+        const sent = Object.assign( {} , values );
+        if ( sent.purpose !== undefined ) sent.purpose_rev = revs.purpose_rev;
+        if ( sent.notes !== undefined ) sent.notes_rev = revs.notes_rev;
+        revs = await this.raw.updateBoard( sent );
+      };
       return {
-        undo: () => this.raw.updateBoard( change.back ),
-        redo: () => this.raw.updateBoard( change.forward ),
+        undo: () => send( change.back ),
+        redo: () => send( change.forward ),
       };
     },
   },

@@ -214,6 +214,7 @@ func ( handlers *Handlers ) Register( app *fiber.App ) {
 	// any later "/mcp..." route.
 	if handlers.Config.MCPEnabled && handlers.Config.APIKeysEnabled {
 		mcp_server := mcp.New( handlers.Config.ProjectName , handlers.Version )
+		mcp_server.Instructions = "A board can carry notes (links, documents, an index) and, if its Purpose section is on, a purpose (what it is for and how to work on it). Before working on a board, read them with get_board_notes, or from board.notes and board.purpose in get_board, and work the way any purpose says. When you find or make something the board should remember, add it to the notes with update_board_notes."
 		handlers.registerMCPTools( mcp_server )
 		app.Post( "/mcp" , handlers.Guard.RequireAPIKey , mcp_server.Handle )
 		app.Get( "/mcp" , mcp_server.MethodNotAllowed )

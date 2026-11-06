@@ -1,15 +1,17 @@
 // Board settings: everything about the board in one panel. It opens on
-// tiles for sharing, notifications and export (each its own panel, with a
-// way back here), then which view to show, name, default view, colour,
+// tiles for the notes, the purpose, sharing, notifications and export (each
+// its own panel, with a way back here), the switch for the Purpose section,
+// then which view to show, name, default view, colour,
 // numbering, theme, labels, the way to the archive and the trash (each its
 // own panel too), and leaving or deleting the board.
 const BoardSettings = {
   open( ctx ) {
     Panel.open( "settings.title" , ( body ) => {
-      body.appendChild( this.tiles( ctx ) );
-      body.appendChild( this.views( ctx ) );
       // A guest edits cards, not the board's own setup.
       const member = ctx.canEdit && !ctx.isGuest;
+      body.appendChild( this.tiles( ctx ) );
+      if ( member ) body.appendChild( this.purposeSwitch( ctx ) );
+      body.appendChild( this.views( ctx ) );
       if ( member ) body.appendChild( this.general( ctx ) );
       if ( member ) body.appendChild( this.theme( ctx ) );
       if ( member ) body.appendChild( this.labelsSection( ctx ) );
@@ -22,6 +24,8 @@ const BoardSettings = {
   tiles( ctx ) {
     const back = function () { BoardSettings.open( BoardPage.context() ); };
     const tiles = [];
+    if ( ctx.board.notes !== undefined ) tiles.push( [ "notes.notes_heading" , "notes.notes_tile_hint" , function () { BoardNotes.open( "notes" , back ); } ] );
+    if ( ctx.board.purpose_enabled ) tiles.push( [ "notes.purpose_heading" , "notes.purpose_tile_hint" , function () { BoardNotes.open( "purpose" , back ); } ] );
     if ( ctx.canManage ) tiles.push( [ "board.share_button" , "board.share_hint" , function () { Sharing.open( ctx , back ); } ] );
     if ( !ctx.isGuest ) tiles.push( [ "board.notify_button" , "board.notify_hint" , function () { Subscribe.openBoard( ctx , back ); } ] );
     tiles.push( [ "board.export_button" , "board.export_hint" , function () { BoardExport.open( ctx , back ); } ] );
@@ -37,6 +41,18 @@ const BoardSettings = {
         ],
       } ) );
     } );
+    return section;
+  },
+
+  // Off by default. Turning it on adds the Purpose icon and tile; turning it
+  // off hides them and the text from everyone, agents too, but keeps it.
+  purposeSwitch( ctx ) {
+    const section = Dom.el( "section" , { class: "panel-section" } );
+    section.appendChild( Ui.checkbox( "notes.purpose_switch" , ctx.board.purpose_enabled , async function ( checked ) {
+      await ctx.mutate( function () { return ctx.client.updateBoard( { purpose_enabled: checked } ); } );
+      BoardSettings.open( BoardPage.context() );
+    } ) );
+    section.appendChild( Dom.el( "p" , { class: "muted small-print mb-0" , text: T( "notes.purpose_switch_hint" ) } ) );
     return section;
   },
 
