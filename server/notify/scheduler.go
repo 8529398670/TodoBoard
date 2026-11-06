@@ -78,15 +78,15 @@ func ( service *Service ) scheduleLoop() {
 	defer ticker.Stop()
 	purge := time.NewTicker( 6 * time.Hour )
 	defer purge.Stop()
-	service.checkDue()
+	safely( "due check" , service.checkDue )
 	for {
 		select {
 		case <-service.stop:
 			return
 		case <-ticker.C:
-			service.checkDue()
+			safely( "due check" , service.checkDue )
 		case <-purge.C:
-			service.purgeLedger()
+			safely( "ledger purge" , service.purgeLedger )
 		}
 	}
 }
@@ -155,11 +155,12 @@ func ( service *Service ) sendReminder( board *models.Board , card *models.Card 
 	}
 	title_key := "push.due_soon_title"
 	if fire.lead == leadOverdue { title_key = "push.overdue_title" }
-	service.enqueue( prefs , Message{
+	service.enqueue( user_id , prefs , service.linked( Notice{
 		Title: service.text( title_key , values ),
 		Body:  service.text( "push.due_body" , values ),
-		URL:   service.cardURL( board.ID , card.ID ),
-	} )
+		TTL:   importantTTL,
+		Urgent: true,
+	} , board.ID , card.ID ) )
 }
 
 // leadText words a lead time ("1 day", "2 hours", "30 minutes").

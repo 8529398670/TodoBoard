@@ -109,6 +109,15 @@ type Board struct {
 	// ShowRank: on a staged board, cards show their board-wide rank outside
 	// the All list too. The All list always shows it.
 	ShowRank    bool              `json:"show_rank"`
+	// CenterColumns: on a free or staged board the columns sit in the middle
+	// of the page rather than against its left edge.
+	CenterColumns bool            `json:"center_columns"`
+	// What a staged board calls its stages. Empty is the app's own word, in
+	// whatever language it is set to. Three fields rather than a map so that
+	// saving one name cannot overwrite another person's change to the next.
+	StageTodo   string            `json:"stage_todo"`
+	StageDoing  string            `json:"stage_doing"`
+	StageDone   string            `json:"stage_done"`
 	// AllowQuickShare lets the owner and editors make a read-only public link
 	// to one card from its menu. Off pauses those links without revoking
 	// them. Backups leave it out, so a restored board starts closed.
@@ -147,6 +156,9 @@ type List struct {
 	// Width: the column's width in pixels on a free-lists board, as dragged
 	// by its edge; 0 is the standard width.
 	Width    int     `json:"width"`
+	// StageView: on a staged board, the stage this column always shows, for
+	// everyone. Empty follows the bar in the navbar.
+	StageView string `json:"stage_view"`
 }
 
 type Label struct {
@@ -215,6 +227,15 @@ func ValidMemberRole( role string ) ( result bool ) {
 func cleanTitle( value string , max_chars int ) ( result string , ok bool ) {
 	result = strings.TrimSpace( value )
 	ok = result != "" && utf8.RuneCountInString( result ) <= max_chars
+	return
+}
+
+const maxStageName = 40
+
+// cleanStageName is cleanTitle for a name that may be left empty.
+func cleanStageName( value string ) ( result string , ok bool ) {
+	result = strings.TrimSpace( value )
+	ok = utf8.RuneCountInString( result ) <= maxStageName
 	return
 }
 
@@ -354,6 +375,10 @@ type BoardSettings struct {
 	ClearTheme  bool     `json:"clear_theme"`
 	Shopping    *bool    `json:"shopping"`
 	ShowRank    *bool    `json:"show_rank"`
+	CenterColumns *bool  `json:"center_columns"`
+	StageTodo   *string  `json:"stage_todo"`
+	StageDoing  *string  `json:"stage_doing"`
+	StageDone   *string  `json:"stage_done"`
 	AllowQuickShare *bool `json:"allow_quick_share"`
 	DonePlacement *string `json:"done_placement"`
 	AddPlacement  *string `json:"add_placement"`
@@ -410,6 +435,17 @@ func ( settings *BoardSettings ) Apply( board *Board ) ( err error ) {
 	if settings.ClearTheme { board.Theme = nil }
 	if settings.Shopping != nil { board.Shopping = *settings.Shopping }
 	if settings.ShowRank != nil { board.ShowRank = *settings.ShowRank }
+	if settings.CenterColumns != nil { board.CenterColumns = *settings.CenterColumns }
+	for _ , stage := range []struct{ value *string ; field *string }{
+		{ settings.StageTodo , &board.StageTodo } ,
+		{ settings.StageDoing , &board.StageDoing } ,
+		{ settings.StageDone , &board.StageDone } ,
+	} {
+		if stage.value == nil { continue }
+		clean , ok := cleanStageName( *stage.value )
+		if ok == false { return ErrBadInput }
+		*stage.field = clean
+	}
 	if settings.AllowQuickShare != nil { board.AllowQuickShare = *settings.AllowQuickShare }
 	if settings.Layout != nil {
 		if *settings.Layout != LayoutFree && *settings.Layout != LayoutThree && *settings.Layout != LayoutStaged { return ErrBadInput }
@@ -496,6 +532,7 @@ type ListUpdate struct {
 	Archived *bool    `json:"archived"`
 	Shopping *bool    `json:"shopping"`
 	Width    *int     `json:"width"`
+	StageView *string `json:"stage_view"`
 }
 
 // A dragged column stays between these; 0 puts it back to the standard width.
@@ -529,6 +566,15 @@ func ( update *ListUpdate ) Apply( board *Board , list_id uint64 ) ( err error )
 		if width > ListWidthMax { width = ListWidthMax }
 		list.Width = width
 	}
+	if update.StageView != nil {
+		if validStageView( *update.StageView ) == false { return ErrBadInput }
+		list.StageView = *update.StageView
+	}
+	return
+}
+
+func validStageView( view string ) ( ok bool ) {
+	ok = view == "" || view == "todo" || view == "doing" || view == "done"
 	return
 }
 
@@ -643,6 +689,9 @@ type BoardRef struct {
 	Role       string `json:"role"`
 	Folder     uint64 `json:"folder"`
 	PlainIcons *bool  `json:"plain_icons"`
+	// CollapsedLists: the columns this person keeps folded down to a strip.
+	// Theirs alone, like the rest of this row.
+	CollapsedLists []uint64 `json:"collapsed_lists,omitempty"`
 }
 
 // GetBoardRef is one person's row for one board, or nil when they are not on
@@ -657,13 +706,34 @@ func GetBoardRef( store *db.Store , user_id uint64 , board_id uint64 ) ( ref *Bo
 // SetBoardPlainIcons stores whether this person sees the board's status
 // icons in greyscale; nil goes back to their account default.
 func SetBoardPlainIcons( store *db.Store , user_id uint64 , board_id uint64 , plain *bool ) ( err error ) {
+	err = updateBoardRef( store , user_id , board_id , func( ref *BoardRef ) { ref.PlainIcons = plain } )
+	return
+}
+
+// SetBoardCollapsedLists stores which of the board's columns this person
+// keeps collapsed, replacing the last list. An id that is not one of the
+// board's columns is dropped. It is how the board looks to them and nothing
+// about the board, so the board's rev does not move.
+func SetBoardCollapsedLists( store *db.Store , user_id uint64 , board *Board , list_ids []uint64 ) ( kept []uint64 , err error ) {
+	kept = []uint64{}
+	seen := map[uint64]bool{}
+	for _ , id := range list_ids {
+		if seen[ id ] || board.List( id ) == nil { continue }
+		seen[ id ] = true
+		kept = append( kept , id )
+	}
+	err = updateBoardRef( store , user_id , board.ID , func( ref *BoardRef ) { ref.CollapsedLists = kept } )
+	return
+}
+
+func updateBoardRef( store *db.Store , user_id uint64 , board_id uint64 , change func( ref *BoardRef ) ) ( err error ) {
 	err = store.Write( func( tx *db.Tx ) ( tx_err error ) {
 		ref := &BoardRef{}
 		if tx_err = tx.Get( db.BucketUserBoards , db.Key( user_id , board_id ) , ref ); tx_err != nil {
 			if errors.Is( tx_err , db.ErrNotFound ) { tx_err = ErrBoardNotFound }
 			return
 		}
-		ref.PlainIcons = plain
+		change( ref )
 		tx_err = tx.Put( db.BucketUserBoards , db.Key( user_id , board_id ) , ref )
 		return
 	} )
@@ -859,6 +929,7 @@ func removeBoardAccessTx( tx *db.Tx , user_id uint64 , heir_id uint64 ) ( err er
 	if _ , err = tx.DeletePrefix( db.BucketUserCards , db.Key( user_id ) ); err != nil { return }
 	if _ , err = tx.DeletePrefix( db.BucketFolders , db.Key( user_id ) ); err != nil { return }
 	if _ , err = tx.DeletePrefix( db.BucketSubscriptions , db.Key( user_id ) ); err != nil { return }
+	if _ , err = tx.DeletePrefix( db.BucketPushSubscriptions , db.Key( user_id ) ); err != nil { return }
 	err = tx.Delete( db.BucketUserPrefs , encryption.Uint64ToBytes( user_id ) )
 	return
 }

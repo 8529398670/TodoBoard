@@ -31,6 +31,7 @@ func ( handlers *Handlers ) SetCardImage( c fiber.Ctx ) ( err error ) {
 		err = modelError( c , set_err )
 		return
 	}
+	handlers.activity( principal , board.ID , "card_image" , map[string]string{ "card": card.Title } )
 	err = handlers.cardReply( c , principal , board , updated , nil )
 	return
 }
@@ -44,6 +45,7 @@ func ( handlers *Handlers ) RemoveCardImage( c fiber.Ctx ) ( err error ) {
 		err = modelError( c , set_err )
 		return
 	}
+	handlers.activity( principal , board.ID , "card_image" , map[string]string{ "card": card.Title } )
 	err = handlers.cardReply( c , principal , board , updated , nil )
 	return
 }

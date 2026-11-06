@@ -77,10 +77,17 @@ func ( handlers *Handlers ) exportLocation( principal *access.Principal , zone s
 
 func ( handlers *Handlers ) exportTable( principal *access.Principal , board *models.Board , all_cards []*models.Card , with_archived bool , location *time.Location ) ( table *sheet.Sheet ) {
 	text := func( key string ) string { return handlers.Language.Get( "export." + key ) }
+	// A staged board's stage and rank; other boards have neither to show.
+	staged := board.Layout == models.LayoutStaged
+	// A stage's heading is the board's own name for it, if it has one.
+	stage_heading := func( key string , own string ) string {
+		if staged && own != "" { return own }
+		return text( key )
+	}
 	table = &sheet.Sheet{
 		Name: board.Title,
 		Header: []string{
-			text( "col_list" ) , text( "col_number" ) , text( "col_title" ) , text( "col_done" ) , text( "col_labels" ) ,
+			text( "col_list" ) , text( "col_number" ) , text( "col_title" ) , stage_heading( "col_done" , board.StageDone ) , text( "col_labels" ) ,
 			text( "col_start" ) , text( "col_due" ) , text( "col_assignees" ) , text( "col_checklist" ) , text( "col_body" ) ,
 		},
 		Numeric: map[int]bool{ 1: true },
@@ -105,12 +112,10 @@ func ( handlers *Handlers ) exportTable( principal *access.Principal , board *mo
 	// Price is free text with its currency in it, so it is not Numeric. Any
 	// board can hold a priced card; a shopping board has the column regardless.
 	if priced { table.Header = append( table.Header , text( "col_price" ) ) }
-	// A staged board's stage and rank; other boards have neither to show.
-	staged := board.Layout == models.LayoutStaged
 	places := models.RankPlaces( board , all_cards )
 	if staged {
 		table.Numeric[ len( table.Header ) + 1 ] = true
-		table.Header = append( table.Header , text( "col_doing" ) , text( "col_rank" ) )
+		table.Header = append( table.Header , stage_heading( "col_doing" , board.StageDoing ) , text( "col_rank" ) )
 	}
 	if with_archived { table.Header = append( table.Header , text( "col_archived" ) ) }
 

@@ -36,7 +36,7 @@ image or as one self-contained binary.
 - **Undo / redo** every board change from the tab (Ctrl+Z / Ctrl+Y, ⌘Z /
   ⇧⌘Z, or the arrows in the header) -- deleted cards, lists and labels
   included.
-- **Home page folders and search**: your own folders (other members of a
+- **Home page folders and search**: your own folders, nested up to three levels (other members of a
   shared board file it however they like), drag boards between them, and a
   search box over board and folder names.
 - **Checklists inside cards**, reorderable.
@@ -54,14 +54,19 @@ image or as one self-contained binary.
   - share links for a whole board, a single column, or a single card, *view*
     or *edit*,
     optional expiry, revocable -- no account needed. Guests with an edit link
-    are asked for a name, and their changes show as "Name (guest)".
+    are asked for a name, and their changes show as "Name (guest)";
+  - a public link to one card, from its right-click menu, for the owner and
+    editors once the owner allows it in the board's Sharing panel. Read-only,
+    and it shows that card and nothing of the board. Turning the setting off
+    pauses every public link until it is turned back on.
 - **Export**: a card as PNG (copy to clipboard or download) or Markdown (copy
   or download); a board as Markdown, as a spreadsheet (formatted .xlsx or
   .csv, one row per card), or as a print layout you save as PDF.
-- **Pushover notifications**: due-date reminders (your lead times, your
-  timezone), overdue, assigned to you, shared with you, and changes to cards
-  you follow. Everyone sets defaults on the account page and can override
-  them per board and per card.
+- **Notifications**, in your browser or through Pushover: due-date reminders
+  (your lead times, your timezone), overdue, assigned to you, shared with you,
+  and changes to cards you follow. Everyone sets defaults on the account page
+  and can override them per board and per card. A board can also send all of
+  its activity, gathered into one notification at a time.
 - **Live updates**: open boards poll a revision stamp every few seconds, so
   other people's changes appear without a reload. Two people editing the same
   description get a conflict prompt instead of a silent overwrite.
@@ -88,6 +93,28 @@ secret key; the first `scripts/run.sh` writes it). For plain
 `http://localhost`, set `server.secure_cookies: false` there.
 
 ### Push notifications
+
+Browser notifications are on by default (`notify.web_push`). They need the site
+on HTTPS (or `localhost`), and each person turns them on under Notifications.
+Set `notify.web_push_contact` to a `mailto:` or `https://` address so a push
+service can reach you.
+
+On an iPhone or iPad they need iOS 16.4 or later and work only from the Home
+Screen, and that app does not share Safari's sign-in:
+
+1. In Safari, create a login link on the Account page and copy it.
+2. Tap Share, then Add to Home Screen, and open the new icon.
+3. Paste the link into the sign-in box there.
+4. Under Notifications, turn them on for this device.
+
+If that app's session ends, notifications keep arriving, and the same paste
+signs you back in.
+
+With both set up, each person chooses under Notifications where theirs go:
+Pushover, their devices, or both. A saved Pushover key is kept whichever they
+choose.
+
+For Pushover as well:
 
 1. Create an application at <https://pushover.net/apps/build> and put its
    token in `config/config.yaml` under `pushover.app_token`.

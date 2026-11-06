@@ -1,16 +1,17 @@
 // Stages: on a staged board every list holds To do, Doing and Done and shows
 // one at a time. A card's stage comes from its done and doing flags. Which
 // stage a column is showing is BoardPage's; this file is the controls that
-// change it -- the bar in the navbar, the tabs on a column, swiping a column
-// and the arrow keys -- and the words for the flags. The bar has one more
-// stop than a column: All, one centred list of every list's cards, which
-// flips through the stages like a column.
+// change it -- the bar in the navbar, swiping and the arrow keys, which all
+// move every column at once -- and the words for the flags. A column that
+// wants a stage of its own has that in its settings (List.stage_view). The bar
+// has one more stop than a column: All, one centred list of every list's
+// cards, which flips through the stages with its own tabs.
 const Stages = {
   order: [ "todo" , "doing" , "done" ],
 
   // One full-width column at a time. The query is board.css's for
-  // .swipe-columns, word for word. The bar is the only switch here, so every
-  // column follows it: see BoardPage.render.
+  // .swipe-columns, word for word. Every column follows the bar here, even
+  // one with a stage of its own: see BoardPage.columnView.
   query: window.matchMedia( "(max-width: 39.99rem) and (orientation: portrait)" ),
 
   singleColumn() {
@@ -28,6 +29,13 @@ const Stages = {
     return { doing: stage === "doing" , done: stage === "done" };
   },
 
+  // A stage's name: the board's own if it has one, the app's otherwise. All
+  // is no stage, so it always has the app's word; a link that is not told the
+  // board's settings falls back the same way.
+  label( ctx , stage ) {
+    return ( stage !== "all" && ctx.board[ "stage_" + stage ] ) || T( "board.stage_" + stage );
+  },
+
   // Where the bar and the arrow keys can go.
   boardStages( ctx ) {
     return ctx.showAll() ? this.order.concat( "all" ) : this.order;
@@ -35,15 +43,16 @@ const Stages = {
 
   // Buttons for stages; pick is called with the one pressed. counts, by
   // stage, are shown beside the names when given.
-  buttons( className , label , stages , current , counts , pick ) {
+  buttons( ctx , className , label , stages , current , counts , pick ) {
     const group = Dom.el( "div" , { class: className , attrs: { role: "group" , "aria-label": T( label ) } } );
-    stages.forEach( function ( stage ) {
+    stages.forEach( ( stage ) => {
+      const name = this.label( ctx , stage );
       const button = Dom.el( "button" , {
         class: "stage-button" + ( stage === current ? " active" : "" ),
-        attrs: { type: "button" , "aria-pressed": stage === current ? "true" : "false" , "data-stage": stage },
+        attrs: { type: "button" , "aria-pressed": stage === current ? "true" : "false" , "data-stage": stage , title: name },
         on: { click: function () { pick( stage ); } },
       } );
-      button.appendChild( Dom.el( "span" , { text: T( "board.stage_" + stage ) } ) );
+      button.appendChild( Dom.el( "span" , { class: "stage-name" , text: name } ) );
       if ( counts ) button.appendChild( Dom.el( "span" , { class: "stage-count" , text: String( counts[ stage ] ) } ) );
       group.appendChild( button );
     } );
@@ -52,14 +61,14 @@ const Stages = {
 
   // Flips every column at once, or goes to the All list.
   bar( ctx ) {
-    return this.buttons( "stage-bar" , "board.stage_bar" , this.boardStages( ctx ) , ctx.boardStage() , null , function ( stage ) { BoardPage.setStage( stage ); } );
+    return this.buttons( ctx , "stage-bar" , "board.stage_bar" , this.boardStages( ctx ) , ctx.boardStage() , null , function ( stage ) { BoardPage.setStage( stage ); } );
   },
 
-  // Flips the one column. key is its list id, or "all".
-  tabs( key , cards , ctx ) {
+  // Flips the All list, which shows its stage apart from the bar.
+  tabs( cards , ctx ) {
     const counts = { todo: 0 , doing: 0 , done: 0 };
     cards.forEach( ( card ) => { counts[ this.of( card ) ] += 1; } );
-    return this.buttons( "stage-tabs" , "board.stage_tabs" , this.order , ctx.stageIn( key ) , counts , function ( stage ) { BoardPage.setColumnStage( key , stage ); } );
+    return this.buttons( ctx , "stage-tabs" , "board.stage_tabs" , this.order , ctx.stageIn( "all" ) , counts , function ( stage ) { BoardPage.setAllStage( stage ); } );
   },
 
   // Both are bound once, on the document: a render replaces every column,
@@ -70,18 +79,21 @@ const Stages = {
     this.bindRotate();
   },
 
-  // Turning a phone upright brings columns flipped on their own back in step
-  // with the bar. Only then, and never mid-drag: a keyboard opening can flip
-  // the orientation too, and a render would take a half-typed card with it.
+  // Turning a phone either way changes whether columns keep a stage of their
+  // own or stay collapsed, so they have to be drawn again. Only then, and
+  // never mid-drag or mid-typing: a keyboard opening can flip the orientation too, and a
+  // render would take a half-typed card with it.
   bindRotate() {
-    this.query.addEventListener( "change" , () => {
-      if ( !BoardPage.data || BoardPage.dragging || !this.singleColumn() ) return;
-      if ( Object.keys( BoardPage.columnStages ).length ) BoardPage.render();
+    this.query.addEventListener( "change" , function () {
+      if ( !BoardPage.data || BoardPage.dragging ) return;
+      if ( !document.body.classList.contains( "swipe-columns" ) ) return;
+      const active = document.activeElement;
+      if ( active && active.closest && active.closest( "input, textarea, select, [contenteditable]:not([contenteditable=\"false\"])" ) ) return;
+      if ( BoardPage.collapsed.length || BoardPage.data.board.lists.some( function ( list ) { return list.stage_view; } ) ) BoardPage.render();
     } );
   },
 
-  // A sideways swipe on a column's cards flips that column, and on the All
-  // list or a phone's single column steps the whole board, as the bar there
+  // A sideways swipe on a column's cards steps the whole board, as the bar
   // shows; CSS leaves sideways touches on the cards to us
   // (touch-action: pan-y). Touch only:
   // a mouse drags cards, and a trackpad pans the board. Holding still is
@@ -107,16 +119,8 @@ const Stages = {
       const dx = event.clientX - from.x;
       const dy = event.clientY - from.y;
       if ( Math.abs( dx ) < 50 || Math.abs( dx ) < 1.5 * Math.abs( dy ) || stale( from.key ) ) return;
-      if ( from.key === "all" || this.singleColumn() ) {
-        this.swallowClick();
-        BoardPage.stepStage( dx < 0 ? 1 : -1 );
-        return;
-      }
-      const key = Number( from.key );
-      const index = this.order.indexOf( BoardPage.stageOf( key ) ) + ( dx < 0 ? 1 : -1 );
-      if ( index < 0 || index >= this.order.length ) return;
       this.swallowClick();
-      BoardPage.setColumnStage( key , this.order[ index ] );
+      BoardPage.stepStage( dx < 0 ? 1 : -1 );
     } , { passive: true } );
   },
 

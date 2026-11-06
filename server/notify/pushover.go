@@ -35,7 +35,7 @@ type Pushover struct {
 
 // ErrRejected is a 4xx from Pushover other than 429: a bad user key, a
 // disabled app token. Retrying cannot fix it.
-var ErrRejected = errors.New( "pushover rejected the message" )
+var ErrRejected = errors.New( "the push service rejected the message" )
 
 func NewPushover( token string , api_url string ) ( client *Pushover ) {
 	client = &Pushover{
@@ -99,7 +99,7 @@ type retryableError struct {
 }
 
 func ( err *retryableError ) Error() ( result string ) {
-	result = fmt.Sprintf( "pushover answered %d: %s" , err.status , err.detail )
+	result = fmt.Sprintf( "push service answered %d: %s" , err.status , err.detail )
 	return
 }
 

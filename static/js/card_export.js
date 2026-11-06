@@ -37,6 +37,11 @@ const CardExport = {
     } ).filter( Boolean );
   },
 
+  // A staged board may have its own name for Done.
+  doneText( ctx ) {
+    return ctx.isStaged() ? Stages.label( ctx , "done" ) : T( "card.done_label" );
+  },
+
   dateText( value , allDay ) {
     if ( !value ) return "";
     if ( allDay ) return Dates.isoDay( new Date( value ) , true );
@@ -60,8 +65,8 @@ const CardExport = {
     if ( card.assignees.length ) {
       meta.push( "**" + T( "export.md_assignees" ) + ":** " + card.assignees.map( function ( id ) { return ctx.people[ id ] || "?"; } ).join( ", " ) );
     }
-    if ( card.done ) meta.push( "**" + T( "export.md_status" ) + ":** " + T( "card.done_label" ) );
-    if ( ctx.isStaged() && card.doing ) meta.push( "**" + T( "export.md_status" ) + ":** " + T( "board.status_doing" ) );
+    if ( card.done ) meta.push( "**" + T( "export.md_status" ) + ":** " + this.doneText( ctx ) );
+    if ( ctx.isStaged() && card.doing ) meta.push( "**" + T( "export.md_status" ) + ":** " + Stages.label( ctx , "doing" ) );
     if ( ctx.isStaged() && card.rank_place ) meta.push( "**" + T( "export.md_rank" ) + ":** " + card.rank_place );
     if ( card.product && card.product.url ) meta.push( "**" + T( "export.md_product" ) + ":** " + ( CardBits.priceText( card ) ? CardBits.priceText( card ) + " " : "" ) + "<" + card.product.url + ">" );
     else if ( CardBits.priceText( card ) ) meta.push( "**" + T( "export.md_price" ) + ":** " + CardBits.priceText( card ) );
@@ -107,8 +112,8 @@ const CardExport = {
     if ( card.start_at ) meta.appendChild( Dom.el( "span" , { class: "due-chip" , text: T( "card.start_label" ) + " " + Dates.format( card.start_at , card.start_all_day ) } ) );
     const due = CardBits.due( card );
     if ( due ) meta.appendChild( due );
-    if ( card.done ) meta.appendChild( Dom.el( "span" , { class: "due-chip due-done" , text: T( "card.done_label" ) } ) );
-    if ( ctx.isStaged() && card.doing ) meta.appendChild( Dom.el( "span" , { class: "due-chip" , text: T( "board.status_doing" ) } ) );
+    if ( card.done ) meta.appendChild( Dom.el( "span" , { class: "due-chip due-done" , text: this.doneText( ctx ) } ) );
+    if ( ctx.isStaged() && card.doing ) meta.appendChild( Dom.el( "span" , { class: "due-chip" , text: Stages.label( ctx , "doing" ) } ) );
     const rank = CardBits.rank( card , ctx );
     if ( rank ) meta.appendChild( rank );
     const people = CardBits.assignees( card , ctx.people );

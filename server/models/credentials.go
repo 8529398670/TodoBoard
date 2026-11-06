@@ -38,6 +38,8 @@ func RevokeAllCredentials( store *db.Store , user_id uint64 , allow_owner bool )
 		}
 		if revoked.Sessions , tx_err = destroySessionsForUser( tx , user_id ); tx_err != nil { return }
 		if revoked.LoginLinks , tx_err = deletePendingLoginTokens( tx , user_id ); tx_err != nil { return }
+		// A browser that was signed in keeps showing card titles otherwise.
+		if _ , tx_err = tx.DeletePrefix( db.BucketPushSubscriptions , db.Key( user_id ) ); tx_err != nil { return }
 
 		live := []*APIKey{}
 		tx_err = tx.ForEach( db.BucketAPIKeys ,

@@ -688,6 +688,96 @@
             "$ref": "#/components/responses/E429"
           }
         }
+      },
+      "post": {
+        "summary": "Create an API key that acts as another user",
+        "operationId": "post_api_admin_keys",
+        "tags": [
+          "API keys"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "x-required-role": "admin",
+        "description": "The key is the target user's: it reaches every board they can, is listed with their own keys with the admin's name on it, and they can limit or revoke it. It cannot be for the owner, or outrank the target's role.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "user_id": {
+                    "type": "integer"
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "admin",
+                      "user"
+                    ],
+                    "default": "user"
+                  },
+                  "expires_in_days": {
+                    "oneOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 3650
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Absent or null: the configured default. 0: never expires."
+                  },
+                  "csrf_token": {
+                    "type": "string",
+                    "description": "From GET /api/me. Browser sessions only."
+                  }
+                },
+                "required": [
+                  "user_id",
+                  "name"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NewAPIKey"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "404": {
+            "$ref": "#/components/responses/E404"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          }
+        }
       }
     },
     "/api/admin/keys/{key_id}/delete": {
@@ -1732,6 +1822,25 @@
                   },
                   "show_rank": {
                     "type": "boolean"
+                  },
+                  "center_columns": {
+                    "type": "boolean",
+                    "description": "Free and staged boards: columns sit in the middle of the page."
+                  },
+                  "stage_todo": {
+                    "type": "string",
+                    "maxLength": 40,
+                    "description": "This board's name for a stage on a staged board; empty is the app's own word."
+                  },
+                  "stage_doing": {
+                    "type": "string",
+                    "maxLength": 40,
+                    "description": "This board's name for a stage on a staged board; empty is the app's own word."
+                  },
+                  "stage_done": {
+                    "type": "string",
+                    "maxLength": 40,
+                    "description": "This board's name for a stage on a staged board; empty is the app's own word."
                   },
                   "done_placement": {
                     "type": "string",
@@ -4071,6 +4180,16 @@
                   "width": {
                     "type": "integer"
                   },
+                  "stage_view": {
+                    "type": "string",
+                    "enum": [
+                      "",
+                      "todo",
+                      "doing",
+                      "done"
+                    ],
+                    "description": "Staged boards: the stage this column shows for everyone; empty follows the navbar."
+                  },
                   "csrf_token": {
                     "type": "string",
                     "description": "From GET /api/me. Browser sessions only."
@@ -4662,6 +4781,104 @@
                   },
                   "required": [
                     "plain_icons"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "404": {
+            "$ref": "#/components/responses/E404"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          }
+        }
+      }
+    },
+    "/api/boards/{board_id}/my-view/collapsed": {
+      "post": {
+        "summary": "Save which columns you keep collapsed",
+        "operationId": "post_api_boards_board_id_my_view_collapsed",
+        "tags": [
+          "Boards"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "x-board-access": "view",
+        "parameters": [
+          {
+            "name": "board_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "The board's number or URL slug."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "list_ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer"
+                    },
+                    "description": "The whole list. Ids that are not this board's columns are dropped."
+                  },
+                  "csrf_token": {
+                    "type": "string",
+                    "description": "From GET /api/me. Browser sessions only."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "collapsed_lists": {
+                      "type": "array",
+                      "items": {
+                        "type": "integer"
+                      }
+                    }
+                  },
+                  "required": [
+                    "collapsed_lists"
                   ]
                 }
               }
@@ -5620,6 +5837,10 @@
                   "name": {
                     "type": "string"
                   },
+                  "parent_id": {
+                    "type": "integer",
+                    "description": "The folder to make it in; 0 or absent is the top."
+                  },
                   "csrf_token": {
                     "type": "string",
                     "description": "From GET /api/me. Browser sessions only."
@@ -5860,6 +6081,82 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "404": {
+            "$ref": "#/components/responses/E404"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          }
+        }
+      }
+    },
+    "/api/folders/{folder_id}/parent": {
+      "post": {
+        "summary": "Move a folder inside another, or to the top",
+        "operationId": "post_api_folders_folder_id_parent",
+        "tags": [
+          "Folders"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "description": "Folders nest up to three levels. Refused to an API key held to some boards.",
+        "parameters": [
+          {
+            "name": "folder_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "parent_id": {
+                    "type": "integer",
+                    "description": "0 moves it to the top."
+                  },
+                  "csrf_token": {
+                    "type": "string",
+                    "description": "From GET /api/me. Browser sessions only."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Folder"
                 }
               }
             }
@@ -6808,6 +7105,11 @@
                     "type": "string",
                     "description": "Empty keeps the saved key; - removes it."
                   },
+                  "notify_via": {
+                    "type": "string",
+                    "enum": [ "both" , "pushover" , "devices" ],
+                    "description": "Which ways of reaching this person are used. Left out, it stays as it is."
+                  },
                   "pushover_device": {
                     "type": "string"
                   },
@@ -7191,6 +7493,25 @@
                   },
                   "show_rank": {
                     "type": "boolean"
+                  },
+                  "center_columns": {
+                    "type": "boolean",
+                    "description": "Free and staged boards: columns sit in the middle of the page."
+                  },
+                  "stage_todo": {
+                    "type": "string",
+                    "maxLength": 40,
+                    "description": "This board's name for a stage on a staged board; empty is the app's own word."
+                  },
+                  "stage_doing": {
+                    "type": "string",
+                    "maxLength": 40,
+                    "description": "This board's name for a stage on a staged board; empty is the app's own word."
+                  },
+                  "stage_done": {
+                    "type": "string",
+                    "maxLength": 40,
+                    "description": "This board's name for a stage on a staged board; empty is the app's own word."
                   },
                   "done_placement": {
                     "type": "string",
@@ -8854,6 +9175,16 @@
                   },
                   "width": {
                     "type": "integer"
+                  },
+                  "stage_view": {
+                    "type": "string",
+                    "enum": [
+                      "",
+                      "todo",
+                      "doing",
+                      "done"
+                    ],
+                    "description": "Staged boards: the stage this column shows for everyone; empty follows the navbar."
                   }
                 }
               }
@@ -9807,6 +10138,241 @@
           }
         }
       }
+    },
+    "/api/notify/devices": {
+      "get": {
+        "summary": "List the browsers that take your notifications",
+        "operationId": "get_api_notify_devices",
+        "tags": [
+          "Notifications"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "description": "With the key a browser subscribes against. Empty public_key: web push is off here. A session only.",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "public_key": {
+                      "type": "string"
+                    },
+                    "devices": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/PushDevice"
+                      }
+                    }
+                  },
+                  "required": [
+                    "public_key",
+                    "devices"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "404": {
+            "$ref": "#/components/responses/E404"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "502": {
+            "description": "Pushover could not be reached.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Add or refresh this browser",
+        "operationId": "post_api_notify_devices",
+        "tags": [
+          "Notifications"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "description": "Takes a PushSubscription's endpoint and keys. The endpoint must be a known push service. One browser belongs to one person: saving it here removes it from anyone else. At most 10 per person. A session only.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "endpoint": {
+                    "type": "string",
+                    "maxLength": 1024
+                  },
+                  "p256dh": {
+                    "type": "string"
+                  },
+                  "auth": {
+                    "type": "string"
+                  },
+                  "label": {
+                    "type": "string",
+                    "maxLength": 80
+                  },
+                  "csrf_token": {
+                    "type": "string",
+                    "description": "From GET /api/me."
+                  }
+                },
+                "required": [
+                  "endpoint",
+                  "p256dh",
+                  "auth"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PushDevice"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "404": {
+            "$ref": "#/components/responses/E404"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "502": {
+            "description": "Pushover could not be reached.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/notify/devices/{device_id}/delete": {
+      "post": {
+        "summary": "Remove a browser",
+        "operationId": "post_api_notify_devices_device_id_delete",
+        "tags": [
+          "Notifications"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "description": "It stops getting notifications. A session only.",
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "csrf_token": {
+                    "type": "string",
+                    "description": "From GET /api/me."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "404": {
+            "$ref": "#/components/responses/E404"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "502": {
+            "description": "Pushover could not be reached.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -10276,6 +10842,14 @@
           "display_name": {
             "type": "string",
             "description": "The key's owner. On the admin list only."
+          },
+          "created_by": {
+            "type": "integer",
+            "description": "The admin who made this key as its user. Left out on a key its user made."
+          },
+          "created_by_name": {
+            "type": "string",
+            "description": "That admin's name, while their account exists."
           }
         },
         "required": [
@@ -10478,6 +11052,10 @@
           "name": {
             "type": "string"
           },
+          "parent_id": {
+            "type": "integer",
+            "description": "The folder this one sits in; 0 at the top."
+          },
           "position": {
             "type": "number"
           },
@@ -10489,6 +11067,7 @@
         "required": [
           "id",
           "name",
+          "parent_id",
           "position",
           "created_at"
         ]
@@ -10515,6 +11094,10 @@
           "width": {
             "type": "integer",
             "description": "Pixels on a free-lists board; 0 is the standard width."
+          },
+          "stage_view": {
+            "type": "string",
+            "description": "Staged boards: the stage this column shows for everyone; empty follows the navbar."
           }
         },
         "required": [
@@ -10523,7 +11106,8 @@
           "position",
           "archived",
           "shopping",
-          "width"
+          "width",
+          "stage_view"
         ]
       },
       "Label": {
@@ -11000,6 +11584,18 @@
               "show_rank": {
                 "type": "boolean"
               },
+              "center_columns": {
+                "type": "boolean"
+              },
+              "stage_todo": {
+                "type": "string"
+              },
+              "stage_doing": {
+                "type": "string"
+              },
+              "stage_done": {
+                "type": "string"
+              },
               "theme": {
                 "oneOf": [
                   {
@@ -11058,6 +11654,10 @@
               "color",
               "shopping",
               "show_rank",
+              "center_columns",
+              "stage_todo",
+              "stage_doing",
+              "stage_done",
               "theme",
               "rev",
               "lists",
@@ -11134,6 +11734,13 @@
                   }
                 ],
                 "description": "Null uses the account default."
+              },
+              "collapsed_lists": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                },
+                "description": "The columns you keep collapsed. Left out when you have no row on this board, as for a guest."
               }
             },
             "required": [
@@ -11359,6 +11966,10 @@
             "type": "string",
             "description": "The saved key, masked. The key itself is never sent back."
           },
+          "notify_via": {
+            "type": "string",
+            "enum": [ "both" , "pushover" , "devices" ]
+          },
           "pushover_device": {
             "type": "string"
           },
@@ -11398,6 +12009,7 @@
           "push_enabled",
           "has_pushover_key",
           "pushover_key_hint",
+          "notify_via",
           "pushover_device",
           "timezone",
           "reminder_lead_minutes",
@@ -11569,6 +12181,9 @@
           "shopping": {
             "type": "boolean"
           },
+          "stage_view": {
+            "type": "string"
+          },
           "cards": {
             "oneOf": [
               {
@@ -11629,6 +12244,18 @@
                 "type": "null"
               }
             ]
+          },
+          "stage_todo": {
+            "type": "string"
+          },
+          "stage_doing": {
+            "type": "string"
+          },
+          "stage_done": {
+            "type": "string"
+          },
+          "center_columns": {
+            "type": "boolean"
           },
           "shopping": {
             "type": "boolean"
@@ -11727,6 +12354,33 @@
           "exported_at",
           "labels",
           "list"
+        ]
+      },
+      "PushDevice": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "last_success": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "created_at"
         ]
       }
     }

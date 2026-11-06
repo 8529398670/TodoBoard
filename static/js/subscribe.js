@@ -13,6 +13,7 @@ const Subscribe = {
         load: function () { return ctx.client.boardSubscription(); },
         save: function ( events ) { return ctx.client.setBoardSubscription( events ); },
         intro: T( "notify.board_intro" ),
+        activity: true,
       } );
     } , back );
   },
@@ -37,7 +38,7 @@ const Subscribe = {
       return;
     }
     if ( !state.push_enabled ) body.appendChild( Dom.el( "p" , { class: "alert alert-warning" , text: T( "notify.server_off" ) } ) );
-    else if ( !state.has_pushover_key ) {
+    else if ( !state.can_receive ) {
       body.appendChild( Dom.el( "p" , { class: "alert alert-warning" , children: [
         Dom.el( "span" , { text: T( "notify.no_key" ) + " " } ),
         Dom.el( "a" , { text: T( "notify.account_link" ) , attrs: { href: "/#notifications" } } ),
@@ -50,6 +51,11 @@ const Subscribe = {
     [ "due" , "assigned" , "changes" ].forEach( function ( name ) {
       fields.appendChild( Ui.checkbox( "notify.event_" + name , events[ name ] , function ( checked ) { events[ name ] = checked; } ) );
     } );
+    // All activity is a board's: a card has no activity of its own to follow.
+    if ( source.activity ) {
+      fields.appendChild( Ui.checkbox( "notify.event_activity" , events.activity , function ( checked ) { events.activity = checked; } ) );
+      fields.appendChild( Dom.el( "p" , { class: "muted small-print" , text: T( "notify.activity_hint" ) } ) );
+    }
     body.appendChild( fields );
     body.appendChild( Dom.el( "p" , { class: "muted" , text: T( "notify.source_" + state.source ) } ) );
     body.appendChild( Dom.el( "div" , { class: "row-actions" , children: [

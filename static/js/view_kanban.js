@@ -9,7 +9,7 @@ const KanbanView = {
       this.renderAll( root , ctx );
       return;
     }
-    const scroller = Dom.el( "div" , { class: "kanban scroll-x" + ( three ? " three" : "" ) + ( ctx.isStaged() ? " staged" : "" ) } );
+    const scroller = Dom.el( "div" , { class: "kanban scroll-x" + ( three ? " three" : "" ) + ( ctx.isStaged() ? " staged" : "" ) + ( ctx.board.center_columns && !three ? " centered" : "" ) } );
     const lists = ctx.lists();
     lists.forEach( ( list ) => scroller.appendChild( this.column( list , ctx ) ) );
     if ( ctx.canEdit && !three && !ctx.fixedColumns ) scroller.appendChild( this.addListColumn( ctx ) );
@@ -186,6 +186,7 @@ const KanbanView = {
   column( list , ctx ) {
     const hidden = ctx.hiddenCount( list.id );
     if ( hidden !== null ) return this.obscuredColumn( list , hidden );
+    if ( ctx.isCollapsed( list.id ) ) return this.collapsedColumn( list , ctx );
     // On a staged board a column is the one stage it is showing: counted,
     // numbered and added to as such.
     const staged = ctx.isStaged();
@@ -198,10 +199,19 @@ const KanbanView = {
     const title = Dom.el( "h2" , { class: "column-title" + ( ctx.canEdit ? " column-handle" : "" ) } );
     Markdown.renderInline( list.title , title );
     header.appendChild( title );
-    header.appendChild( Dom.el( "span" , { class: "count" + ( staged ? " stage-column-count" : "" ) , text: String( cards.length ) } ) );
+    // A column set to a stage of its own says so, since it will not follow
+    // the bar.
+    const own = staged ? ctx.columnView( list.id ) : "";
+    if ( own ) {
+      const name = Stages.label( ctx , own );
+      header.appendChild( Dom.el( "span" , { class: "column-view-badge" , text: name , attrs: { title: I18n.fill( "board.column_view_badge" , { stage: name } ) } } ) );
+    }
+    header.appendChild( Dom.el( "span" , { class: "count" , text: String( cards.length ) } ) );
+    if ( ctx.canCollapse() ) {
+      header.appendChild( Ui.iconButton( "arrows-collapse-vertical" , T( "board.column_collapse" ) , function () { BoardPage.setCollapsed( list.id , true ); } , "column-collapse" ) );
+    }
     header.appendChild( ListMenu.button( list , ctx ) );
     column.appendChild( header );
-    if ( staged ) column.appendChild( Stages.tabs( list.id , ctx.cardsIn( list.id ) , ctx ) );
 
     const container = Dom.el( "div" , { class: "kanban-cards" , attrs: { "data-list-id": list.id } } );
     if ( staged ) container.setAttribute( "data-stage" , stage );
@@ -218,6 +228,37 @@ const KanbanView = {
     return column;
   },
 
+  // A collapsed column: a strip with its title and count, and anywhere on it
+  // opens it again. It stays a column in the row, so it still drags by its
+  // title and dots() still finds the others by position.
+  //
+  // Letting go of a drag over the strip is a click on it too, and Sortable
+  // only swallows that click if the drag passed over nothing. So a click that
+  // ended away from where the press began is a drag, and opens nothing. The
+  // keyboard presses nothing first, so its click always counts.
+  collapsedColumn( list , ctx ) {
+    const count = ctx.isStaged() ? ctx.cardsAt( list.id , ctx.stageIn( list.id ) ).length : ctx.cardsIn( list.id ).length;
+    let pressed = null;
+    const strip = Dom.el( "section" , {
+      class: "kanban-column is-collapsed",
+      attrs: { "data-list-id": list.id , "data-position": list.position },
+      on: {
+        pointerdown: function ( event ) { pressed = { x: event.clientX , y: event.clientY }; },
+        click: function ( event ) {
+          const dragged = pressed && Math.hypot( event.clientX - pressed.x , event.clientY - pressed.y ) > 8;
+          pressed = null;
+          if ( !dragged ) BoardPage.setCollapsed( list.id , false );
+        },
+      },
+    } );
+    strip.appendChild( Ui.iconButton( "arrows-expand-vertical" , T( "board.column_expand" ) , function () {} , "column-expand" ) );
+    strip.appendChild( Dom.el( "span" , { class: "count" , text: String( count ) } ) );
+    const title = Dom.el( "h2" , { class: "column-title" + ( ctx.canEdit && !ctx.fixedColumns ? " column-handle" : "" ) } );
+    Markdown.renderInline( list.title , title );
+    strip.appendChild( title );
+    return strip;
+  },
+
   // The All list: one stage of every list, ranked ones first, in one centred
   // list in place of the columns. It is no list itself, so it has no menu or
   // add box.
@@ -225,7 +266,7 @@ const KanbanView = {
     const cards = ctx.allCards();
     const stage = ctx.stageIn( "all" );
     const view = Dom.el( "section" , { class: "all-view" , attrs: { "data-stage-key": "all" } } );
-    view.appendChild( Stages.tabs( "all" , cards , ctx ) );
+    view.appendChild( Stages.tabs( cards , ctx ) );
     const container = Dom.el( "div" , { class: "kanban-cards all-cards" } );
     cards.filter( function ( card ) { return Stages.of( card ) === stage; } ).forEach( ( card ) => {
       const face = this.face( card , ctx , null , true );
@@ -380,28 +421,65 @@ const QuickAdd = {
   // lasts while the box stays open -- across the re-render after each add --
   // and is forgotten when the box is cancelled or opened afresh.
   flipped: {},
+  // When each box's arrow was last pressed, by key. Kept here and not in the
+  // button's closure, which a poll can replace between two clicks.
+  lastFlip: {},
+  // Two presses this close together are a double click. Timed by hand: phones
+  // do not reliably send dblclick.
+  doubleClickMs: 350,
   reopening: false,
+
+  // A direction locked for one column, "top" or "bottom", or "" for none. It
+  // is this browser's, and outlasts the box and the page until it is changed.
+  locked( ctx , list ) {
+    let saved = "";
+    try { saved = window.localStorage.getItem( "add_lock:" + ctx.board.id + ":" + list.id ) || ""; } catch ( error ) { saved = ""; }
+    return saved === "top" || saved === "bottom" ? saved : "";
+  },
+
+  setLocked( ctx , list , direction ) {
+    const name = "add_lock:" + ctx.board.id + ":" + list.id;
+    try {
+      if ( direction ) window.localStorage.setItem( name , direction );
+      else window.localStorage.removeItem( name );
+    } catch ( error ) { /* not remembered */ }
+  },
 
   // A column's add-card box. With add-on-top the box sits above the cards
   // and what it adds goes first; otherwise both go last. Its arrow button
   // sends what is added to the other end instead, for as long as it is on.
+  // Double-clicking the arrow locks the direction it was showing -- the two
+  // clicks flip it there and back -- and any single click after that unlocks
+  // it and flips it.
   // A picture pasted into the box is held, shown small, and put on the
   // card once it is added.
   // stage, on a staged board, is the one the column is showing: new cards
   // start there.
   forCards( list , ctx , buttonKey , stage ) {
     const key = "card-" + list.id;
-    const onTop = function () { return ctx.addOnTop() !== !!QuickAdd.flipped[ key ]; };
+    const onTop = function () {
+      const lock = QuickAdd.locked( ctx , list );
+      return lock ? lock === "top" : ctx.addOnTop() !== !!QuickAdd.flipped[ key ];
+    };
     const flip = Ui.iconButton( "arrow-bar-up" , "" , function () {
-      QuickAdd.flipped[ key ] = !QuickAdd.flipped[ key ];
+      const now = Date.now();
+      const double = now - ( QuickAdd.lastFlip[ key ] || 0 ) < QuickAdd.doubleClickMs;
+      // A third quick click starts over rather than counting as another double.
+      QuickAdd.lastFlip[ key ] = double ? 0 : now;
+      const next = !onTop();
+      QuickAdd.flipped[ key ] = next !== ctx.addOnTop();
+      QuickAdd.setLocked( ctx , list , double ? ( next ? "top" : "bottom" ) : "" );
       show();
+      if ( double ) flip.closest( ".quick-add-form" ).querySelector( ".quick-add-input" ).focus();
     } , "quick-add-flip" );
     const show = function () {
       const top = onTop();
-      const label = T( top ? "board.add_to_top" : "board.add_to_bottom" );
+      const lock = QuickAdd.locked( ctx , list );
+      const label = T( lock ? "board.add_locked_" + lock : ( top ? "board.add_to_top" : "board.add_to_bottom" ) );
       flip.firstChild.className = "bi bi-" + ( top ? "arrow-bar-up" : "arrow-bar-down" );
       flip.classList.toggle( "active" , !!QuickAdd.flipped[ key ] );
-      flip.setAttribute( "aria-pressed" , QuickAdd.flipped[ key ] ? "true" : "false" );
+      flip.classList.toggle( "is-locked" , !!lock );
+      flip.setAttribute( "aria-pressed" , lock || QuickAdd.flipped[ key ] ? "true" : "false" );
       flip.setAttribute( "aria-label" , label );
       flip.setAttribute( "title" , label );
     };
@@ -613,6 +691,9 @@ const ListMenu = {
   },
 
   open( list , ctx ) {
+    // Coming back from picking cards to archive, list can be from before a
+    // poll, and this menu shows what it is set to.
+    list = ctx.board.lists.find( function ( item ) { return item.id === list.id; } ) || list;
     Panel.open( "board.list_menu" , function ( body ) {
       const copy = Dom.el( "section" , { class: "panel-section" } );
       copy.appendChild( Dom.el( "h3" , { text: T( "board.copy_heading" ) } ) );
@@ -655,6 +736,14 @@ const ListMenu = {
           Ui.button( "board.share_list" , function () { Sharing.openList( ctx , list ); } ),
         ] } ) );
       }
+      if ( ctx.canCollapse() ) {
+        body.appendChild( Dom.el( "section" , { class: "panel-section" , children: [
+          Ui.button( "board.column_collapse" , function () {
+            Panel.close();
+            BoardPage.setCollapsed( list.id , true );
+          } ),
+        ] } ) );
+      }
       // Renaming, archiving and deleting change the board, which a column
       // link cannot.
       if ( !ctx.canEdit || ctx.fixedColumns ) return;
@@ -667,6 +756,18 @@ const ListMenu = {
         const result = await ctx.mutate( function () { return ctx.client.updateList( list.id , { shopping: checked } ); } );
         Dom.text( status , result ? T( "card.autosave_saved" ) : "" );
       } ) );
+      if ( staged ) {
+        const stageView = Ui.select( [ { value: "" , text: T( "board.column_view_follow" ) } ].concat( Stages.order.map( function ( stage ) {
+          return { value: stage , text: Stages.label( ctx , stage ) };
+        } ) ) , list.stage_view || "" );
+        stageView.addEventListener( "change" , async function () {
+          Dom.text( status , T( "card.autosave_saving" ) );
+          const result = await ctx.mutate( function () { return ctx.client.updateList( list.id , { stage_view: stageView.value } ); } );
+          Dom.text( status , result ? T( "card.autosave_saved" ) : "" );
+        } );
+        form.appendChild( Ui.field( "board.column_view_label" , stageView ) );
+        form.appendChild( Dom.el( "p" , { class: "muted small-print" , text: T( "board.column_view_hint" ) } ) );
+      }
       // The name saves itself after a pause in typing, or when it is left;
       // Enter saves and closes the menu.
       const status = Dom.el( "p" , { class: "muted small-print autosave-status" , attrs: { "aria-live": "polite" } } );

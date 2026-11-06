@@ -42,6 +42,16 @@ type createAPIKeyRequest struct {
 	BoardIDs    []uint64 `json:"board_ids"`
 }
 
+// No board limit here: see models.IssueAPIKeyFor.
+type adminCreateAPIKeyRequest struct {
+	UserID uint64 `json:"user_id"`
+	Name   string `json:"name"`
+	Role   string `json:"role"`
+	// As on createAPIKeyRequest: absent is the default, 0 is never.
+	ExpiresInDays *int   `json:"expires_in_days"`
+	CSRFToken     string `json:"csrf_token"`
+}
+
 type setKeyBoardsRequest struct {
 	BoardAccess string   `json:"board_access"`
 	BoardIDs    []uint64 `json:"board_ids"`
@@ -94,6 +104,9 @@ func apiKeyRow( key *models.APIKey , display_name string ) ( row fiber.Map ) {
 	if display_name != "" {
 		row[ "display_name" ] = display_name
 	}
+	if key.CreatedBy != 0 {
+		row[ "created_by" ] = key.CreatedBy
+	}
 	return
 }
 
@@ -117,7 +130,12 @@ func ( handlers *Handlers ) ListMyAPIKeys( c fiber.Ctx ) ( err error ) {
 	}
 	rows := []fiber.Map{}
 	for _ , key := range keys {
-		rows = append( rows , ownKeyRow( key ) )
+		row := ownKeyRow( key )
+		// Left out once that admin's account is gone; the page says "an admin".
+		if key.CreatedBy != 0 {
+			if maker , get_err := models.GetUser( handlers.Store , key.CreatedBy ); get_err == nil { row[ "created_by_name" ] = maker.DisplayName }
+		}
+		rows = append( rows , row )
 	}
 	err = c.JSON( rows )
 	return
@@ -183,6 +201,69 @@ func ( handlers *Handlers ) CreateMyAPIKey( c fiber.Ctx ) ( err error ) {
 
 	// The credential appears here and nowhere else, ever.
 	row := ownKeyRow( key )
+	row[ "credential" ] = credential
+	err = c.Status( fiber.StatusCreated ).JSON( row )
+	return
+}
+
+// CreateAPIKeyForUser is an admin making a key that acts as someone else: it
+// is that person in every way, so it reaches what they reach and no more. The
+// key is theirs, in their own list with the admin's name on it, where they can
+// limit or revoke it. Limits on who it can be for are in the model, with the
+// others.
+func ( handlers *Handlers ) CreateAPIKeyForUser( c fiber.Ctx ) ( err error ) {
+	var body adminCreateAPIKeyRequest
+	if c.Bind().JSON( &body ) != nil {
+		err = badRequest( c , "malformed request body" )
+		return
+	}
+	if handlers.Guard.CheckCSRF( c , body.CSRFToken ) == false {
+		err = forbidden( c , "invalid csrf token" )
+		return
+	}
+	if models.ValidAPIKeyName( body.Name ) == false {
+		err = badRequest( c , "name must be 1-80 characters" )
+		return
+	}
+	role := body.Role
+	if role == "" {
+		role = models.RoleUser
+	}
+	if models.ValidRole( role ) == false {
+		err = badRequest( c , "role must be admin or user" )
+		return
+	}
+	ttl , ok := models.APIKeyTTLFromDays( body.ExpiresInDays , handlers.Config.APIKeyTTL )
+	if ok == false {
+		err = badRequest( c , "expires_in_days must be 0 (never) or up to 3650" )
+		return
+	}
+	if _ , get_err := models.GetUser( handlers.Store , body.UserID ); get_err != nil {
+		err = notFound( c , "no such user" )
+		return
+	}
+
+	admin := security.UserFrom( c )
+	credential , key , issue_err := models.IssueAPIKeyFor( handlers.Store , admin.ID , body.UserID , body.Name , role , ttl )
+	if issue_err != nil {
+		switch {
+		case errors.Is( issue_err , models.ErrAPIKeyOwner ):
+			err = forbidden( c , "only the owner can make the owner's API keys" )
+		case errors.Is( issue_err , models.ErrAPIKeyRole ):
+			err = forbidden( c , "this account cannot hold an admin key" )
+		case errors.Is( issue_err , models.ErrAPIKeyLimit ):
+			err = badRequest( c , "this account already has the maximum number of live API keys" )
+		case errors.Is( issue_err , models.ErrAPIKeyDisabled ):
+			err = forbidden( c , "this account is disabled" )
+		default:
+			err = serverError( c )
+		}
+		return
+	}
+
+	// As in CreateMyAPIKey, the credential appears here and nowhere else.
+	row := apiKeyRow( key , "" )
+	row[ "created_by_name" ] = admin.DisplayName
 	row[ "credential" ] = credential
 	err = c.Status( fiber.StatusCreated ).JSON( row )
 	return
@@ -318,7 +399,9 @@ func ( handlers *Handlers ) ListAllAPIKeys( c fiber.Ctx ) ( err error ) {
 
 	rows := []fiber.Map{}
 	for _ , key := range keys {
-		rows = append( rows , apiKeyRow( key , names[ key.UserID ] ) )
+		row := apiKeyRow( key , names[ key.UserID ] )
+		if maker := names[ key.CreatedBy ]; maker != "" { row[ "created_by_name" ] = maker }
+		rows = append( rows , row )
 	}
 	err = c.JSON( rows )
 	return

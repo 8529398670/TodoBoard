@@ -53,6 +53,13 @@ func ( handlers *Handlers ) SetBoardMember( c fiber.Ctx ) ( err error ) {
 	if was_member == false && body.Role != "" {
 		handlers.Notify.BoardShared( board.ID , body.UserID , principal.UserID , principal.Name )
 	}
+	if ( was_member == false ) != ( body.Role == "" ) {
+		name := ""
+		if target , get_err := models.GetUser( handlers.Store , body.UserID ); get_err == nil { name = target.DisplayName }
+		what := "member_removed"
+		if body.Role != "" { what = "member_added" }
+		handlers.activity( principal , board.ID , what , map[string]string{ "name": name } )
+	}
 	err = c.JSON( fiber.Map{ "ok": true } )
 	return
 }

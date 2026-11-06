@@ -302,15 +302,41 @@ func ( patch *CardPatch ) Ranks() ( result bool ) {
 type CardChange struct {
 	Moved         bool
 	FromListID    uint64
+	ToListID      uint64
 	Completed     bool
 	Reopened      bool
 	Edited        bool
 	NewAssignees  []uint64
 	DueChanged    bool
+	// The rest are only for a board's activity (Noted): people following one
+	// card hear about the changes Any covers.
+	LabelsChanged    bool
+	StartChanged     bool
+	AssigneesRemoved bool
+	Archived         bool
+	Unarchived       bool
+	// Title is the card's, once patched.
+	Title string
 }
 
 func ( change *CardChange ) Any() ( result bool ) {
 	result = change.Moved || change.Completed || change.Reopened || change.Edited || len( change.NewAssignees ) > 0 || change.DueChanged
+	return
+}
+
+// Noted reports whether a board's activity should mention the patch. A
+// reorder or a rank does not count: see notify/activity.go.
+func ( change *CardChange ) Noted() ( result bool ) {
+	result = change.Any() || change.LabelsChanged || change.StartChanged || change.AssigneesRemoved || change.Archived || change.Unarchived
+	return
+}
+
+func sameIDs( a []uint64 , b []uint64 ) ( result bool ) {
+	if len( a ) != len( b ) { return }
+	for _ , id := range a {
+		if containsID( b , id ) == false { return }
+	}
+	result = true
 	return
 }
 
@@ -352,7 +378,7 @@ func ( patch *CardPatch ) apply( board *Board , card *Card ) ( change CardChange
 	if patch.ListID != nil {
 		if board.List( *patch.ListID ) == nil { return change , ErrListNotFound }
 		if *patch.ListID != card.ListID {
-			change.Moved , change.FromListID = true , card.ListID
+			change.Moved , change.FromListID , change.ToListID = true , card.ListID , *patch.ListID
 		}
 		card.ListID = *patch.ListID
 	}
@@ -365,6 +391,7 @@ func ( patch *CardPatch ) apply( board *Board , card *Card ) ( change CardChange
 		for _ , id := range *patch.LabelIDs {
 			if board.Label( id ) != nil && containsID( labels , id ) == false { labels = append( labels , id ) }
 		}
+		change.LabelsChanged = sameIDs( labels , card.LabelIDs ) == false
 		card.LabelIDs = labels
 	}
 	if patch.Assignees != nil {
@@ -378,12 +405,17 @@ func ( patch *CardPatch ) apply( board *Board , card *Card ) ( change CardChange
 			assignees = append( assignees , id )
 			if containsID( card.Assignees , id ) == false { change.NewAssignees = append( change.NewAssignees , id ) }
 		}
+		for _ , id := range card.Assignees {
+			if containsID( assignees , id ) == false { change.AssigneesRemoved = true }
+		}
 		card.Assignees = assignees
 	}
 	if patch.StartAt != nil {
 		start , all_day , date_err := ParseCardDate( *patch.StartAt )
 		if date_err != nil { return change , date_err }
-		card.StartAt , card.StartTimed = start , start != nil && all_day == false
+		timed := start != nil && all_day == false
+		change.StartChanged = timeChanged( card.StartAt , start ) || timed != card.StartTimed
+		card.StartAt , card.StartTimed = start , timed
 	}
 	if patch.DueAt != nil {
 		due , all_day , date_err := ParseCardDate( *patch.DueAt )
@@ -419,6 +451,8 @@ func ( patch *CardPatch ) apply( board *Board , card *Card ) ( change CardChange
 	}
 	if patch.Archived != nil {
 		change.Edited = change.Edited || *patch.Archived != card.Archived
+		change.Archived = *patch.Archived && card.Archived == false
+		change.Unarchived = *patch.Archived == false && card.Archived
 		card.Archived = *patch.Archived
 	}
 	if patch.Price != nil {
@@ -463,6 +497,7 @@ func PatchCard( store *db.Store , board_id uint64 , card_id uint64 , patch *Card
 		if tx_err != nil { return }
 		change , tx_err = patch.apply( board , card )
 		if tx_err != nil { return }
+		change.Title = card.Title
 		if patch.RankPlace != nil {
 			tx_err = placeRankTx( tx , board , card , *patch.RankPlace )
 			if tx_err != nil { return }

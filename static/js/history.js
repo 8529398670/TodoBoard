@@ -330,7 +330,7 @@ const History = {
       const listId = args[ 0 ];
       const list = before.board.lists.find( function ( item ) { return item.id === listId; } );
       if ( !list ) return null;
-      const change = this.previous( list , args[ 1 ] , [ "title" , "position" , "archived" ] , function ( source , key ) { return source[ key ]; } );
+      const change = this.previous( list , args[ 1 ] , [ "title" , "position" , "archived" , "stage_view" ] , function ( source , key ) { return source[ key ]; } );
       if ( !change ) return null;
       return {
         undo: () => this.raw.updateList( this.id( "list" , listId ) , change.back ),
@@ -352,6 +352,7 @@ const History = {
           const created = await this.raw.createList( copy.title , copy.position );
           this.remap( "list" , listId , created.id );
           if ( copy.archived ) await this.raw.updateList( created.id , { archived: true } );
+          if ( copy.stage_view ) await this.raw.updateList( created.id , { stage_view: copy.stage_view } );
           for ( const card of cards ) await this.untrash( this.id( "card" , card.id ) , created.id , card.position );
         },
         redo: () => this.raw.deleteList( this.id( "list" , listId ) ),
@@ -428,8 +429,8 @@ const History = {
     // Each step hands the revs it ends on to the next.
     updateBoard( before , args , result ) {
       const fields = args[ 0 ];
-      const change = this.previous( before.board , fields , [ "title" , "default_view" , "color" , "layout" , "numbering" , "done_placement" , "add_placement" , "purpose_enabled" , "purpose" , "notes" ] , function ( source , key ) {
-        if ( key === "purpose_enabled" ) return !!source[ key ];
+      const change = this.previous( before.board , fields , [ "title" , "default_view" , "color" , "layout" , "numbering" , "done_placement" , "add_placement" , "center_columns" , "stage_todo" , "stage_doing" , "stage_done" , "purpose_enabled" , "purpose" , "notes" ] , function ( source , key ) {
+        if ( key === "purpose_enabled" || key === "center_columns" ) return !!source[ key ];
         return source[ key ] || "";
       } );
       if ( !change ) return null;

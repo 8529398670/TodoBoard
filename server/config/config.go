@@ -133,6 +133,8 @@ type PushoverSection struct {
 type NotifySection struct {
 	DueCheckIntervalSeconds int `yaml:"due_check_interval_seconds"`
 	ChangeDebounceSeconds   int `yaml:"change_debounce_seconds"`
+	WebPush                 bool   `yaml:"web_push"`
+	WebPushContact          string `yaml:"web_push_contact"`
 }
 
 type DockerSection struct {
@@ -287,6 +289,9 @@ type Config struct {
 
 	DueCheckInterval time.Duration
 	ChangeDebounce   time.Duration
+	// WebPush sends notifications to browsers people turn them on in.
+	WebPush          bool
+	WebPushContact   string
 }
 
 // layout is what the container image pins, regardless of config.yaml. See
@@ -501,6 +506,9 @@ func ( file *File ) Validate() ( err error ) {
 		"pushover.api_url must be an http(s) URL, got %q" , file.Pushover.APIURL )
 	check( file.Notify.DueCheckIntervalSeconds >= 10 , "notify.due_check_interval_seconds must be at least 10" )
 	check( file.Notify.ChangeDebounceSeconds >= 0 , "notify.change_debounce_seconds must not be negative" )
+	contact := strings.TrimSpace( file.Notify.WebPushContact )
+	check( contact == "" || strings.HasPrefix( contact , "mailto:" ) || strings.HasPrefix( contact , "https://" ) ,
+		"notify.web_push_contact must be a mailto: or https:// address, got %q" , file.Notify.WebPushContact )
 
 	docker := file.Docker
 	check( imagePattern.MatchString( docker.Image ) , "docker.image %q is not a valid lowercase image name" , docker.Image )
@@ -744,6 +752,8 @@ func Load() ( cfg *Config , err error ) {
 
 		DueCheckInterval: seconds( file.Notify.DueCheckIntervalSeconds ),
 		ChangeDebounce:   seconds( file.Notify.ChangeDebounceSeconds ),
+		WebPush:          file.Notify.WebPush,
+		WebPushContact:   strings.TrimSpace( file.Notify.WebPushContact ),
 	}
 	return
 }

@@ -3,6 +3,7 @@ package routes
 import (
 	json "encoding/json"
 	http "net/http"
+	strings "strings"
 	testing "testing"
 
 	models "todoboard/server/models"
@@ -46,6 +47,33 @@ func displayOf( t *testing.T , me string ) ( display string ) {
 	if err := json.Unmarshal( []byte( me ) , &parsed ); err != nil { t.Fatal( err ) }
 	display = string( parsed.Display )
 	return
+}
+
+func TestDeliveryChoiceKeepsThePushoverKey( t *testing.T ) {
+	fixture := newKeyBoards( t )
+	key , _ := fixture.key( t , "" )
+	pushover_key := strings.Repeat( "a" , 30 )
+	post := func( body string ) ( status int , text string ) {
+		status , text = fixture.call( t , http.MethodPost , "/api/notify/prefs" , key , "" , body )
+		return
+	}
+	withVia := func( via string ) ( body string ) {
+		body = strings.TrimSuffix( notifyForm( "" ) , "}" ) + `,"notify_via":"` + via + `"}`
+		return
+	}
+	if status , text := post( notifyForm( pushover_key ) ); status != http.StatusOK { t.Fatalf( "%d %s" , status , text ) }
+
+	status , text := post( withVia( "devices" ) )
+	if status != http.StatusOK { t.Fatalf( "%d %s" , status , text ) }
+	if strings.Contains( text , `"notify_via":"devices"` ) == false { t.Errorf( "reply: %s" , text ) }
+	prefs , _ := models.GetUserPrefs( fixture.store , fixture.member.ID )
+	if prefs.NotifyVia != models.NotifyViaDevices || prefs.PushoverUserKey != pushover_key { t.Errorf( "saved: %q, key kept: %v" , prefs.NotifyVia , prefs.PushoverUserKey == pushover_key ) }
+
+	if status , text = post( notifyForm( "" ) ); status != http.StatusOK { t.Fatalf( "%d %s" , status , text ) }
+	prefs , _ = models.GetUserPrefs( fixture.store , fixture.member.ID )
+	if prefs.NotifyVia != models.NotifyViaDevices { t.Errorf( "a form without the choice changed it to %q" , prefs.NotifyVia ) }
+
+	if status , _ = post( withVia( "carrier-pigeon" ) ); status != http.StatusBadRequest { t.Errorf( "an unknown choice got %d" , status ) }
 }
 
 func TestSavingNotificationsSavesTheForm( t *testing.T ) {

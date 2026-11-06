@@ -65,6 +65,7 @@ type ListSnapshot struct {
 	Title    string          `json:"title"`
 	Archived bool            `json:"archived"`
 	Shopping bool            `json:"shopping,omitempty"`
+	StageView string         `json:"stage_view,omitempty"`
 	Cards    []*CardSnapshot `json:"cards"`
 }
 
@@ -77,6 +78,10 @@ type BoardSnapshot struct {
 	Color       string           `json:"color"`
 	Theme       *Theme           `json:"theme"`
 	Shopping    bool             `json:"shopping,omitempty"`
+	CenterColumns bool           `json:"center_columns,omitempty"`
+	StageTodo   string           `json:"stage_todo,omitempty"`
+	StageDoing  string           `json:"stage_doing,omitempty"`
+	StageDone   string           `json:"stage_done,omitempty"`
 	PurposeEnabled bool          `json:"purpose_enabled,omitempty"`
 	Purpose     string           `json:"purpose,omitempty"`
 	Notes       string           `json:"notes,omitempty"`
@@ -108,6 +113,7 @@ func SnapshotBoard( board *Board , cards []*Card , visible func( card *Card ) bo
 	snap = &BoardSnapshot{
 		Title: board.Title , Slug: board.Slug , Layout: board.Layout , Numbering: board.Numbering ,
 		DefaultView: board.DefaultView , Color: board.Color , Theme: board.Theme , Shopping: board.Shopping ,
+		CenterColumns: board.CenterColumns , StageTodo: board.StageTodo , StageDoing: board.StageDoing , StageDone: board.StageDone ,
 		PurposeEnabled: board.PurposeEnabled , Purpose: board.Purpose , Notes: board.Notes ,
 		Labels: snapshotLabels( board , nil ) , Lists: []*ListSnapshot{} ,
 	}
@@ -120,7 +126,7 @@ func SnapshotBoard( board *Board , cards []*Card , visible func( card *Card ) bo
 
 // SnapshotList is one list with its visible cards, in column order.
 func SnapshotList( list *List , cards []*Card , visible func( card *Card ) bool , person func( id uint64 ) string ) ( snap *ListSnapshot ) {
-	snap = &ListSnapshot{ Title: list.Title , Archived: list.Archived , Shopping: list.Shopping , Cards: []*CardSnapshot{} }
+	snap = &ListSnapshot{ Title: list.Title , Archived: list.Archived , Shopping: list.Shopping , StageView: list.StageView , Cards: []*CardSnapshot{} }
 	mine := []*Card{}
 	for _ , card := range cards {
 		if card.ListID == list.ID && visible( card ) { mine = append( mine , card ) }
@@ -192,9 +198,13 @@ func ImportBoardSkeleton( store *db.Store , owner_id uint64 , snap *BoardSnapsho
 		board = &Board{
 			ID: id , Title: title , OwnerID: owner_id , Members: map[uint64]string{} ,
 			Lists: []*List{} , Labels: []*Label{} , Layout: LayoutFree , DefaultView: ViewKanban ,
-			Shopping: snap.Shopping , PurposeEnabled: snap.PurposeEnabled , Rev: 1 , CreatedAt: now , UpdatedAt: now ,
+			Shopping: snap.Shopping , CenterColumns: snap.CenterColumns , PurposeEnabled: snap.PurposeEnabled , Rev: 1 , CreatedAt: now , UpdatedAt: now ,
 		}
 		if snap.Layout == LayoutThree || snap.Layout == LayoutStaged { board.Layout = snap.Layout }
+		// A file can say anything; a name too long is the same as none.
+		if clean , ok := cleanStageName( snap.StageTodo ); ok { board.StageTodo = clean }
+		if clean , ok := cleanStageName( snap.StageDoing ); ok { board.StageDoing = clean }
+		if clean , ok := cleanStageName( snap.StageDone ); ok { board.StageDone = clean }
 		if snap.Numbering == NumberingOn || snap.Numbering == NumberingOff { board.Numbering = snap.Numbering }
 		if ValidBoardView( snap.DefaultView ) { board.DefaultView = snap.DefaultView }
 		if ValidColor( snap.Color ) { board.Color = snap.Color }
@@ -211,6 +221,7 @@ func ImportBoardSkeleton( store *db.Store , owner_id uint64 , snap *BoardSnapsho
 			list_title , list_ok := cleanTitle( list.Title , 120 )
 			if list_ok == false { return ErrBadInput }
 			added := &List{ ID: board.nextID() , Title: list_title , Position: float64( index + 1 ) * positionStep , Archived: list.Archived , Shopping: list.Shopping }
+			if validStageView( list.StageView ) { added.StageView = list.StageView }
 			board.Lists = append( board.Lists , added )
 			lists = append( lists , added.ID )
 		}

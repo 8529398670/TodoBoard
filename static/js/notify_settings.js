@@ -1,9 +1,15 @@
-// The Notifications screen: the Pushover user key, when reminders arrive,
-// and the defaults every board and card starts from, under a one-line
-// summary of what is on. The key itself is never sent back to the browser once saved -- only a hint of
+// The Notifications screen: this browser and the others that take
+// notifications, the Pushover user key, when reminders arrive, and the
+// defaults every board and card starts from, under a one-line summary of what
+// is on. The key itself is never sent back to the browser once saved -- only a hint of
 // it -- so the field is left blank to keep it and typed into to replace it.
 const NotifySettings = {
   prefs: null,
+  // What the server says about browsers: the key to subscribe against, and
+  // every browser this person has set up.
+  push: { public_key: "" , devices: [] },
+  // Whether this browser is one of them.
+  subscribed: false,
 
   // Lead times offered for due reminders, in minutes.
   leads: [ 10080 , 2880 , 1440 , 180 , 60 , 15 ],
@@ -15,9 +21,95 @@ const NotifySettings = {
       App.showError( error.message );
       return;
     }
+    await this.loadBrowsers();
     // A board's Notifications panel links straight here (#notifications);
     // nav.js shows this screen for that hash.
     this.render();
+  },
+
+  // Never in the way of the rest of the screen: everything but this section
+  // works without it.
+  async loadBrowsers() {
+    if ( !this.prefs.web_push_enabled ) return;
+    try {
+      this.push = await Api.request( "/api/notify/devices" );
+      if ( PushClient.supported() ) {
+        await PushClient.checkIn( this.push.public_key , this.push.devices );
+        this.subscribed = !!( await PushClient.subscription() );
+        this.push = await Api.request( "/api/notify/devices" );
+      }
+    } catch ( error ) {
+      this.subscribed = false;
+    }
+  },
+
+  // After a browser is added or removed: what can reach this person changed.
+  async refreshBrowsers() {
+    try {
+      this.prefs = await Api.request( "/api/notify/prefs" );
+    } catch ( error ) {
+      App.showError( error.message );
+      return;
+    }
+    await this.loadBrowsers();
+    this.render();
+  },
+
+  async setBrowser( on ) {
+    try {
+      if ( on ) await PushClient.enable( this.push.public_key );
+      else await PushClient.disable();
+    } catch ( error ) {
+      App.showError( error.message );
+    }
+    await this.refreshBrowsers();
+  },
+
+  async removeDevice( device ) {
+    try {
+      if ( device.id === PushClient.savedId() ) await PushClient.disable();
+      else await Api.post( "/api/notify/devices/" + encodeURIComponent( device.id ) + "/delete" );
+    } catch ( error ) {
+      App.showError( error.message );
+    }
+    await this.refreshBrowsers();
+  },
+
+  // This browser's switch, then every browser set up, this one included.
+  browserSection() {
+    const section = Dom.el( "section" , { class: "stack" } );
+    section.appendChild( Dom.el( "h3" , { class: "h6 mb-0" , text: T( "notify.browser_heading" ) } ) );
+    // In this order: an old iPhone should not be sent to its Home Screen for
+    // something that will not work there either.
+    const obstacle = PushClient.iosTooOld() ? "notify.browser_ios_old" : PushClient.needsHomeScreen() ? "notify.browser_ios" : !PushClient.supported() ? "notify.browser_unsupported" : "";
+    if ( obstacle ) {
+      section.appendChild( Dom.el( "p" , { class: "muted small-print mb-0" , text: T( obstacle ) } ) );
+    } else if ( this.subscribed ) {
+      section.appendChild( Dom.el( "p" , { class: "muted small-print mb-0" , text: T( this.prefs.notify_via === "pushover" ? "notify.browser_on_unused" : "notify.browser_on" ) } ) );
+      section.appendChild( Dom.el( "div" , { class: "row-actions" , children: [ Ui.button( "notify.browser_disable" , () => this.setBrowser( false ) , "secondary" ) ] } ) );
+    } else if ( PushClient.blocked() ) {
+      section.appendChild( Dom.el( "p" , { class: "muted small-print mb-0" , text: T( "notify.browser_blocked" ) } ) );
+    } else {
+      section.appendChild( Dom.el( "p" , { class: "muted small-print mb-0" , text: T( "notify.browser_intro" ) } ) );
+      section.appendChild( Dom.el( "div" , { class: "row-actions" , children: [ Ui.button( "notify.browser_enable" , () => this.setBrowser( true ) , "secondary" ) ] } ) );
+    }
+    if ( this.push.devices.length ) {
+      const list = Dom.el( "ul" , { class: "link-list" } );
+      const here = PushClient.savedId();
+      this.push.devices.forEach( ( device ) => {
+        const when = device.last_success ? I18n.fill( "notify.device_last" , { when: Dates.format( device.last_success ) } ) : T( "notify.device_never" );
+        const name = device.label || T( "notify.device_unnamed" );
+        const row = Dom.el( "li" , { class: "link-row" } );
+        row.appendChild( Dom.el( "div" , { children: [
+          Dom.el( "strong" , { text: device.id === here ? I18n.fill( "notify.device_this" , { name: name } ) : name } ),
+          Dom.el( "div" , { class: "muted" , text: when } ),
+        ] } ) );
+        row.appendChild( Dom.el( "div" , { class: "row-actions" , children: [ Ui.button( "notify.device_remove" , () => this.removeDevice( device ) , "secondary small danger" ) ] } ) );
+        list.appendChild( row );
+      } );
+      section.appendChild( list );
+    }
+    return section;
   },
 
   leadLabel( minutes ) {
@@ -37,7 +129,7 @@ const NotifySettings = {
   summary() {
     const prefs = this.prefs;
     if ( !prefs.push_enabled ) return T( "notify.summary_server_off" );
-    if ( !prefs.has_pushover_key ) return T( "notify.summary_not_set_up" );
+    if ( !prefs.can_receive ) return T( "notify.summary_not_set_up" );
     if ( prefs.paused ) return T( "notify.summary_paused" );
     if ( !prefs.reminder_lead_minutes.length ) return T( "notify.summary_on" );
     return I18n.fill( "notify.summary_on_leads" , { leads: prefs.reminder_lead_minutes.map( ( minutes ) => this.leadLabel( minutes ) ).join( ", " ) } );
@@ -51,15 +143,28 @@ const NotifySettings = {
     Dom.clear( root );
     const form = Dom.el( "form" , { class: "stack" , attrs: { autocomplete: "off" } } );
 
+    if ( prefs.web_push_enabled ) form.appendChild( this.browserSection() );
+
+    // A choice only when there are two ways to choose from. Someone left on
+    // one the server has since turned off still sees it, to get back out.
+    let via = null;
+    if ( ( prefs.pushover_enabled && prefs.web_push_enabled ) || prefs.notify_via !== "both" ) {
+      via = Ui.select( [ "both" , "pushover" , "devices" ].map( function ( value ) { return { value: value , text: T( "notify.via_" + value ) }; } ) , prefs.notify_via );
+      form.appendChild( Dom.el( "div" , { class: "form-row" , children: [ Ui.field( "notify.via_label" , via ) ] } ) );
+    }
+
     const key = Dom.el( "input" , { attrs: { maxlength: "30" , autocomplete: "off" , spellcheck: "false" ,
       placeholder: prefs.has_pushover_key ? I18n.fill( "notify.key_saved_placeholder" , { hint: prefs.pushover_key_hint } ) : T( "notify.key_placeholder" ) } } );
     const device = Dom.el( "input" , { attrs: { maxlength: "25" , placeholder: T( "notify.device_placeholder" ) } } );
     device.value = prefs.pushover_device || "";
-    const row = Dom.el( "div" , { class: "form-row" } );
-    row.appendChild( Ui.field( "notify.key_label" , key ) );
-    row.appendChild( Ui.field( "notify.device_label" , device ) );
-    form.appendChild( row );
-    form.appendChild( Dom.el( "p" , { class: "muted small-print" , text: T( "notify.key_help" ) } ) );
+    // Without an app token here a Pushover key would go nowhere.
+    if ( prefs.pushover_enabled ) {
+      const row = Dom.el( "div" , { class: "form-row" } );
+      row.appendChild( Ui.field( "notify.key_label" , key ) );
+      row.appendChild( Ui.field( "notify.device_label" , device ) );
+      form.appendChild( row );
+      form.appendChild( Dom.el( "p" , { class: "muted small-print" , text: T( "notify.key_help" ) } ) );
+    }
 
     let browserZone = "UTC";
     try { browserZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"; } catch ( error ) { browserZone = "UTC"; }
@@ -105,7 +210,7 @@ const NotifySettings = {
     const actions = Dom.el( "div" , { class: "row-actions" } );
     actions.appendChild( Dom.el( "button" , { class: "btn btn-primary" , text: T( "notify.save" ) , attrs: { type: "submit" } } ) );
     actions.appendChild( Ui.button( "notify.test" , () => this.test() , "secondary" ) );
-    if ( prefs.has_pushover_key ) {
+    if ( prefs.pushover_enabled && prefs.has_pushover_key ) {
       actions.appendChild( Ui.button( "notify.remove_key" , () => this.save( { pushover_user_key: "-" } ) , "secondary danger" ) );
     }
     form.appendChild( actions );
@@ -123,6 +228,7 @@ const NotifySettings = {
         watch_defaults: sets.watch_defaults,
         shared_with_me: sharedWithMe,
         paused: paused,
+        notify_via: via ? via.value : prefs.notify_via,
       } );
     } );
     root.appendChild( form );
@@ -141,6 +247,7 @@ const NotifySettings = {
       watch_defaults: prefs.watch_defaults,
       shared_with_me: prefs.shared_with_me,
       paused: prefs.paused,
+      notify_via: prefs.notify_via,
     } , fields );
     try {
       this.prefs = await Api.post( "/api/notify/prefs" , body );

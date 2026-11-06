@@ -8,6 +8,7 @@
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
   <link rel="icon" href="/favicon.png" type="image/png" sizes="32x32" />
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+  <link rel="manifest" href="/manifest.webmanifest" />
   <!-- Before the stylesheets paint, so a saved dark theme never flashes light. -->
   <script src="/js/theme.js"></script>
   <!-- Bootstrap 5 and its icon font, vendored (see /vendor/README.md), then
@@ -98,6 +99,13 @@
           <h2 class="h4 mb-3" data-i18n="signed_out.heading"></h2>
           <p data-i18n="signed_out.body"></p>
           <p id="invalid-link" class="alert alert-warning mb-0" data-i18n="signed_out.invalid_link" hidden></p>
+          <!-- Only in a Home Screen app; see bindPasteLogin in app.js. -->
+          <form id="paste-login" class="mt-3" hidden>
+            <label class="form-label" for="paste-login-value" data-i18n="signed_out.paste_label"></label>
+            <input id="paste-login-value" class="form-control" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" required />
+            <div class="form-text" data-i18n="signed_out.paste_help"></div>
+            <button id="paste-login-button" class="btn btn-primary mt-3" type="submit" data-i18n="signed_out.paste_button"></button>
+          </form>
         </div>
       </section>
 
@@ -403,6 +411,14 @@
               </div>
             </div>
 
+            <div id="admin-key-box" class="alert alert-info mt-3" hidden>
+              <p id="admin-key-notice" class="mb-2"></p>
+              <div class="link-box">
+                <code id="admin-key-value"></code>
+                <button id="copy-admin-key-button" class="btn btn-sm btn-outline-secondary" data-i18n="api_keys.copy_button"></button>
+              </div>
+            </div>
+
             <div class="table-responsive mt-4">
               <table id="users-table" class="table table-hover align-middle">
                 <thead>
@@ -542,6 +558,7 @@
   <script src="/js/markdown.js"></script>
   <script src="/js/home.js"></script>
   <script src="/js/backup.js"></script>
+  <script src="/js/push_client.js"></script>
   <script src="/js/notify_settings.js"></script>
   <script src="/js/user_settings.js"></script>
   <script src="/js/app.js"></script>

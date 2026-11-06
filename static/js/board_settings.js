@@ -161,6 +161,35 @@ const BoardSettings = {
     ] } );
     Dom.show( showRank , layout.value === "staged" );
     form.appendChild( showRank );
+    // What this board calls its stages; empty keeps the app's word, shown as
+    // the placeholder. Each saves by itself when it is left. Only a staged
+    // board has them: on three columns the column titles are the names.
+    const stageNames = Dom.el( "div" );
+    const stageFields = Dom.el( "div" , { class: "form-row" } );
+    Stages.order.forEach( function ( stage ) {
+      const key = "stage_" + stage;
+      const input = Dom.el( "input" , { class: "form-control" , attrs: { maxlength: "40" , placeholder: T( "board." + key ) } } );
+      input.value = ctx.board[ key ] || "";
+      let saved = input.value;
+      input.addEventListener( "change" , function () {
+        input.value = input.value.trim();
+        if ( input.value === saved ) return;
+        saved = input.value;
+        save( { [ key ]: saved } );
+      } );
+      stageFields.appendChild( Ui.field( "settings." + key + "_label" , input ) );
+    } );
+    stageNames.appendChild( stageFields );
+    stageNames.appendChild( Dom.el( "p" , { class: "muted small-print" , text: T( "settings.stage_names_hint" ) } ) );
+    Dom.show( stageNames , layout.value === "staged" );
+    form.appendChild( stageNames );
+    // A three-column board already fills the page.
+    const centerColumns = Dom.el( "div" , { children: [
+      Ui.checkbox( "settings.center_columns_label" , ctx.board.center_columns , function ( checked ) { save( { center_columns: checked } ); } ),
+      Dom.el( "p" , { class: "muted small-print" , text: T( "settings.center_columns_hint" ) } ),
+    ] } );
+    Dom.show( centerColumns , layout.value !== "three" );
+    form.appendChild( centerColumns );
     form.appendChild( Ui.field( "settings.numbering_label" , numbering ) );
     const placements = Dom.el( "div" , { class: "form-row" } );
     placements.appendChild( Ui.field( "settings.done_placement_label" , donePlacement ) );
@@ -206,6 +235,8 @@ const BoardSettings = {
     addPlacement.addEventListener( "change" , function () { save( { add_placement: addPlacement.value } ); } );
     layout.addEventListener( "change" , function () {
       Dom.show( showRank , layout.value === "staged" );
+      Dom.show( stageNames , layout.value === "staged" );
+      Dom.show( centerColumns , layout.value !== "three" );
       const changes = { layout: layout.value };
       // Lists to add if the three-column layout finds fewer than three.
       if ( layout.value === "three" ) changes.list_titles = T( "home.default_lists" ).split( "," ).map( function ( name ) { return name.trim(); } );

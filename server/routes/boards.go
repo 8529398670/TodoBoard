@@ -251,6 +251,10 @@ func ( handlers *Handlers ) boardPayload( principal *access.Principal , board *m
 		me[ "role" ] = board.RoleOf( principal.UserID )
 		if ref := models.GetBoardRef( handlers.Store , principal.UserID , board.ID ); ref != nil {
 			me[ "plain_icons" ] = ref.PlainIcons
+			// Always a list here: having one is how the page knows this person
+			// has a row to save theirs in.
+			me[ "collapsed_lists" ] = ref.CollapsedLists
+			if ref.CollapsedLists == nil { me[ "collapsed_lists" ] = []uint64{} }
 		}
 	}
 
@@ -267,6 +271,10 @@ func ( handlers *Handlers ) boardPayload( principal *access.Principal , board *m
 		"color":        board.Color,
 		"shopping":     board.Shopping,
 		"show_rank":    board.ShowRank,
+		"center_columns": board.CenterColumns,
+		"stage_todo":   board.StageTodo,
+		"stage_doing":  board.StageDoing,
+		"stage_done":   board.StageDone,
 		"theme":        board.Theme,
 		"rev":          board.Rev,
 		"lists":        lists,
@@ -368,6 +376,7 @@ func ( handlers *Handlers ) UpdateBoard( c fiber.Ctx ) ( err error ) {
 		err = c.Status( fiber.StatusForbidden ).JSON( fiber.Map{ "error": "forbidden" } )
 		return
 	}
+	before := *board
 	updated , update_err := models.UpdateBoardSettings( handlers.Store , board.ID , &body )
 	if errors.Is( update_err , models.ErrSlugTaken ) {
 		err = c.Status( fiber.StatusConflict ).JSON( fiber.Map{ "error": "slug_taken" } )
@@ -377,8 +386,17 @@ func ( handlers *Handlers ) UpdateBoard( c fiber.Ctx ) ( err error ) {
 		err = modelError( c , update_err )
 		return
 	}
+	handlers.boardTextActivity( principal , &before , updated )
 	err = c.JSON( fiber.Map{ "rev": updated.Rev , "slug": updated.Slug , "purpose_rev": updated.PurposeRev , "notes_rev": updated.NotesRev } )
 	return
+}
+
+// boardTextActivity reports the board's words changing. Its look is left out:
+// a theme or colour is not news.
+func ( handlers *Handlers ) boardTextActivity( principal *access.Principal , before *models.Board , after *models.Board ) {
+	if before.Title != after.Title { handlers.activity( principal , after.ID , "board_renamed" , map[string]string{ "title": after.Title } ) }
+	if before.Notes != after.Notes { handlers.activity( principal , after.ID , "board_notes" , nil ) }
+	if before.Purpose != after.Purpose { handlers.activity( principal , after.ID , "board_purpose" , nil ) }
 }
 
 // DeleteBoard needs the owner and a browser session: it cannot be undone,
@@ -414,6 +432,27 @@ func ( handlers *Handlers ) SetMyBoardView( c fiber.Ctx ) ( err error ) {
 	return
 }
 
+type myCollapsedRequest struct {
+	ListIDs []uint64 `json:"list_ids"`
+}
+
+// SetMyCollapsedLists saves which columns the caller keeps collapsed: the
+// whole list each time. Its own route so that saving it cannot touch the rest
+// of how the board looks to them.
+func ( handlers *Handlers ) SetMyCollapsedLists( c fiber.Ctx ) ( err error ) {
+	principal , board , err := handlers.requireBoard( c , access.View )
+	if board == nil { return }
+	var body myCollapsedRequest
+	if ok , bind_err := bindBody( c , &body ); ok == false { return bind_err }
+	kept , set_err := models.SetBoardCollapsedLists( handlers.Store , principal.UserID , board , body.ListIDs )
+	if set_err != nil {
+		err = modelError( c , set_err )
+		return
+	}
+	err = c.JSON( fiber.Map{ "collapsed_lists": kept } )
+	return
+}
+
 // LeaveBoard lets a member remove themselves. The owner cannot leave; they
 // delete the board or hand it over instead.
 func ( handlers *Handlers ) LeaveBoard( c fiber.Ctx ) ( err error ) {
@@ -427,16 +466,17 @@ func ( handlers *Handlers ) LeaveBoard( c fiber.Ctx ) ( err error ) {
 		err = modelError( c , set_err )
 		return
 	}
+	handlers.activity( principal , board.ID , "member_left" , nil )
 	err = c.JSON( fiber.Map{ "ok": true } )
 	return
 }
 
 func ( handlers *Handlers ) CreateList( c fiber.Ctx ) ( err error ) {
-	_ , board , err := handlers.requireBoard( c , access.Edit )
+	principal , board , err := handlers.requireBoard( c , access.Edit )
 	if board == nil { return }
 	var body listRequest
 	if ok , bind_err := bindBody( c , &body ); ok == false { return bind_err }
-	created , refused := handlers.createList( board , body.Title , body.Position )
+	created , refused := handlers.createList( principal , board , body.Title , body.Position )
 	if refused != nil {
 		err = refused.send( c )
 		return
@@ -447,20 +487,40 @@ func ( handlers *Handlers ) CreateList( c fiber.Ctx ) ( err error ) {
 
 // createList, updateList and createLabel are shared with the MCP tools of
 // the same name. The board has already passed loadBoardAt at Edit.
-func ( handlers *Handlers ) createList( board *models.Board , title string , position *float64 ) ( created *models.List , refused *refusal ) {
+func ( handlers *Handlers ) createList( principal *access.Principal , board *models.Board , title string , position *float64 ) ( created *models.List , refused *refusal ) {
 	_ , update_err := models.MutateBoard( handlers.Store , board.ID , func( target *models.Board ) ( mutate_err error ) {
 		created , mutate_err = models.AddList( target , title , position )
 		return
 	} )
-	if update_err != nil { refused = modelRefusal( update_err ) }
+	if update_err != nil {
+		refused = modelRefusal( update_err )
+		return
+	}
+	handlers.activity( principal , board.ID , "list_added" , map[string]string{ "list": created.Title } )
 	return
 }
 
-func ( handlers *Handlers ) updateList( board *models.Board , list_id uint64 , update *models.ListUpdate ) ( refused *refusal ) {
-	_ , update_err := models.MutateBoard( handlers.Store , board.ID , func( target *models.Board ) error {
+func ( handlers *Handlers ) updateList( principal *access.Principal , board *models.Board , list_id uint64 , update *models.ListUpdate ) ( refused *refusal ) {
+	// A copy: the board passed in is not reread, and Apply is what changes.
+	before := models.List{}
+	if list := board.List( list_id ); list != nil { before = *list }
+	updated , update_err := models.MutateBoard( handlers.Store , board.ID , func( target *models.Board ) error {
 		return update.Apply( target , list_id )
 	} )
-	if update_err != nil { refused = modelRefusal( update_err ) }
+	if update_err != nil {
+		refused = modelRefusal( update_err )
+		return
+	}
+	after := updated.List( list_id )
+	if after == nil { return }
+	if after.Title != before.Title {
+		handlers.activity( principal , board.ID , "list_renamed" , map[string]string{ "from": before.Title , "list": after.Title } )
+	}
+	if after.Archived != before.Archived {
+		what := "list_restored"
+		if after.Archived { what = "list_archived" }
+		handlers.activity( principal , board.ID , what , map[string]string{ "list": after.Title } )
+	}
 	return
 }
 
@@ -474,7 +534,7 @@ func ( handlers *Handlers ) createLabel( board *models.Board , name string , col
 }
 
 func ( handlers *Handlers ) UpdateList( c fiber.Ctx ) ( err error ) {
-	_ , board , err := handlers.requireBoard( c , access.Edit )
+	principal , board , err := handlers.requireBoard( c , access.Edit )
 	if board == nil { return }
 	list_id , ok := paramID( c , "list_id" )
 	if ok == false {
@@ -483,7 +543,7 @@ func ( handlers *Handlers ) UpdateList( c fiber.Ctx ) ( err error ) {
 	}
 	var body models.ListUpdate
 	if ok , bind_err := bindBody( c , &body ); ok == false { return bind_err }
-	if refused := handlers.updateList( board , list_id , &body ); refused != nil {
+	if refused := handlers.updateList( principal , board , list_id , &body ); refused != nil {
 		err = refused.send( c )
 		return
 	}
@@ -499,10 +559,13 @@ func ( handlers *Handlers ) DeleteList( c fiber.Ctx ) ( err error ) {
 		err = notFound( c , "list_not_found" )
 		return
 	}
+	title := ""
+	if list := board.List( list_id ); list != nil { title = list.Title }
 	if delete_err := models.DeleteList( handlers.Store , board.ID , list_id , principal.Name ); delete_err != nil {
 		err = modelError( c , delete_err )
 		return
 	}
+	handlers.activity( principal , board.ID , "list_deleted" , map[string]string{ "list": title } )
 	err = c.JSON( fiber.Map{ "ok": true } )
 	return
 }

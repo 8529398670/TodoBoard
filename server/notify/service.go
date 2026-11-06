@@ -1,12 +1,13 @@
-// Package notify sends Pushover notifications: when someone is assigned to a
-// card, when a board or card is shared with them, when a card they follow
-// changes, and before (and after) a card is due.
+// Package notify sends notifications -- through Pushover and to browsers --
+// when someone is assigned to a card, when a board or card is shared with
+// them, when a card they follow changes, and before (and after) a card is due.
 //
 // Route handlers only *publish* -- a call here never blocks a request and
 // never fails one. A single worker goroutine decides who should hear about
 // it (server/models.EffectiveEvents: card subscription, then board, then the
 // person's defaults) and sends. Due reminders come from a ticker in
-// scheduler.go. Everything is off when pushover.app_token is empty.
+// scheduler.go. Each way of reaching someone is a Channel (channel.go), and
+// everything is off when no channel is configured.
 //
 // The words in a notification come from language.yaml's push: section, like
 // every other string a person reads.
@@ -27,6 +28,13 @@ import (
 	models "todoboard/server/models"
 )
 
+// How long a push service may hold a notice for a device that is offline.
+// Past this, news of a routine change is not worth arriving.
+const (
+	importantTTL = 24 * time.Hour
+	routineTTL   = 6 * time.Hour
+)
+
 type eventKind int
 
 const (
@@ -34,6 +42,7 @@ const (
 	eventAssigned
 	eventBoardShared
 	eventCardShared
+	eventActivity
 )
 
 type event struct {
@@ -44,6 +53,10 @@ type event struct {
 	actorName string
 	change    models.CardChange
 	userID    uint64 // the person a share is for
+	// eventActivity: how it is worded, push.activity_<what>. Empty for a card
+	// patch, which is worded from change.
+	what   string
+	values map[string]string
 }
 
 // pendingChange collects the edits to one card that one person will hear
@@ -62,10 +75,12 @@ type Service struct {
 	cfg      *config.Config
 	lang     *language.Language
 	client   *Pushover
+	vapid    *models.VAPIDKeys
+	lanes    []*lane
 	events   chan event
-	outbox   chan Message
 	mutex    sync.Mutex
 	pending  map[string]*pendingChange
+	activity map[string]*pendingActivity
 	now      func() time.Time
 	stopOnce sync.Once
 	stop     chan struct{}
@@ -77,19 +92,49 @@ func New( store *db.Store , cfg *config.Config , lang *language.Language ) ( ser
 		cfg:     cfg,
 		lang:    lang,
 		events:  make( chan event , 512 ),
-		outbox:  make( chan Message , 512 ),
 		pending: map[string]*pendingChange{},
+		activity: map[string]*pendingActivity{},
 		now:     time.Now,
 		stop:    make( chan struct{} ),
 	}
 	if cfg.PushoverAppToken != "" {
 		service.client = NewPushover( cfg.PushoverAppToken , cfg.PushoverAPIURL )
+		service.lanes = append( service.lanes , newLane( &pushoverChannel{ client: service.client } ) )
+	}
+	if cfg.WebPush {
+		keys , err := models.EnsureVAPIDKeys( store )
+		if err != nil {
+			log.Printf( "[notify] web push is off, no keys: %v" , err )
+			return
+		}
+		service.vapid = keys
+		service.lanes = append( service.lanes , newLane( newWebPushChannel( store , cfg , keys ) ) )
 	}
 	return
 }
 
-func ( service *Service ) Enabled() ( result bool ) {
+// WebPushKey is what a browser subscribes against, or "" with web push off.
+func ( service *Service ) WebPushKey() ( result string ) {
+	if service != nil && service.vapid != nil { result = service.vapid.Public }
+	return
+}
+
+// PushoverOn reports whether this server can send through Pushover, which is
+// what asking someone for a Pushover key depends on.
+func ( service *Service ) PushoverOn() ( result bool ) {
 	result = service != nil && service.client != nil
+	return
+}
+
+// Reachable reports whether anything sent to this person would arrive
+// somewhere, leaving aside whether they have paused it.
+func ( service *Service ) Reachable( user_id uint64 , prefs *models.UserPrefs ) ( result bool ) {
+	result = service != nil && service.reachable( user_id , prefs )
+	return
+}
+
+func ( service *Service ) Enabled() ( result bool ) {
+	result = service != nil && len( service.lanes ) > 0
 	return
 }
 
@@ -98,10 +143,14 @@ func ( service *Service ) Enabled() ( result bool ) {
 func ( service *Service ) Start() {
 	if service.Enabled() == false { return }
 	go service.eventLoop()
-	go service.sendLoop()
+	names := []string{}
+	for _ , item := range service.lanes {
+		names = append( names , item.channel.Name() )
+		go service.sendLoop( item )
+	}
 	go service.flushLoop()
 	go service.scheduleLoop()
-	log.Printf( "[notify] pushover on, checking due dates every %s" , service.cfg.DueCheckInterval )
+	log.Printf( "[notify] on through %s, checking due dates every %s" , strings.Join( names , " and " ) , service.cfg.DueCheckInterval )
 }
 
 func ( service *Service ) Stop() {
@@ -120,11 +169,14 @@ func ( service *Service ) publish( item event ) {
 // CardChanged reports whatever a card patch did: assignments go to the new
 // assignees, everything else to people following the card.
 func ( service *Service ) CardChanged( board_id uint64 , card_id uint64 , change models.CardChange , actor_id uint64 , actor_name string ) {
-	if change.Any() == false { return }
+	if change.Noted() == false { return }
 	if len( change.NewAssignees ) > 0 {
 		service.publish( event{ kind: eventAssigned , boardID: board_id , cardID: card_id , actorID: actor_id , actorName: actor_name , change: change } )
 	}
-	service.publish( event{ kind: eventChanged , boardID: board_id , cardID: card_id , actorID: actor_id , actorName: actor_name , change: change } )
+	if change.Any() {
+		service.publish( event{ kind: eventChanged , boardID: board_id , cardID: card_id , actorID: actor_id , actorName: actor_name , change: change } )
+	}
+	service.publish( event{ kind: eventActivity , boardID: board_id , actorID: actor_id , actorName: actor_name , change: change } )
 }
 
 func ( service *Service ) BoardShared( board_id uint64 , user_id uint64 , actor_id uint64 , actor_name string ) {
@@ -136,23 +188,33 @@ func ( service *Service ) CardShared( board_id uint64 , card_id uint64 , user_id
 }
 
 var ErrDisabled = errors.New( "push notifications are not configured on this server" )
-var ErrNoUserKey = errors.New( "no pushover user key saved" )
+var ErrNoTarget = errors.New( "nowhere to send this person's notifications" )
 
-// Test sends a notification straight away and returns Pushover's verdict,
-// so a person pasting their key finds out immediately whether it works.
-func ( service *Service ) Test( prefs *models.UserPrefs ) ( err error ) {
+// Test sends a notification everywhere the person can be reached, straight
+// away, so someone setting this up finds out at once whether it works. It
+// succeeds if any target took it; otherwise the error is the service's own
+// verdict.
+func ( service *Service ) Test( user_id uint64 , prefs *models.UserPrefs ) ( err error ) {
 	if service.Enabled() == false { return ErrDisabled }
-	if prefs.PushoverUserKey == "" { return ErrNoUserKey }
-	ctx , cancel := context.WithTimeout( context.Background() , 15 * time.Second )
-	defer cancel()
-	err = service.client.Send( ctx , Message{
-		User:  prefs.PushoverUserKey,
-		Device: prefs.PushoverDevice,
+	notice := Notice{
 		Title: service.text( "push.test_title" , nil ),
 		Body:  service.text( "push.test_body" , nil ),
 		URL:   service.cfg.PublicURL,
+		Path:  "/",
 		URLTitle: service.text( "push.open_app" , nil ),
-	} )
+	}
+	sent , tried := false , false
+	for _ , item := range service.lanes {
+		for _ , target := range item.channel.Targets( user_id , prefs ) {
+			tried = true
+			ctx , cancel := context.WithTimeout( context.Background() , 15 * time.Second )
+			send_err := item.channel.Send( ctx , target , notice )
+			cancel()
+			if send_err == nil { sent = true } else { err = send_err }
+		}
+	}
+	if tried == false { return ErrNoTarget }
+	if sent { err = nil }
 	return
 }
 
@@ -165,13 +227,21 @@ func ( service *Service ) text( key string , values map[string]string ) ( result
 	return
 }
 
-func ( service *Service ) cardURL( board_id uint64 , card_id uint64 ) ( result string ) {
-	if service.cfg.PublicURL == "" { return }
-	result = fmt.Sprintf( "%s/b/%d" , service.cfg.PublicURL , board_id )
+// cardPath is where a board, or a card on it, opens on this site.
+func ( service *Service ) cardPath( board_id uint64 , card_id uint64 ) ( result string ) {
+	result = fmt.Sprintf( "/b/%d" , board_id )
 	if board , get_err := models.GetBoard( service.store , board_id ); get_err == nil && board.Slug != "" {
-		result = service.cfg.PublicURL + "/b/" + board.Slug
+		result = "/b/" + board.Slug
 	}
 	if card_id != 0 { result += fmt.Sprintf( "?card=%d" , card_id ) }
+	return
+}
+
+// linked fills in where a notice opens.
+func ( service *Service ) linked( notice Notice , board_id uint64 , card_id uint64 ) ( result Notice ) {
+	result = notice
+	result.Path = service.cardPath( board_id , card_id )
+	if service.cfg.PublicURL != "" { result.URL = service.cfg.PublicURL + result.Path }
 	return
 }
 
@@ -191,7 +261,7 @@ func ( service *Service ) eventLoop() {
 		case <-service.stop:
 			return
 		case item := <-service.events:
-			service.handle( item )
+			safely( "event" , func() { service.handle( item ) } )
 		}
 	}
 }
@@ -215,6 +285,11 @@ func recipients( board *models.Board , card *models.Card ) ( user_ids []uint64 )
 }
 
 func ( service *Service ) handle( item event ) {
+	// First, and on its own: the card behind this one may be gone.
+	if item.kind == eventActivity {
+		service.handleActivity( item )
+		return
+	}
 	board , err := models.GetBoard( service.store , item.boardID )
 	if err != nil { return }
 	var card *models.Card
@@ -230,11 +305,12 @@ func ( service *Service ) handle( item event ) {
 			prefs := service.prefsFor( user_id )
 			if prefs == nil { continue }
 			if events , _ := models.EffectiveEvents( service.store , prefs , user_id , board.ID , card ); events.Assigned == false { continue }
-			service.enqueue( prefs , Message{
+			service.enqueue( user_id , prefs , service.linked( Notice{
 				Title: service.text( "push.assigned_title" , map[string]string{ "card": card.Title } ),
 				Body:  service.text( "push.assigned_body" , map[string]string{ "board": board.Title , "actor": actor } ),
-				URL:   service.cardURL( board.ID , card.ID ),
-			} )
+				TTL:   importantTTL,
+				Urgent: true,
+			} , board.ID , card.ID ) )
 		}
 
 	case eventChanged:
@@ -245,6 +321,8 @@ func ( service *Service ) handle( item event ) {
 			prefs := service.prefsFor( user_id )
 			if prefs == nil { continue }
 			if events , _ := models.EffectiveEvents( service.store , prefs , user_id , board.ID , card ); events.Changes == false { continue }
+			// This change reaches them in the board's activity already.
+			if events , _ := models.EffectiveEvents( service.store , prefs , user_id , board.ID , nil ); events.Activity { continue }
 			service.queueChange( board.ID , card.ID , user_id , actor , lines )
 		}
 
@@ -252,17 +330,19 @@ func ( service *Service ) handle( item event ) {
 		if item.userID == item.actorID { return }
 		prefs := service.prefsFor( item.userID )
 		if prefs == nil || prefs.SharedWithMe == false { return }
-		message := Message{
+		notice := service.linked( Notice{
 			Title: service.text( "push.board_shared_title" , map[string]string{ "board": board.Title } ),
 			Body:  service.text( "push.board_shared_body" , map[string]string{ "actor": actor } ),
-			URL:   service.cardURL( board.ID , 0 ),
-		}
+			TTL:   importantTTL,
+		} , board.ID , 0 )
 		if item.kind == eventCardShared && card != nil {
-			message.Title = service.text( "push.card_shared_title" , map[string]string{ "card": card.Title } )
-			message.Body = service.text( "push.card_shared_body" , map[string]string{ "actor": actor , "board": board.Title } )
-			message.URL = service.cardURL( board.ID , card.ID )
+			notice = service.linked( Notice{
+				Title: service.text( "push.card_shared_title" , map[string]string{ "card": card.Title } ),
+				Body:  service.text( "push.card_shared_body" , map[string]string{ "actor": actor , "board": board.Title } ),
+				TTL:   importantTTL,
+			} , board.ID , card.ID )
 		}
-		service.enqueue( prefs , message )
+		service.enqueue( item.userID , prefs , notice )
 	}
 }
 
@@ -283,19 +363,29 @@ func ( service *Service ) prefsFor( user_id uint64 ) ( prefs *models.UserPrefs )
 	user , err := models.GetUser( service.store , user_id )
 	if err != nil || user.Disabled() { return }
 	loaded , err := models.GetUserPrefs( service.store , user_id )
-	if err != nil || loaded.CanPush() == false { return }
+	if err != nil || loaded.Paused || service.reachable( user_id , loaded ) == false { return }
 	prefs = loaded
 	return
 }
 
-func ( service *Service ) enqueue( prefs *models.UserPrefs , message Message ) {
-	message.User = prefs.PushoverUserKey
-	message.Device = prefs.PushoverDevice
-	if message.URL != "" && message.URLTitle == "" { message.URLTitle = service.text( "push.open_card" , nil ) }
-	select {
-	case service.outbox <- message:
-	default:
-		log.Printf( "[notify] send queue full, dropping a notification" )
+func ( service *Service ) reachable( user_id uint64 , prefs *models.UserPrefs ) ( result bool ) {
+	for _ , item := range service.lanes {
+		if len( item.channel.Targets( user_id , prefs ) ) > 0 { return true }
+	}
+	return
+}
+
+// enqueue hands a notice to every place this person can be reached.
+func ( service *Service ) enqueue( user_id uint64 , prefs *models.UserPrefs , notice Notice ) {
+	if notice.URL != "" && notice.URLTitle == "" { notice.URLTitle = service.text( "push.open_card" , nil ) }
+	for _ , item := range service.lanes {
+		for _ , target := range item.channel.Targets( user_id , prefs ) {
+			select {
+			case item.outbox <- delivery{ target: target , notice: notice }:
+			default:
+				log.Printf( "[notify] %s queue full, dropping a notification" , item.channel.Name() )
+			}
+		}
 	}
 }
 
@@ -318,7 +408,7 @@ func ( service *Service ) queueChange( board_id uint64 , card_id uint64 , user_i
 		if containsString( entry.lines , line ) == false { entry.lines = append( entry.lines , line ) }
 	}
 	if service.cfg.ChangeDebounce == 0 {
-		go service.flush( false )
+		go safely( "flush" , func() { service.flush( false ) } )
 	}
 }
 
@@ -337,7 +427,7 @@ func ( service *Service ) flushLoop() {
 		case <-service.stop:
 			return
 		case <-ticker.C:
-			service.flush( false )
+			safely( "flush" , func() { service.flush( false ) } )
 		}
 	}
 }
@@ -354,8 +444,16 @@ func ( service *Service ) flush( force bool ) {
 			delete( service.pending , key )
 		}
 	}
+	activity := []*pendingActivity{}
+	for key , entry := range service.activity {
+		if force || service.now().Sub( entry.since ) >= service.cfg.ChangeDebounce {
+			activity = append( activity , entry )
+			delete( service.activity , key )
+		}
+	}
 	service.mutex.Unlock()
 
+	for _ , entry := range activity { service.sendActivity( entry ) }
 	for _ , entry := range ready {
 		board , err := models.GetBoard( service.store , entry.boardID )
 		if err != nil { continue }
@@ -372,36 +470,36 @@ func ( service *Service ) flush( force bool ) {
 			}
 			lines = append( lines , line )
 		}
-		service.enqueue( prefs , Message{
+		service.enqueue( entry.userID , prefs , service.linked( Notice{
 			Title: service.text( "push.changed_title" , map[string]string{ "card": card.Title } ),
 			Body: service.text( "push.changed_body" , map[string]string{
 				"board":   board.Title,
 				"actor":   strings.Join( entry.actors , ", " ),
 				"changes": strings.Join( lines , ", " ),
 			} ),
-			URL: service.cardURL( board.ID , card.ID ),
-		} )
+			TTL: routineTTL,
+		} , board.ID , card.ID ) )
 	}
 }
 
-// sendLoop delivers one message at a time, backing off on 429 and 5xx. A
+// sendLoop delivers one notice at a time, backing off on 429 and 5xx. A
 // rejection (bad user key) is logged and dropped: retrying will not fix it.
-func ( service *Service ) sendLoop() {
+func ( service *Service ) sendLoop( item *lane ) {
 	for {
 		select {
 		case <-service.stop:
 			return
-		case message := <-service.outbox:
-			service.deliver( message )
+		case next := <-item.outbox:
+			safely( item.channel.Name() , func() { service.deliver( item , next ) } )
 		}
 	}
 }
 
-func ( service *Service ) deliver( message Message ) {
+func ( service *Service ) deliver( item *lane , next delivery ) {
 	wait := 2 * time.Second
 	for attempt := 1; attempt <= 4; attempt += 1 {
 		ctx , cancel := context.WithTimeout( context.Background() , 20 * time.Second )
-		err := service.client.Send( ctx , message )
+		err := item.channel.Send( ctx , next.target , next.notice )
 		cancel()
 		if err == nil { return }
 		if errors.Is( err , ErrRejected ) {

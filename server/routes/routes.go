@@ -110,6 +110,10 @@ func ( handlers *Handlers ) Register( app *fiber.App ) {
 	// account-wide, so it could send itself news of boards it cannot open.
 	account.Post( "/notify/prefs" , handlers.Guard.RefuseLimitedKey , handlers.SaveNotifyPrefs )
 	account.Post( "/notify/test" , handlers.TestNotification )
+	// Sessions only: a key has no browser to receive anything on.
+	account.Get( "/notify/devices" , handlers.Guard.RequireSession , handlers.ListPushDevices )
+	account.Post( "/notify/devices" , handlers.Guard.RequireSession , handlers.SavePushDevice )
+	account.Post( "/notify/devices/:device_id/delete" , handlers.Guard.RequireSession , handlers.DeletePushDevice )
 
 	// Boards, for signed-in people. MemberPrincipal checks the CSRF token on
 	// every write, so the handlers below need not. Who may do what on a
@@ -121,6 +125,7 @@ func ( handlers *Handlers ) Register( app *fiber.App ) {
 	boards.Post( "/:board_id/leave" , handlers.LeaveBoard )
 	boards.Post( "/:board_id/folder" , handlers.Guard.RefuseLimitedKey , handlers.SetBoardFolder )
 	boards.Post( "/:board_id/my-view" , handlers.SetMyBoardView )
+	boards.Post( "/:board_id/my-view/collapsed" , handlers.SetMyCollapsedLists )
 	boards.Post( "/:board_id/delete" , handlers.Guard.RequireSession , handlers.DeleteBoard )
 	boards.Post( "/:board_id/members" , handlers.SetBoardMember )
 	boards.Post( "/:board_id/cards/:card_id/share-user" , handlers.ShareCardWithUser )
@@ -145,6 +150,7 @@ func ( handlers *Handlers ) Register( app *fiber.App ) {
 	folders.Post( "" , handlers.CreateFolder )
 	folders.Post( "/order" , handlers.SetFolderOrder )
 	folders.Post( "/:folder_id" , handlers.RenameFolder )
+	folders.Post( "/:folder_id/parent" , handlers.MoveFolder )
 	folders.Post( "/:folder_id/delete" , handlers.DeleteFolder )
 
 	// API keys: any signed-in user manages their own.
@@ -204,6 +210,7 @@ func ( handlers *Handlers ) Register( app *fiber.App ) {
 	// routes too.
 	admin_keys := app.Group( "/api/admin/keys" , handlers.RequireAPIKeys , handlers.Guard.RequireAdmin , handlers.Guard.RequireSession )
 	admin_keys.Get( "" , handlers.ListAllAPIKeys )
+	admin_keys.Post( "" , handlers.CreateAPIKeyForUser )
 	admin_keys.Post( "/:key_id/revoke" , handlers.RevokeAnyAPIKey )
 	admin_keys.Post( "/:key_id/delete" , handlers.DeleteAnyAPIKey )
 

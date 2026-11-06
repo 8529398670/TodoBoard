@@ -162,6 +162,18 @@ const Keys = {
     }
   },
 
+  // A key's name, and under it who made it if that was not its own user.
+  nameCell( key ) {
+    const cell = Dom.el( "td" , { text: key.name } );
+    if ( key.created_by ) {
+      cell.appendChild( Dom.el( "div" , {
+        class: "small text-body-secondary",
+        text: I18n.fill( "api_keys.made_by" , { name: key.created_by_name || I18n.get( "api_keys.made_by_admin" ) } ),
+      } ) );
+    }
+    return cell;
+  },
+
   // Dates are rendered in the viewer's own timezone, and a key with no expiry
   // says so rather than showing a blank cell.
   formatWhen( value ) {
@@ -308,7 +320,7 @@ const Keys = {
       // owner typed. See the note at the top of dom.js.
       const row = Dom.el( "tr" );
       [
-        Dom.el( "td" , { text: key.name } ),
+        Keys.nameCell( key ),
         Dom.el( "td" , { text: key.role } ),
         Dom.el( "td" , { text: Keys.boardsText( key ) } ),
         Dom.el( "td" , { children: [ Keys.statusBadge( key ) ] } ),
@@ -340,7 +352,7 @@ const Keys = {
     keys.forEach( function ( key ) {
       body.appendChild( Dom.el( "tr" , { children: [
         Dom.el( "td" , { text: key.display_name || ( "#" + key.user_id ) } ),
-        Dom.el( "td" , { text: key.name } ),
+        Keys.nameCell( key ),
         Dom.el( "td" , { text: key.role } ),
         Dom.el( "td" , { text: Keys.boardCountText( key ) } ),
         Dom.el( "td" , { children: [ Keys.statusBadge( key ) ] } ),

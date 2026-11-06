@@ -182,12 +182,14 @@ func ( handlers *Handlers ) registerBoardTools( server *mcp.Server ) {
 				err = mcp.Refuse( "purpose needs purpose_rev and notes needs notes_rev; read them with get_board_notes" )
 				return
 			}
-			board , refused := handlers.loadBoardAt( mcpPrincipal( call ) , string( args.Board ) , access.Edit )
+			principal := mcpPrincipal( call )
+			board , refused := handlers.loadBoardAt( principal , string( args.Board ) , access.Edit )
 			if refused != nil {
 				err = refusalError( refused )
 				return
 			}
 			settings := &models.BoardSettings{ Purpose: args.Purpose , PurposeRev: args.PurposeRev , Notes: args.Notes , NotesRev: args.NotesRev }
+			before := *board
 			updated , update_err := models.UpdateBoardSettings( handlers.Store , board.ID , settings )
 			if errors.Is( update_err , models.ErrBoardTextStale ) {
 				err = mcp.Refuse( "board_text_stale: someone changed this since that rev. Read it again with get_board_notes and redo your change on top." )
@@ -201,6 +203,7 @@ func ( handlers *Handlers ) registerBoardTools( server *mcp.Server ) {
 				err = refusalError( modelRefusal( update_err ) )
 				return
 			}
+			handlers.boardTextActivity( principal , &before , updated )
 			result = fiber.Map{ "purpose_rev": updated.PurposeRev , "notes_rev": updated.NotesRev }
 			return
 		},
@@ -291,9 +294,10 @@ func ( handlers *Handlers ) registerBoardTools( server *mcp.Server ) {
 				Position *float64 `json:"position"`
 			}
 			if err = call.Bind( &args ); err != nil { return }
-			board , refused := handlers.loadBoardAt( mcpPrincipal( call ) , string( args.Board ) , access.Edit )
+			principal := mcpPrincipal( call )
+			board , refused := handlers.loadBoardAt( principal , string( args.Board ) , access.Edit )
 			if refused == nil {
-				result , refused = handlers.createList( board , args.Title , args.Position )
+				result , refused = handlers.createList( principal , board , args.Title , args.Position )
 			}
 			if refused != nil { err = refusalError( refused ) }
 			return
@@ -303,13 +307,14 @@ func ( handlers *Handlers ) registerBoardTools( server *mcp.Server ) {
 	server.Register( &mcp.Tool{
 		Name:        "update_list",
 		Title:       "Rename, move or archive a column",
-		Description: "Change a column's title or position, or archive it (archived: true hides it; false brings it back). Leave out what should not change.",
+		Description: "Change a column's title or position, archive it (archived: true hides it; false brings it back), or on a staged board fix the stage it shows for everyone (stage_view; empty follows the navbar). Leave out what should not change.",
 		InputSchema: objectSchema( fiber.Map{
 			"board":    boardRefSchema,
 			"list_id":  listIDSchema,
 			"title":    fiber.Map{ "type": "string" , "maxLength": 120 },
 			"position": positionSchema,
 			"archived": fiber.Map{ "type": "boolean" },
+			"stage_view": fiber.Map{ "type": "string" , "enum": []string{ "" , "todo" , "doing" , "done" } },
 		} , "board" , "list_id" ),
 		Call: func( call *mcp.Call ) ( result any , err error ) {
 			var args struct {
@@ -318,9 +323,10 @@ func ( handlers *Handlers ) registerBoardTools( server *mcp.Server ) {
 				models.ListUpdate
 			}
 			if err = call.Bind( &args ); err != nil { return }
-			board , refused := handlers.loadBoardAt( mcpPrincipal( call ) , string( args.Board ) , access.Edit )
+			principal := mcpPrincipal( call )
+			board , refused := handlers.loadBoardAt( principal , string( args.Board ) , access.Edit )
 			if refused == nil {
-				refused = handlers.updateList( board , args.ListID , &args.ListUpdate )
+				refused = handlers.updateList( principal , board , args.ListID , &args.ListUpdate )
 			}
 			if refused != nil {
 				err = refusalError( refused )

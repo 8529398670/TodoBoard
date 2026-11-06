@@ -14,14 +14,18 @@ const BoardPage = {
   dragging: false,
   loading: false,
   pollTimer: null,
-  // What a staged board is showing: stage on every column, except those in
-  // columnStages (by list id), or "all" for the one master list instead of
-  // the columns. Kept out of load(), which runs on every poll; a fresh page
-  // starts on To do. The All list flips through the stages too, and stays
-  // on the one it was left on.
+  // What a staged board is showing: stage on every column, except one set to
+  // a stage of its own (List.stage_view, see columnView), or "all" for the
+  // one master list instead of the columns. Kept out of load(), which runs on
+  // every poll; a fresh page starts on To do. The All list flips through the
+  // stages too, and stays on the one it was left on.
   stage: "todo",
-  columnStages: {},
   allStage: "todo",
+  // The columns this person keeps collapsed, by list id. Read once, on the
+  // first load, and this page's own from then on: a save moves no rev, so a
+  // poll would otherwise bring back whatever was read before it.
+  collapsed: null,
+  collapseSaving: Promise.resolve(),
 
   views() {
     return { kanban: KanbanView , todo: TodoView , timeline: TimelineView };
@@ -146,6 +150,7 @@ const BoardPage = {
       this.client.boardId = this.data.board.id;
       this.showSlug();
     }
+    if ( !this.collapsed ) this.collapsed = this.savedCollapsed();
     if ( !this.viewChosen ) {
       this.viewChosen = true;
       let saved = "";
@@ -236,6 +241,9 @@ const BoardPage = {
         return this.showAll() ? "all" : "todo";
       },
       stageIn( key ) { return page.stageOf( key ); },
+      columnView( listId ) { return page.columnView( listId ); },
+      canCollapse() { return page.canCollapse(); },
+      isCollapsed( listId ) { return page.canCollapse() && page.collapsed.indexOf( listId ) >= 0; },
       // Cards are numbered when the board says so, or, left to each person,
       // when their account does. A guest has no account to ask.
       numbered() {
@@ -328,8 +336,6 @@ const BoardPage = {
     Markdown.renderInline( heading , Dom.get( "board-title" ) );
     Theme.setBoard( board.theme );
     document.body.className = "board-page color-" + ( board.color || "none" ) + ( ctx.plainIcons() ? " plain-status" : "" ) + ( ctx.swipeColumns() ? " swipe-columns" : "" );
-    // A single column has no tabs of its own, so it shows what the bar says.
-    if ( Stages.singleColumn() ) this.columnStages = {};
 
     Dom.show( Dom.get( "settings-button" ) , !ctx.cardOnly );
     // The server leaves these out for a link showing only part of the board.
@@ -402,20 +408,62 @@ const BoardPage = {
   // What column key, or "all", is showing; behind the All list, To do.
   stageOf( key ) {
     if ( key === "all" ) return this.allStage;
-    return this.columnStages[ key ] || ( this.stage === "all" ? "todo" : this.stage );
+    return this.columnView( key ) || ( this.stage === "all" ? "todo" : this.stage );
   },
 
-  // Every column to stage, and back in step with each other.
+  // The stage a column is set to show whatever the bar says, or "" for none.
+  // Not where the bar is the only way to see a column's other stages: a
+  // phone's single column, or a link to just that column.
+  columnView( listId ) {
+    if ( Stages.singleColumn() || this.data.list_only ) return "";
+    const list = this.data.board.lists.find( function ( item ) { return item.id === listId; } );
+    return list ? list.stage_view || "" : "";
+  },
+
+  // A person on the board has a row for this, and it follows them around. A
+  // guest has only this browser.
+  syncsCollapsed() {
+    return Array.isArray( this.data.me.collapsed_lists );
+  },
+
+  savedCollapsed() {
+    if ( this.syncsCollapsed() ) return this.data.me.collapsed_lists.slice();
+    try {
+      const saved = JSON.parse( window.localStorage.getItem( "collapsed:" + this.data.board.id ) || "[]" );
+      return Array.isArray( saved ) ? saved : [];
+    } catch ( error ) {
+      return [];
+    }
+  },
+
+  // Not on three columns, which always fit; a phone's single column, which
+  // has no room beside it for a strip; or a link to just the one column.
+  canCollapse() {
+    return this.data.board.layout !== "three" && !Stages.singleColumn() && !this.data.list_only;
+  },
+
+  // Shown at once, then saved. The saves run one after another, each with the
+  // whole list, so the last click is the one that stays.
+  setCollapsed( listId , closed ) {
+    this.collapsed = this.collapsed.filter( function ( id ) { return id !== listId; } );
+    if ( closed ) this.collapsed.push( listId );
+    this.render();
+    const ids = this.collapsed.slice();
+    if ( !this.syncsCollapsed() ) {
+      try { window.localStorage.setItem( "collapsed:" + this.data.board.id , JSON.stringify( ids ) ); } catch ( error ) { /* not remembered */ }
+      return;
+    }
+    this.collapseSaving = this.collapseSaving.then( () => this.client.setMyCollapsed( ids ) ).catch( function ( error ) { Ui.error( error ); } );
+  },
+
+  // Every column that follows the bar to stage.
   setStage( stage ) {
     this.stage = stage;
-    this.columnStages = {};
     this.render();
   },
 
-  setColumnStage( key , stage ) {
-    if ( key === "all" ) this.allStage = stage;
-    else if ( stage === this.stage ) delete this.columnStages[ key ];
-    else this.columnStages[ key ] = stage;
+  setAllStage( stage ) {
+    this.allStage = stage;
     this.render();
   },
 
@@ -425,7 +473,7 @@ const BoardPage = {
     if ( ctx.isAllView() ) {
       const index = Stages.order.indexOf( this.allStage ) + delta;
       if ( index < 0 ) this.setStage( "done" );
-      else if ( index < Stages.order.length ) this.setColumnStage( "all" , Stages.order[ index ] );
+      else if ( index < Stages.order.length ) this.setAllStage( Stages.order[ index ] );
       return;
     }
     const stages = Stages.boardStages( ctx );

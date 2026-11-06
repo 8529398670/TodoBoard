@@ -61,6 +61,11 @@ type APIKey struct {
 	// applied to BoardIDs.
 	BoardAccess string   `json:"board_access,omitempty"`
 	BoardIDs    []uint64 `json:"board_ids,omitempty"`
+	// CreatedBy is the admin who made this key as its user, so the user can
+	// tell it from their own. 0 for a key a person made for themselves, and
+	// for one from the control socket or the CLI, which have no signed-in
+	// person to name.
+	CreatedBy   uint64   `json:"created_by,omitempty"`
 }
 
 const (
@@ -74,6 +79,7 @@ var (
 	ErrAPIKeyRole     = errors.New( "an API key cannot be given a role its owner does not have" )
 	ErrAPIKeyDisabled = errors.New( "cannot issue an API key for a disabled account" )
 	ErrAPIKeyBoards   = errors.New( "invalid board limit for an API key" )
+	ErrAPIKeyOwner    = errors.New( "only the owner can make the owner's API keys" )
 	ErrAPIKeyDead     = errors.New( "this API key is revoked or expired" )
 )
 
@@ -262,6 +268,21 @@ func NarrowRole( account_role string , key_role string ) ( result string ) {
 // board_access and board_ids are the key's board limit: BoardAccessAll and nil
 // for none.
 func IssueAPIKey( store *db.Store , user_id uint64 , name string , role string , ttl time.Duration , board_access string , board_ids []uint64 ) ( credential string , key *APIKey , err error ) {
+	credential , key , err = issueAPIKey( store , 0 , user_id , name , role , ttl , board_access , board_ids )
+	return
+}
+
+// IssueAPIKeyFor is an admin making a key that acts as someone else, and
+// keeps the admin's id on it. It reaches every board the person can: which
+// boards those are is not an admin's to see, so limiting it is left to the
+// person, from their own list of keys. The owner's keys are the owner's alone
+// to make.
+func IssueAPIKeyFor( store *db.Store , actor_id uint64 , user_id uint64 , name string , role string , ttl time.Duration ) ( credential string , key *APIKey , err error ) {
+	credential , key , err = issueAPIKey( store , actor_id , user_id , name , role , ttl , BoardAccessAll , nil )
+	return
+}
+
+func issueAPIKey( store *db.Store , created_by uint64 , user_id uint64 , name string , role string , ttl time.Duration , board_access string , board_ids []uint64 ) ( credential string , key *APIKey , err error ) {
 	// The owner is loaded inside the transaction below rather than taking the
 	// caller's word for the role. Every route into this function -- the HTTP
 	// API, the control socket, the CLI -- then gets the same ceiling without
@@ -284,6 +305,7 @@ func IssueAPIKey( store *db.Store , user_id uint64 , name string , role string ,
 		CreatedAt:  now,
 		BoardAccess: board_access,
 		BoardIDs:    board_ids,
+		CreatedBy:   created_by,
 	}
 	if ttl > 0 {
 		expires := now.Add( ttl )
@@ -304,6 +326,14 @@ func IssueAPIKey( store *db.Store , user_id uint64 , name string , role string ,
 		if role == RoleAdmin && owner.IsAdmin() == false {
 			tx_err = ErrAPIKeyRole
 			return
+		}
+		if created_by != 0 {
+			app_owner , owner_err := ownerIDTx( tx )
+			if owner_err != nil { return owner_err }
+			if app_owner == user_id {
+				tx_err = ErrAPIKeyOwner
+				return
+			}
 		}
 
 		owned := []*APIKey{}

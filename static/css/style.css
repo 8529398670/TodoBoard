@@ -229,6 +229,10 @@ th { color: var(--bs-secondary-color); font-size: 0.8rem; text-transform: upperc
 @media (min-width: 40rem) {
   .form-row { flex-direction: row; flex-wrap: wrap; align-items: end; }
 }
+/* In a column, .field's flex-basis would be a height. */
+@media (max-width: 39.99rem) {
+  .form-row .field { flex: 0 0 auto; }
+}
 /* Ui.checkbox is a <label class="check form-check"> around its input, laid
    out by board.css's .check (inline-flex with a gap), so Bootstrap's
    float-and-indent layout for .form-check stands down. */

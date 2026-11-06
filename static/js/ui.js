@@ -912,8 +912,7 @@ const CardBits = {
   // other board there is just Done, which ticks the card's done flag.
   statusIcons( card , ctx ) {
     const wrap = this.inert( Dom.el( "div" , { class: "status-icons" } ) );
-    const icon = function ( kind , pressed , enabled , onClick ) {
-      const label = T( "board.status_" + kind );
+    const icon = function ( kind , label , pressed , enabled , onClick ) {
       const button = Dom.el( "button" , {
         class: "status-icon status-" + kind,
         text: T( "board.status_" + kind + "_symbol" ),
@@ -928,7 +927,8 @@ const CardBits = {
       [ [ "doing" , lists[ 1 ] ] , [ "done" , lists[ 2 ] ] ].forEach( function ( pair ) {
         const column = pair[ 1 ];
         const here = card.list_id === column.id;
-        icon( pair[ 0 ] , here , ctx.canEdit , function () {
+        // The column's title is this board's name for the stage.
+        icon( pair[ 0 ] , column.title , here , ctx.canEdit , function () {
           const target = here ? lists[ 0 ] : column;
           const there = ctx.cardsIn( target.id ).filter( function ( other ) { return other.id !== card.id; } );
           // Into Done, done-on-top puts it first; anywhere else, last.
@@ -939,10 +939,10 @@ const CardBits = {
     } else if ( ctx.isStaged() ) {
       [ "doing" , "done" ].forEach( function ( stage ) {
         const here = Stages.of( card ) === stage;
-        icon( stage , here , card.access === "edit" , function () { CardBits.setStage( card , here ? "todo" : stage , ctx ); } );
+        icon( stage , Stages.label( ctx , stage ) , here , card.access === "edit" , function () { CardBits.setStage( card , here ? "todo" : stage , ctx ); } );
       } );
     } else {
-      icon( "done" , card.done , card.access === "edit" , function () { CardBits.toggleDone( card , ctx ); } );
+      icon( "done" , T( "board.status_done" ) , card.done , card.access === "edit" , function () { CardBits.toggleDone( card , ctx ); } );
     }
     return wrap;
   },

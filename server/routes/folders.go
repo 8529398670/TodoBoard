@@ -12,7 +12,12 @@ import (
 // never on the board itself, and never on anyone else's home page.
 
 type folderRequest struct {
-	Name string `json:"name"`
+	Name     string `json:"name"`
+	ParentID uint64 `json:"parent_id"` // on creating one; 0: at the top
+}
+
+type folderParentRequest struct {
+	ParentID uint64 `json:"parent_id"` // 0: at the top
 }
 
 type folderOrderRequest struct {
@@ -26,7 +31,7 @@ type boardFolderRequest struct {
 func ( handlers *Handlers ) CreateFolder( c fiber.Ctx ) ( err error ) {
 	var body folderRequest
 	if ok , bind_err := bindBody( c , &body ); ok == false { return bind_err }
-	folder , create_err := models.CreateFolder( handlers.Store , security.UserFrom( c ).ID , body.Name )
+	folder , create_err := models.CreateFolderIn( handlers.Store , security.UserFrom( c ).ID , body.Name , body.ParentID )
 	if create_err != nil {
 		err = modelError( c , create_err )
 		return
@@ -58,6 +63,25 @@ func ( handlers *Handlers ) RenameFolder( c fiber.Ctx ) ( err error ) {
 	folder , rename_err := models.RenameFolder( handlers.Store , security.UserFrom( c ).ID , folder_id , body.Name )
 	if rename_err != nil {
 		err = modelError( c , rename_err )
+		return
+	}
+	err = c.JSON( folder )
+	return
+}
+
+// MoveFolder puts one of the caller's folders inside another of theirs, or
+// back at the top.
+func ( handlers *Handlers ) MoveFolder( c fiber.Ctx ) ( err error ) {
+	folder_id , ok := paramID( c , "folder_id" )
+	if ok == false {
+		err = notFound( c , "folder_not_found" )
+		return
+	}
+	var body folderParentRequest
+	if ok , bind_err := bindBody( c , &body ); ok == false { return bind_err }
+	folder , move_err := models.MoveFolder( handlers.Store , security.UserFrom( c ).ID , folder_id , body.ParentID )
+	if move_err != nil {
+		err = modelError( c , move_err )
 		return
 	}
 	err = c.JSON( folder )

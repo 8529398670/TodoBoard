@@ -16,10 +16,14 @@ import (
 //   Due      reminders before a card is due, and when it falls overdue
 //   Assigned being added as a card's assignee
 //   Changes  the card being moved, completed, reopened or edited
+//   Activity everything on a board, cards and columns alike, gathered up. It
+//            is a board's to set: asked of a card, it means nothing. Kept
+//            apart from Changes, which assignees have on by default.
 type EventSet struct {
 	Due      bool `json:"due"`
 	Assigned bool `json:"assigned"`
 	Changes  bool `json:"changes"`
+	Activity bool `json:"activity"`
 }
 
 // UserPrefs is kept apart from User so the account record the template owns
@@ -39,6 +43,10 @@ type UserPrefs struct {
 	WatchDefaults       EventSet `json:"watch_defaults"`
 	SharedWithMe        bool     `json:"shared_with_me"`
 	Paused              bool     `json:"paused"`
+
+	// NotifyVia is which ways of reaching this person are used. Choosing one
+	// leaves the other set up, so a saved Pushover key is kept for later.
+	NotifyVia string `json:"notify_via"`
 
 	// How times are shown. DisplayTimezone "" follows the browser; Hour12
 	// nil follows the browser's locale. Choosing a display timezone also
@@ -80,6 +88,12 @@ type UserPrefs struct {
 
 const FolderSortManual = "manual"
 
+const (
+	NotifyViaBoth     = "both"
+	NotifyViaPushover = "pushover"
+	NotifyViaDevices  = "devices"
+)
+
 func DefaultUserPrefs() ( prefs *UserPrefs ) {
 	prefs = &UserPrefs{
 		Timezone:            "UTC",
@@ -88,6 +102,7 @@ func DefaultUserPrefs() ( prefs *UserPrefs ) {
 		AssigneeDefaults:    EventSet{ Due: true , Assigned: true , Changes: true },
 		WatchDefaults:       EventSet{ Due: false , Assigned: true , Changes: false },
 		SharedWithMe:        true,
+		NotifyVia:           NotifyViaBoth,
 	}
 	return
 }
@@ -96,14 +111,19 @@ func DefaultUserPrefs() ( prefs *UserPrefs ) {
 var pushoverKeyPattern = regexp.MustCompile( `^[A-Za-z0-9]{30}$` )
 var pushoverDevicePattern = regexp.MustCompile( `^[A-Za-z0-9_-]{0,25}$` )
 
-func ( prefs *UserPrefs ) Location() ( location *time.Location ) {
-	location , err := time.LoadLocation( prefs.Timezone )
-	if err != nil || prefs.Timezone == "" { location = time.UTC }
+func ( prefs *UserPrefs ) WantsPushover() ( result bool ) {
+	result = prefs.NotifyVia != NotifyViaDevices
 	return
 }
 
-func ( prefs *UserPrefs ) CanPush() ( result bool ) {
-	result = prefs.PushoverUserKey != "" && prefs.Paused == false
+func ( prefs *UserPrefs ) WantsDevices() ( result bool ) {
+	result = prefs.NotifyVia != NotifyViaPushover
+	return
+}
+
+func ( prefs *UserPrefs ) Location() ( location *time.Location ) {
+	location , err := time.LoadLocation( prefs.Timezone )
+	if err != nil || prefs.Timezone == "" { location = time.UTC }
 	return
 }
 
@@ -113,6 +133,8 @@ func ( prefs *UserPrefs ) Validate() ( err error ) {
 	prefs.PushoverDevice = strings.TrimSpace( prefs.PushoverDevice )
 	if prefs.PushoverUserKey != "" && pushoverKeyPattern.MatchString( prefs.PushoverUserKey ) == false { return ErrBadInput }
 	if pushoverDevicePattern.MatchString( prefs.PushoverDevice ) == false { return ErrBadInput }
+	if prefs.NotifyVia == "" { prefs.NotifyVia = NotifyViaBoth }
+	if prefs.NotifyVia != NotifyViaBoth && prefs.NotifyVia != NotifyViaPushover && prefs.NotifyVia != NotifyViaDevices { return ErrBadInput }
 	if _ , load_err := time.LoadLocation( prefs.Timezone ); load_err != nil || prefs.Timezone == "" { return ErrBadInput }
 	if prefs.DisplayTimezone != "" {
 		if _ , load_err := time.LoadLocation( prefs.DisplayTimezone ); load_err != nil { return ErrBadInput }

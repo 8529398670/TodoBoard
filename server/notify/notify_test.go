@@ -92,12 +92,16 @@ func drain( service *Service ) {
 			continue
 		default:
 		}
-		select {
-		case message := <-service.outbox:
-			service.deliver( message )
-			continue
-		default:
+		sent := false
+		for _ , item := range service.lanes {
+			select {
+			case next := <-item.outbox:
+				service.deliver( item , next )
+				sent = true
+			default:
+			}
 		}
+		if sent { continue }
 		return
 	}
 }

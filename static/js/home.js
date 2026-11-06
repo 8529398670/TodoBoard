@@ -6,9 +6,10 @@
 // to.
 //
 // Folders are private to each person (see server/models/folder.go): filing a
-// shared board here moves it on my home page and nobody else's. They read A
-// to Z, or in the person's own order (an account setting); dragging a folder
-// by its grip switches to their own order.
+// shared board here moves it on my home page and nobody else's. They nest, as
+// an indented tree on this one page, and each level reads A to Z, or in the
+// person's own order (an account setting); dragging a folder by its grip
+// switches to their own order. A folder moves to another level from its menu.
 //
 // Above it all, "Recently edited": the few boards changed last, mine and
 // shared, for jumping straight back in.
@@ -20,6 +21,9 @@ const Home = {
   recentCount: 6,
   // Fewer boards than this and the whole list is already a glance away.
   recentMinBoards: 4,
+  // server/models/folder.go's maxFolderDepth: what is offered here, not what
+  // is enforced.
+  folderMaxDepth: 3,
 
   async init( me ) {
     this.me = me;
@@ -83,6 +87,48 @@ const Home = {
     } );
   },
 
+  // The folders directly inside parentId, in the chosen order; 0 is the top.
+  // A folder whose parent cannot be found shows at the top, not nowhere.
+  childFolders( parentId ) {
+    const known = {};
+    this.folders.forEach( function ( folder ) { known[ folder.id ] = true; } );
+    return this.orderedFolders().filter( function ( folder ) {
+      return ( known[ folder.parent_id ] ? folder.parent_id : 0 ) === parentId;
+    } );
+  },
+
+  boardsIn( folderId ) {
+    return this.boards.filter( function ( board ) { return board.folder_id === folderId; } );
+  },
+
+  // Boards in a folder and in every folder inside it.
+  boardsUnder( folderId ) {
+    return this.childFolders( folderId ).reduce( ( total , child ) => total + this.boardsUnder( child.id ) , this.boardsIn( folderId ).length );
+  },
+
+  // Every folder as a tree read top to bottom, each with how deep it sits,
+  // 1 at the top; leaving out skipId and everything inside it.
+  folderTree( parentId , depth , skipId ) {
+    const rows = [];
+    this.childFolders( parentId ).forEach( ( folder ) => {
+      if ( folder.id === skipId ) return;
+      rows.push( { folder: folder , depth: depth } );
+      this.folderTree( folder.id , depth + 1 , skipId ).forEach( function ( row ) { rows.push( row ); } );
+    } );
+    return rows;
+  },
+
+  // How many levels a folder and what is inside it take up.
+  folderHeight( folderId ) {
+    return 1 + this.childFolders( folderId ).reduce( ( most , child ) => Math.max( most , this.folderHeight( child.id ) ) , 0 );
+  },
+
+  // A folder's name for a dropdown, indented to its level. Spaces that a
+  // select will not collapse.
+  treeLabel( row ) {
+    return "\u00a0\u00a0\u00a0".repeat( row.depth - 1 ) + row.folder.name;
+  },
+
   renderRecent( all ) {
     const section = Dom.get( "recent-section" );
     const grid = Dom.get( "recent-boards" );
@@ -144,18 +190,16 @@ const Home = {
     try { window.localStorage.setItem( "home_collapsed" , JSON.stringify( ids ) ); } catch ( error ) { /* not remembered */ }
   },
 
-  // One section per folder, in the chosen order, then the boards in none.
-  // With no folders at all, the unfiled boards are just the grid, with no
-  // heading.
+  // One section per top-level folder, in the chosen order, each holding the
+  // folders inside it, then the boards in none. With no folders at all, the
+  // unfiled boards are just the grid, with no heading.
   render() {
     const root = Dom.get( "board-folders" );
     Dom.clear( root );
     const known = {};
     this.folders.forEach( function ( folder ) { known[ folder.id ] = true; } );
     Dom.show( Dom.get( "folder-sort" ) , this.folders.length > 1 );
-    this.orderedFolders().forEach( ( folder ) => {
-      root.appendChild( this.section( folder , this.boards.filter( function ( board ) { return board.folder_id === folder.id; } ) ) );
-    } );
+    this.childFolders( 0 ).forEach( ( folder ) => root.appendChild( this.section( folder , this.boardsIn( folder.id ) ) ) );
     const unfiled = this.boards.filter( function ( board ) { return !known[ board.folder_id ]; } );
     if ( this.folders.length || unfiled.length ) root.appendChild( this.section( null , unfiled ) );
     Dom.show( Dom.get( "no-boards" ) , this.boards.length === 0 );
@@ -166,13 +210,15 @@ const Home = {
   section( folder , boards ) {
     const folderId = folder ? folder.id : 0;
     const section = Dom.el( "section" , { class: "folder" + ( boards.length ? "" : " is-empty" ) , attrs: { "data-folder-id": folderId } } );
+    // What collapsing the folder hides: its boards and the folders inside it.
+    const body = Dom.el( "div" , { class: "folder-body" } );
     const grid = Dom.el( "div" , { class: "boards-grid" , attrs: { "data-folder-id": folderId } } );
     boards.forEach( ( board ) => grid.appendChild( this.tile( board ) ) );
 
     if ( folder || this.folders.length ) {
       const closed = this.collapsed().indexOf( folderId ) >= 0;
       const head = Dom.el( "div" , { class: "folder-head" } );
-      if ( folder && this.folders.length > 1 ) {
+      if ( folder && this.siblingCount( folder ) > 1 ) {
         head.appendChild( Dom.el( "span" , {
           class: "folder-grip",
           text: T( "home.folder_drag_symbol" ),
@@ -185,7 +231,7 @@ const Home = {
         children: [
           Dom.el( "span" , { class: "folder-symbol" , text: T( closed ? "home.closed_symbol" : "home.open_symbol" ) , attrs: { "aria-hidden": "true" } } ),
           Dom.el( "span" , { class: "folder-name" , text: folder ? folder.name : T( "home.unfiled" ) } ),
-          Dom.el( "span" , { class: "folder-count" , text: I18n.fill( "home.folder_count" , { n: boards.length } ) } ),
+          Dom.el( "span" , { class: "folder-count" , text: I18n.fill( "home.folder_count" , { n: folder ? this.boardsUnder( folder.id ) : boards.length } ) } ),
         ],
       } );
       toggle.addEventListener( "click" , () => {
@@ -198,18 +244,29 @@ const Home = {
         head.appendChild( Ui.iconButton( "three-dots" , T( "home.folder_menu" ) , () => this.editFolder( folder ) ) );
       }
       section.appendChild( head );
-      grid.hidden = closed;
+      body.hidden = closed;
     }
-    section.appendChild( grid );
+    body.appendChild( grid );
+    if ( folder ) {
+      const children = Dom.el( "div" , { class: "folder-children" } );
+      this.childFolders( folder.id ).forEach( ( child ) => children.appendChild( this.section( child , this.boardsIn( child.id ) ) ) );
+      body.appendChild( children );
+    }
+    section.appendChild( body );
     return section;
   },
 
+  // How many folders sit at this one's level, itself included.
+  siblingCount( folder ) {
+    return this.folders.filter( function ( other ) { return ( other.parent_id || 0 ) === ( folder.parent_id || 0 ); } ).length;
+  },
+
   showFolder( section , open ) {
-    const toggle = section.querySelector( ".folder-toggle" );
+    const toggle = section.querySelector( ":scope > .folder-head .folder-toggle" );
     if ( !toggle ) return;
     toggle.setAttribute( "aria-expanded" , open ? "true" : "false" );
     Dom.text( toggle.querySelector( ".folder-symbol" ) , T( open ? "home.open_symbol" : "home.closed_symbol" ) );
-    section.querySelector( ".boards-grid" ).hidden = !open;
+    section.querySelector( ":scope > .folder-body" ).hidden = !open;
   },
 
   // filable: one of my own boards, which gets the move-to-folder menu.
@@ -227,29 +284,35 @@ const Home = {
 
   // Tiles drag between folders. Order inside a folder is most recently
   // changed first, so a drop only ever changes the folder. Folders drag by
-  // their grip; Unfiled stays last.
+  // their grip, among the others at their level; Unfiled stays last. Each
+  // level is its own list, and a list only picks up its direct children, so
+  // the lists nest without getting in each other's way.
   bindDragging( root ) {
     if ( typeof Sortable === "undefined" ) return;
     // root outlives each render, so its last Sortable has to go first.
     const previous = Sortable.get( root );
     if ( previous ) previous.destroy();
-    Sortable.create( root , {
-      animation: 150,
-      forceFallback: true,
-      handle: ".folder-grip",
-      draggable: ".folder:not([data-folder-id=\"0\"])",
-      ghostClass: "drag-ghost",
-      onMove: function ( event ) {
-        // Nothing goes below Unfiled.
-        return event.related.getAttribute( "data-folder-id" ) !== "0" || !event.willInsertAfter;
-      },
-      onEnd: ( event ) => {
-        if ( event.oldIndex === event.newIndex ) return;
-        const ids = Dom.all( ".folder" , root )
-          .map( function ( section ) { return Number( section.getAttribute( "data-folder-id" ) ); } )
-          .filter( Boolean );
-        this.setOrder( ids );
-      },
+    [ root ].concat( Dom.all( ".folder-children" , root ) ).forEach( ( level ) => {
+      Sortable.create( level , {
+        animation: 150,
+        forceFallback: true,
+        handle: ".folder-grip",
+        draggable: ".folder:not([data-folder-id=\"0\"])",
+        ghostClass: "drag-ghost",
+        onMove: function ( event ) {
+          // Nothing goes below Unfiled.
+          return event.related.getAttribute( "data-folder-id" ) !== "0" || !event.willInsertAfter;
+        },
+        onEnd: ( event ) => {
+          if ( event.oldIndex === event.newIndex ) return;
+          // Every level as it reads top to bottom: sorting A to Z, the first
+          // drag makes the whole order the person's own, so nothing else moves.
+          const ids = Dom.all( ".folder" , root )
+            .map( function ( section ) { return Number( section.getAttribute( "data-folder-id" ) ); } )
+            .filter( Boolean );
+          this.setOrder( ids );
+        },
+      } );
     } );
     Dom.all( ".boards-grid" , root ).forEach( ( grid ) => {
       Sortable.create( grid , {
@@ -308,39 +371,73 @@ const Home = {
     } );
     const closed = this.collapsed();
     let shown = 0;
-    Dom.all( ".folder" , Dom.get( "board-folders" ) ).forEach( ( section ) => {
-      const folderId = Number( section.getAttribute( "data-folder-id" ) );
-      const folder = this.folders.find( function ( item ) { return item.id === folderId; } );
-      const folderMatches = !!query && !!folder && folder.name.toLowerCase().indexOf( query ) >= 0;
-      let matches = 0;
-      Dom.all( ".board-tile-wrap" , section ).forEach( ( wrap ) => {
-        const board = this.boards.find( function ( item ) { return item.id === Number( wrap.getAttribute( "data-board-id" ) ); } );
-        const hit = !query || folderMatches || ( board && board.title.toLowerCase().indexOf( query ) >= 0 );
-        wrap.hidden = !hit;
-        if ( hit ) matches += 1;
-      } );
-      shown += matches;
-      section.hidden = !!query && matches === 0 && !folderMatches;
-      this.showFolder( section , query ? true : closed.indexOf( folderId ) < 0 );
+    Dom.all( ":scope > .folder" , Dom.get( "board-folders" ) ).forEach( ( section ) => {
+      shown += this.filterFolder( section , query , closed , false ).boards;
     } );
     Dom.show( Dom.get( "no-matches" ) , !!query && shown + sharedShown === 0 );
     // Search covers every board below; the recent strip would repeat hits.
     Dom.get( "recent-section" ).classList.toggle( "is-searching" , !!query );
   },
 
-  // New folder (folder null), or rename / delete one.
+  // One folder and everything inside it, under a search. A folder whose name
+  // matches shows all it holds, folders included, so inherited says one above
+  // already did. A folder stays in view if anything inside it matched, which
+  // is what opens the way down to a match. Answers how many boards it is
+  // showing, and whether it is showing at all.
+  filterFolder( section , query , closed , inherited ) {
+    const folderId = Number( section.getAttribute( "data-folder-id" ) );
+    const folder = this.folders.find( function ( item ) { return item.id === folderId; } );
+    const named = !!query && !!folder && folder.name.toLowerCase().indexOf( query ) >= 0;
+    const showAll = inherited || named;
+    let boards = 0;
+    Dom.all( ":scope > .folder-body > .boards-grid > .board-tile-wrap" , section ).forEach( ( wrap ) => {
+      const board = this.boards.find( function ( item ) { return item.id === Number( wrap.getAttribute( "data-board-id" ) ); } );
+      const hit = !query || showAll || ( board && board.title.toLowerCase().indexOf( query ) >= 0 );
+      wrap.hidden = !hit;
+      if ( hit ) boards += 1;
+    } );
+    let visible = boards > 0 || showAll;
+    Dom.all( ":scope > .folder-body > .folder-children > .folder" , section ).forEach( ( child ) => {
+      const found = this.filterFolder( child , query , closed , showAll );
+      boards += found.boards;
+      visible = visible || found.visible;
+    } );
+    section.hidden = !!query && !visible;
+    this.showFolder( section , query ? true : closed.indexOf( folderId ) < 0 );
+    return { boards: boards , visible: visible };
+  },
+
+  // The folders this one could go inside, as dropdown choices: not itself or
+  // anything in it, and none that would leave it too deep. folder null is a
+  // new one, with nothing inside it.
+  parentChoices( folder ) {
+    const height = folder ? this.folderHeight( folder.id ) : 1;
+    const rows = this.folderTree( 0 , 1 , folder ? folder.id : null ).filter( ( row ) => row.depth + height <= this.folderMaxDepth );
+    return [ { value: 0 , text: T( "home.folder_parent_none" ) } ].concat( rows.map( ( row ) => {
+      return { value: row.folder.id , text: this.treeLabel( row ) };
+    } ) );
+  },
+
+  // New folder (folder null), or rename / move / delete one.
   editFolder( folder ) {
     Panel.open( "home.folder_title" , ( body ) => {
       const form = Dom.el( "form" , { attrs: { autocomplete: "off" } } );
       const name = Dom.el( "input" , { class: "form-control" , attrs: { maxlength: "80" , required: "" , placeholder: T( "home.folder_name_placeholder" ) } } );
       name.value = folder ? folder.name : "";
       form.appendChild( Ui.field( "home.folder_name_label" , name ) );
+      const parent = Ui.select( this.parentChoices( folder ) , folder ? folder.parent_id || 0 : 0 );
+      form.appendChild( Ui.field( "home.folder_parent_label" , parent ) );
       form.appendChild( Dom.el( "button" , { class: "btn btn-primary" , text: T( folder ? "home.rename_folder" : "home.create_folder" ) , attrs: { type: "submit" } } ) );
       form.addEventListener( "submit" , async ( event ) => {
         event.preventDefault();
         try {
-          if ( folder ) await Api.post( "/api/folders/" + folder.id , { name: name.value } );
-          else await Api.post( "/api/folders" , { name: name.value } );
+          const parentId = Number( parent.value );
+          if ( folder ) {
+            await Api.post( "/api/folders/" + folder.id , { name: name.value } );
+            if ( parentId !== ( folder.parent_id || 0 ) ) await Api.post( "/api/folders/" + folder.id + "/parent" , { parent_id: parentId } );
+          } else {
+            await Api.post( "/api/folders" , { name: name.value , parent_id: parentId } );
+          }
           Panel.close();
         } catch ( error ) {
           Ui.error( error );
@@ -370,8 +467,8 @@ const Home = {
   moveBoard( board ) {
     Panel.open( "home.move_title" , ( body ) => {
       const form = Dom.el( "form" , { attrs: { autocomplete: "off" } } );
-      const select = Ui.select( [ { value: 0 , text: T( "home.move_none" ) } ].concat( this.folders.map( function ( folder ) {
-        return { value: folder.id , text: folder.name };
+      const select = Ui.select( [ { value: 0 , text: T( "home.move_none" ) } ].concat( this.folderTree( 0 , 1 , null ).map( ( row ) => {
+        return { value: row.folder.id , text: this.treeLabel( row ) };
       } ) ) , board.folder_id || 0 );
       form.appendChild( Ui.field( "home.move_label" , select ) );
       form.appendChild( Dom.el( "button" , { class: "btn btn-primary" , text: T( "home.move_button" ) , attrs: { type: "submit" } } ) );

@@ -192,6 +192,29 @@ var client = &http.Client{
 	},
 }
 
+// NewPublicClient is a client held to public addresses, as this package's own
+// is, for a URL someone else supplied. It follows no redirects: whoever hands
+// out the URL does not get to pick a second one.
+func NewPublicClient( timeout time.Duration ) ( result *http.Client ) {
+	result = &http.Client{
+		Timeout: timeout,
+		Transport: &http.Transport{
+			Proxy: nil,
+			ForceAttemptHTTP2: true,
+			DialContext: ( &net.Dialer{ Timeout: 5 * time.Second , Control: publicOnly } ).DialContext,
+			TLSHandshakeTimeout:   5 * time.Second,
+			ResponseHeaderTimeout: 8 * time.Second,
+			MaxIdleConns:          4,
+			IdleConnTimeout:       30 * time.Second,
+		},
+		CheckRedirect: func( request *http.Request , via []*http.Request ) ( err error ) {
+			err = http.ErrUseLastResponse
+			return
+		},
+	}
+	return
+}
+
 func get( ctx context.Context , raw string , accept string , limit int64 ) ( body []byte , final *url.URL , status int , content_type string , err error ) {
 	parsed , parse_err := url.Parse( raw )
 	if parse_err != nil || ( parsed.Scheme != "http" && parsed.Scheme != "https" ) || parsed.Host == "" {

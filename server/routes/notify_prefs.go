@@ -31,7 +31,17 @@ func ( handlers *Handlers ) GetNotifyPrefs( c fiber.Ctx ) ( err error ) {
 		err = serverError( c )
 		return
 	}
-	err = c.JSON( prefsPayload( prefs , handlers.Notify.Enabled() ) )
+	err = c.JSON( handlers.prefsReply( user.ID , prefs ) )
+	return
+}
+
+// prefsReply is prefsPayload plus what only the server can tell about how
+// this person can be reached.
+func ( handlers *Handlers ) prefsReply( user_id uint64 , prefs *models.UserPrefs ) ( payload fiber.Map ) {
+	payload = prefsPayload( prefs , handlers.Notify.Enabled() )
+	payload[ "pushover_enabled" ] = handlers.Notify.PushoverOn()
+	payload[ "web_push_enabled" ] = handlers.Notify.WebPushKey() != ""
+	payload[ "can_receive" ] = handlers.canReceive( user_id , prefs )
 	return
 }
 
@@ -50,6 +60,7 @@ func prefsPayload( prefs *models.UserPrefs , enabled bool ) ( payload fiber.Map 
 		"watch_defaults":        prefs.WatchDefaults,
 		"shared_with_me":        prefs.SharedWithMe,
 		"paused":                prefs.Paused,
+		"notify_via":            prefs.NotifyVia,
 	}
 	return
 }
@@ -77,6 +88,8 @@ func ( handlers *Handlers ) SaveNotifyPrefs( c fiber.Ctx ) ( err error ) {
 	prefs.ReminderLeadMinutes , prefs.AllDayReminderHour = body.ReminderLeadMinutes , body.AllDayReminderHour
 	prefs.AssigneeDefaults , prefs.WatchDefaults = body.AssigneeDefaults , body.WatchDefaults
 	prefs.SharedWithMe , prefs.Paused = body.SharedWithMe , body.Paused
+	// Left out, it stays as it is: an older client does not know to send it.
+	if body.NotifyVia != "" { prefs.NotifyVia = body.NotifyVia }
 	switch body.PushoverUserKey {
 	case "":
 	case "-":
@@ -88,7 +101,7 @@ func ( handlers *Handlers ) SaveNotifyPrefs( c fiber.Ctx ) ( err error ) {
 		err = badRequest( c , "invalid_prefs" )
 		return
 	}
-	err = c.JSON( prefsPayload( &prefs , handlers.Notify.Enabled() ) )
+	err = c.JSON( handlers.prefsReply( user.ID , &prefs ) )
 	return
 }
 
@@ -107,13 +120,13 @@ func ( handlers *Handlers ) TestNotification( c fiber.Ctx ) ( err error ) {
 		err = serverError( c )
 		return
 	}
-	send_err := handlers.Notify.Test( prefs )
+	send_err := handlers.Notify.Test( user.ID , prefs )
 	switch {
 	case send_err == nil:
 		err = c.JSON( fiber.Map{ "ok": true } )
 	case errors.Is( send_err , notify.ErrDisabled ):
 		err = badRequest( c , "push_disabled" )
-	case errors.Is( send_err , notify.ErrNoUserKey ):
+	case errors.Is( send_err , notify.ErrNoTarget ):
 		err = badRequest( c , "push_no_key" )
 	case errors.Is( send_err , notify.ErrRejected ):
 		// Pushover's own words, which name the actual problem.
@@ -132,7 +145,7 @@ func ( handlers *Handlers ) GetBoardSubscription( c fiber.Ctx ) ( err error ) {
 	if board == nil { return }
 	prefs , _ := models.GetUserPrefs( handlers.Store , principal.UserID )
 	events , source := models.EffectiveEvents( handlers.Store , prefs , principal.UserID , board.ID , nil )
-	err = c.JSON( fiber.Map{ "events": events , "source": source , "push_enabled": handlers.Notify.Enabled() , "has_pushover_key": prefs.PushoverUserKey != "" } )
+	err = c.JSON( fiber.Map{ "events": events , "source": source , "push_enabled": handlers.Notify.Enabled() , "has_pushover_key": prefs.PushoverUserKey != "" , "can_receive": handlers.canReceive( principal.UserID , prefs ) } )
 	return
 }
 
@@ -154,7 +167,7 @@ func ( handlers *Handlers ) GetCardSubscription( c fiber.Ctx ) ( err error ) {
 	if card == nil { return }
 	prefs , _ := models.GetUserPrefs( handlers.Store , principal.UserID )
 	events , source := models.EffectiveEvents( handlers.Store , prefs , principal.UserID , board.ID , card )
-	err = c.JSON( fiber.Map{ "events": events , "source": source , "push_enabled": handlers.Notify.Enabled() , "has_pushover_key": prefs.PushoverUserKey != "" } )
+	err = c.JSON( fiber.Map{ "events": events , "source": source , "push_enabled": handlers.Notify.Enabled() , "has_pushover_key": prefs.PushoverUserKey != "" , "can_receive": handlers.canReceive( principal.UserID , prefs ) } )
 	return
 }
 

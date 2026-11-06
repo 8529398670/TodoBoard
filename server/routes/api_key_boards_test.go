@@ -125,7 +125,7 @@ func TestLimitedKeyOverREST( t *testing.T ) {
 			}
 		}
 
-		refused := []string{ "/api/notify/prefs" , "/api/folders" , "/api/folders/order" , "/api/boards/" + open + "/folder" }
+		refused := []string{ "/api/notify/prefs" , "/api/folders" , "/api/folders/order" , "/api/folders/1/parent" , "/api/boards/" + open + "/folder" }
 		for _ , path := range refused {
 			status , text = fixture.call( t , http.MethodPost , path , key , "" , `{"pushover_user_key":"stolen","name":"x"}` )
 			if status != 403 {

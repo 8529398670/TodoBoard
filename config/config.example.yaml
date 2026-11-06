@@ -151,6 +151,12 @@ notify:
   # Edits to a watched card within this window become one notification
   # rather than one per keystroke-save.
   change_debounce_seconds: 300
+  # Lets people turn on notifications in their own browser, with no account
+  # anywhere else. The keys it needs are made once and kept in the database.
+  web_push: true
+  # How a push service reaches you if this server misbehaves: a mailto: or
+  # https:// address. Empty uses server.public_url when that is https.
+  web_push_contact: ""
 
 docker:
   image: todoboard

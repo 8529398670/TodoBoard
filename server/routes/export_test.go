@@ -128,3 +128,26 @@ func TestExportStagedRankStaysNumeric( t *testing.T ) {
 	}
 	if table.Rows[ 0 ][ rank ] != "1" || table.Rows[ 0 ][ price ] != "$5" { t.Errorf( "row: %q %q" , table.Header , table.Rows[ 0 ] ) }
 }
+
+// Headings follow a staged board's own names for its stages, and nothing else
+// has them: a free board's Done column stays the app's word.
+func TestExportUsesStageNames( t *testing.T ) {
+	fixture := newExportFixture( t )
+	staged := fixture.board( t , func( board *models.Board ) error {
+		board.Layout = models.LayoutStaged
+		board.StageDoing = "Review"
+		board.StageDone = "Shipped"
+		return nil
+	} )
+	table := fixture.table( t , staged )
+	if column( table , "Review" ) < 0 || column( table , "Shipped" ) < 0 { t.Errorf( "stage names not used: %v" , table.Header ) }
+	if column( table , "Doing" ) >= 0 || column( table , "Done" ) >= 0 { t.Errorf( "app's words left in: %v" , table.Header ) }
+
+	free := fixture.board( t , func( board *models.Board ) error {
+		board.Layout = models.LayoutFree
+		board.StageDone = "Shipped"
+		return nil
+	} )
+	table = fixture.table( t , free )
+	if column( table , "Done" ) < 0 || column( table , "Shipped" ) >= 0 { t.Errorf( "a free board has no stage names: %v" , table.Header ) }
+}

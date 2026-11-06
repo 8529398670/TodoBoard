@@ -63,6 +63,49 @@ const App = {
       const banner = Dom.get( "invalid-link" );
       if ( I18n.get( "signed_out.invalid_link" ) !== "" ) Dom.show( banner , true );
     }
+    if ( PushClient.homeScreenApp() ) this.bindPasteLogin();
+  },
+
+  // A Home Screen app keeps its own cookies and has no address bar, and a
+  // tapped login link opens the browser instead, so a pasted link is the only
+  // way to sign in to it. Pasting and pressing the button stands in for
+  // renderLoginConfirm's button: nothing is spent until then.
+  bindPasteLogin() {
+    const form = Dom.get( "paste-login" );
+    const button = Dom.get( "paste-login-button" );
+    Dom.show( form , true );
+    form.addEventListener( "submit" , async ( event ) => {
+      event.preventDefault();
+      const credential = this.pastedCredential( Dom.get( "paste-login-value" ).value );
+      Dom.show( Dom.get( "invalid-link" ) , false );
+      button.disabled = true;
+      try {
+        await Api.login( credential );
+        window.location.replace( "/" );
+      } catch ( error ) {
+        button.disabled = false;
+        if ( error.status === 400 ) Dom.show( Dom.get( "invalid-link" ) , true );
+        else this.showError( error.message );
+      }
+    } );
+  },
+
+  // Whole links and bare credentials both work: copying from the Account page
+  // gives the first, and from a message it can be either.
+  pastedCredential( text ) {
+    const value = text.trim();
+    const prefix = "/login/";
+    const at = value.indexOf( prefix );
+    const credential = at >= 0 ? value.slice( at + prefix.length ) : value;
+    return this.decodedCredential( credential.split( /[?#]/ )[ 0 ] );
+  },
+
+  decodedCredential( text ) {
+    try {
+      return decodeURIComponent( text ).replace( /\/+$/ , "" );
+    } catch ( error ) {
+      return "";
+    }
   },
 
   // A login link is /login/<credential>, and the server answers it with this
@@ -71,11 +114,7 @@ const App = {
     const prefix = "/login/";
     const path = window.location.pathname;
     if ( path.indexOf( prefix ) !== 0 ) return "";
-    try {
-      return decodeURIComponent( path.slice( prefix.length ) ).replace( /\/+$/ , "" );
-    } catch ( error ) {
-      return "";
-    }
+    return this.decodedCredential( path.slice( prefix.length ) );
   },
 
   // Opening a login link only shows this. The link is spent by the POST the
@@ -142,6 +181,7 @@ const App = {
       Dom.show( Dom.get( "admin-panel" ) , true );
       Dom.get( "create-user-form" ).addEventListener( "submit" , this.onCreateUser.bind( this ) );
       Dom.get( "copy-link-button" ).addEventListener( "click" , this.onCopyLink.bind( this ) );
+      Dom.get( "copy-admin-key-button" ).addEventListener( "click" , function () { Dom.copy( Dom.get( "admin-key-value" ) ); } );
       await this.refreshUsers();
       await Invites.init( me );
     }
@@ -174,6 +214,7 @@ const App = {
   },
 
   async onLogout() {
+    await PushClient.leave();
     try {
       await Api.logout();
     } catch ( error ) {
@@ -208,6 +249,51 @@ const App = {
     await Dom.copy( Dom.get( "login-link-value" ) );
   },
 
+  // An API key that acts as user. Asked for in the panel, but shown in the
+  // page behind it: it appears once, and a stray click closes a panel.
+  newKeyFor( user ) {
+    Panel.open( "admin.key_title" , function ( body ) {
+      body.appendChild( Dom.el( "p" , { class: "muted small-print" , text: I18n.fill( "admin.key_hint" , { name: user.display_name } ) } ) );
+      const form = Dom.el( "form" , { attrs: { autocomplete: "off" } } );
+      const name = Dom.el( "input" , { class: "form-control" , attrs: { maxlength: "80" , required: "" , placeholder: T( "api_keys.name_placeholder" ) } } );
+      form.appendChild( Ui.field( "api_keys.name_label" , name ) );
+      // Only an admin's key can be an admin key.
+      const role = user.role === "admin" ? Ui.select( [
+        { value: "user" , text: T( "api_keys.role_user" ) },
+        { value: "admin" , text: T( "api_keys.role_admin" ) },
+      ] , "user" ) : null;
+      if ( role ) form.appendChild( Ui.field( "api_keys.role_label" , role ) );
+      const days = Dom.el( "input" , { class: "form-control" , attrs: { type: "number" , min: "0" , max: "3650" , inputmode: "numeric" , placeholder: T( "api_keys.days_placeholder" ) } } );
+      form.appendChild( Ui.field( "api_keys.days_label" , days ) );
+      form.appendChild( Dom.el( "button" , { class: "btn btn-primary" , text: T( "api_keys.create_button" ) , attrs: { type: "submit" } } ) );
+      form.addEventListener( "submit" , async function ( event ) {
+        event.preventDefault();
+        // Blank is the server's default; 0 is never, and has to be typed.
+        const rawDays = days.value.trim();
+        let created;
+        try {
+          created = await Api.createKeyFor( user.id , name.value.trim() , role ? role.value : "user" , rawDays === "" ? null : Number( rawDays ) );
+        } catch ( error ) {
+          Ui.error( error );
+          return;
+        }
+        Panel.close();
+        App.showAdminKey( created.credential , user );
+        await Keys.refreshAll();
+      } );
+      body.appendChild( form );
+      window.setTimeout( function () { name.focus(); } , 0 );
+    } );
+  },
+
+  showAdminKey( credential , user ) {
+    Dom.text( Dom.get( "admin-key-notice" ) , I18n.fill( "admin.key_notice" , { name: user.display_name } ) );
+    Dom.text( Dom.get( "admin-key-value" ) , credential );
+    const box = Dom.get( "admin-key-box" );
+    Dom.show( box , true );
+    box.scrollIntoView( { block: "nearest" } );
+  },
+
   async refreshUsers() {
     const body = Dom.get( "users-table" ).querySelector( "tbody" );
     let users = [];
@@ -239,6 +325,13 @@ const App = {
       // own row and the owner's never get revoke, disable, or delete.
       const isSelf = user.id === App.currentUser.id;
       const isProtected = isSelf || user.owner;
+
+      // Your own keys are made under API keys, and the owner's by the owner.
+      const keyButton = isProtected || user.disabled || !App.currentUser.api_keys_enabled ? null : Dom.el( "button" , {
+        class: "btn btn-sm btn-outline-secondary",
+        text: I18n.get( "admin.key_button" ),
+        on: { click: function () { App.newKeyFor( user ); } },
+      } );
 
       // Revoking is for "someone else may have this account's credentials":
       // it ends every session, unused login link, and API key, and leaves the
@@ -295,7 +388,7 @@ const App = {
         Dom.el( "td" , { text: roleText } ),
         Dom.el( "td" , { children: [ Dom.badge( I18n.get( statusKey ) , statusTone ) ] } ),
         Dom.el( "td" , { children: [
-          Dom.el( "div" , { class: "row-actions" , children: [ reissueButton , revokeButton , toggleButton , deleteButton ].filter( Boolean ) } ),
+          Dom.el( "div" , { class: "row-actions" , children: [ reissueButton , keyButton , revokeButton , toggleButton , deleteButton ].filter( Boolean ) } ),
         ] } ),
       ] } ) );
     } );

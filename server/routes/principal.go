@@ -266,6 +266,8 @@ func modelRefusal( model_err error ) ( refused *refusal ) {
 		refused = &refusal{ fiber.StatusNotFound , "card_not_found" }
 	case errors.Is( model_err , models.ErrFolderNotFound ):
 		refused = &refusal{ fiber.StatusNotFound , "folder_not_found" }
+	case errors.Is( model_err , models.ErrFolderDepth ):
+		refused = &refusal{ fiber.StatusBadRequest , "folder_too_deep" }
 	case errors.Is( model_err , db.ErrNotFound ):
 		refused = &refusal{ fiber.StatusNotFound , "not_found" }
 	default:

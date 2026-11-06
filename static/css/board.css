@@ -74,7 +74,7 @@
 
 /* An icon button that sits in a row of content (a column's or a folder's
    menu) rather than in the navbar: smaller than style.css's. */
-.list-menu-button, .tile-menu, .folder-head .app-icon-button {
+.list-menu-button, .column-collapse, .column-expand, .tile-menu, .folder-head .app-icon-button {
   min-height: 32px;
   padding: 0.1rem 0.35rem;
   font-size: 1.1rem;
@@ -260,6 +260,9 @@ p.due-chip { margin: 0.5rem 0; }
   scroll-snap-type: x mandatory;
   -webkit-overflow-scrolling: touch;
 }
+/* safe: when the columns overflow, a plain center would push the first ones
+   past the left edge, where scrolling cannot reach them. */
+.kanban.centered { justify-content: safe center; }
 .kanban-column {
   position: relative;
   flex: 0 0 86vw;
@@ -273,6 +276,26 @@ p.due-chip { margin: 0.5rem 0; }
   scroll-snap-align: start;
 }
 .add-column { background: transparent; border: 1px dashed var(--border); }
+/* Folded down to a strip; more specific than every column width rule, so a
+   width dragged while it was open stays out of it. */
+.kanban-column.is-collapsed {
+  flex: 0 0 2.75rem;
+  width: 2.75rem;
+  max-width: 2.75rem;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.2rem 0.6rem;
+  cursor: pointer;
+}
+.kanban-column.is-collapsed:hover { outline: 1px solid var(--border); }
+.kanban-column.is-collapsed .column-title {
+  flex: 0 1 auto;
+  max-height: 18rem;
+  writing-mode: vertical-rl;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 /* The strip on a free-lists column's right edge that resizes it; only on
    wide screens, where columns sit side by side at their own widths. */
 .column-resize { display: none; }
@@ -283,7 +306,19 @@ p.due-chip { margin: 0.5rem 0; }
 .column-title { flex: 1 1 auto; margin: 0; font-size: 0.98rem; overflow-wrap: anywhere; }
 .column-handle { cursor: grab; }
 .count { font-size: 0.8rem; color: var(--fg-muted); }
-.stage-column-count { display: none; }
+.column-view-badge {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 45%;
+  padding: 0 0.35rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--fg-muted);
+  font-size: 0.72rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .kanban-cards { display: flex; flex-direction: column; gap: 0.5rem; min-height: 2.5rem; }
 
 .card-face {
@@ -396,15 +431,17 @@ p.due-chip { margin: 0.5rem 0; }
 }
 
 /* Staged boards: every list shows one of To do / Doing / Done. The bar flips
-   them all or goes to the All list, each column's tabs flip that column, and
-   a sideways swipe on the cards is ours rather than the board's (see
+   them all or goes to the All list, which has tabs of its own, and a sideways
+   swipe on the cards is ours rather than the board's (see
    stages.js). The bar has a row to itself under the navbar's on a phone and
    sits in the middle of it from tablet width up, the sides sharing what is
    left so it stays truly centred. */
 .board-navbar .container-fluid { flex-wrap: wrap; }
 .board-navbar-start { flex: 1 1 0; min-width: 0; }
 .board-navbar-end { justify-content: flex-end; }
-.stage-slot { order: 3; flex: 0 0 100%; }
+/* min-width: a board's own long stage name must shrink inside the bar, not
+   stretch the row and the page with it. */
+.stage-slot { order: 3; flex: 0 0 100%; min-width: 0; }
 .stage-slot:empty { display: none; }
 .board-navbar:has(.stage-bar) { height: auto; }
 @media (min-width: 48rem) {
@@ -432,9 +469,10 @@ p.due-chip { margin: 0.5rem 0; }
 }
 .stage-bar .stage-button { flex: 1 1 0; padding: 0.3rem 0.5rem; font-size: 0.875rem; }
 @media (min-width: 48rem) {
-  .stage-bar .stage-button { flex: 0 0 5rem; }
+  .stage-bar .stage-button { flex: 0 1 auto; min-width: 5rem; max-width: 11rem; }
 }
 .stage-button.active { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+.stage-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .stage-count { opacity: 0.75; font-size: 0.75em; }
 .kanban.staged .kanban-cards { min-height: 6rem; touch-action: pan-y; }
 .all-view { max-width: 42rem; margin: 0 auto; padding: 0 1rem 1rem; }
@@ -455,9 +493,6 @@ p.due-chip { margin: 0.5rem 0; }
 @media (max-width: 39.99rem) and (orientation: portrait) {
   /* Room to swipe even on a column with nothing showing. */
   .swipe-columns .kanban.staged .kanban-cards { min-height: 55vh; }
-  /* The navbar is the one stage switch here; the header keeps the count. */
-  .swipe-columns .kanban.staged .stage-tabs { display: none; }
-  .swipe-columns .kanban.staged .stage-column-count { display: inline; }
 }
 
 /* Three-column boards: To do / Doing / Done side by side, sharing the width. */
@@ -476,8 +511,9 @@ p.due-chip { margin: 0.5rem 0; }
 .quick-add { display: flex; flex-direction: column; }
 .quick-add-open { width: 100%; justify-content: flex-start; text-align: left; border-style: dashed; }
 .quick-add-form { display: flex; flex-direction: column; gap: 0.5rem; margin: 0; }
-.quick-add .quick-add-flip { margin-left: auto; font-size: 1.15rem; padding: 0.2rem 0.35rem; color: var(--fg-muted); }
+.quick-add .quick-add-flip { margin-left: auto; font-size: 1.15rem; padding: 0.2rem 0.35rem; color: var(--fg-muted); touch-action: manipulation; }
 .quick-add .quick-add-flip.active { color: var(--accent); }
+.quick-add .quick-add-flip.is-locked { color: var(--accent-fg); background: var(--accent); }
 
 /* Todo */
 .todo { display: flex; flex-direction: column; gap: 0.75rem; }
@@ -966,7 +1002,10 @@ input.card-number:focus { color: var(--fg); background: var(--bg); border-color:
 .folder-toggle:hover { border-color: var(--border); }
 .folder-count { font-size: 0.8rem; font-weight: 400; color: var(--fg-muted); }
 .board-folders .boards-grid { min-height: 3rem; }
-.folder.is-empty .boards-grid { border: 1px dashed var(--border); border-radius: var(--radius); }
+.folder.is-empty > .folder-body > .boards-grid { border: 1px dashed var(--border); border-radius: var(--radius); }
+.folder-children { margin-top: 0.75rem; padding-left: 0.85rem; border-left: 2px solid var(--border); }
+.folder-children:empty { display: none; }
+.folder-children > .folder + .folder { margin-top: 0.75rem; }
 .board-tile-wrap { position: relative; }
 .board-tile-wrap .board-tile { height: 100%; padding-right: 2.5rem; }
 .board-tile-wrap .tile-menu { position: absolute; top: 0.35rem; right: 0.35rem; }

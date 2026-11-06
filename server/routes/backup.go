@@ -1,6 +1,7 @@
 package routes
 
 import (
+	strconv "strconv"
 	fmt "fmt"
 	time "time"
 
@@ -102,6 +103,7 @@ func ( handlers *Handlers ) ImportColumn( c fiber.Ctx ) ( err error ) {
 		err = modelError( c , import_err )
 		return
 	}
+	if count > 0 { handlers.activity( principal , board.ID , "cards_imported" , map[string]string{ "list": list.Title , "n": strconv.Itoa( count ) } ) }
 	err = c.JSON( fiber.Map{ "count": count } )
 	return
 }

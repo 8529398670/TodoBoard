@@ -142,6 +142,7 @@ class BoardClient {
   }
   // How the board looks to this member alone.
   setMyView( fields )              { return this.post( "/" + this.boardId + "/my-view" , fields ); }
+  setMyCollapsed( listIds )        { return this.post( "/" + this.boardId + "/my-view/collapsed" , { list_ids: listIds } ); }
   leave()                          { return this.post( "/" + this.boardId + "/leave" ); }
   deleteBoard()                    { return this.post( "/" + this.boardId + "/delete" ); }
 }

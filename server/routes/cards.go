@@ -1,6 +1,8 @@
 package routes
 
 import (
+	strconv "strconv"
+
 	fiber "github.com/gofiber/fiber/v3"
 
 	access "todoboard/server/access"
@@ -49,8 +51,20 @@ func ( handlers *Handlers ) createCard( principal *access.Principal , board *mod
 	card , create_err := models.CreateCard( handlers.Store , board.ID , list_id , title , position , principal.UserID , principal.Name )
 	if create_err != nil {
 		refused = modelRefusal( create_err )
+		return
 	}
+	handlers.activity( principal , board.ID , "card_added" , map[string]string{ "card": card.Title , "list": board.List( list_id ).Title } )
 	return
+}
+
+// activity tells the board's subscribers what happened. Worded here and now
+// because the thing it names may not be there by the time anyone is told.
+func ( handlers *Handlers ) activity( principal *access.Principal , board_id uint64 , what string , values map[string]string ) {
+	handlers.Notify.Activity( board_id , principal.UserID , principal.Name , what , values )
+}
+
+func ( handlers *Handlers ) checklistActivity( principal *access.Principal , card *models.Card ) {
+	handlers.activity( principal , card.BoardID , "checklist" , map[string]string{ "card": card.Title } )
 }
 
 // PatchCard edits a card. Editing its fields needs edit rights on the card;
@@ -119,6 +133,7 @@ func ( handlers *Handlers ) DeleteCard( c fiber.Ctx ) ( err error ) {
 		err = modelError( c , delete_err )
 		return
 	}
+	handlers.activity( principal , board.ID , "card_trashed" , map[string]string{ "card": card.Title } )
 	err = c.JSON( fiber.Map{ "ok": true } )
 	return
 }
@@ -150,6 +165,9 @@ func ( handlers *Handlers ) ArchiveListCards( c fiber.Ctx ) ( err error ) {
 		err = modelError( c , archive_err )
 		return
 	}
+	if len( ids ) > 0 {
+		handlers.activity( principal , board.ID , "column_archived" , map[string]string{ "list": board.List( list_id ).Title , "n": strconv.Itoa( len( ids ) ) } )
+	}
 	err = c.JSON( fiber.Map{ "archived": ids } )
 	return
 }
@@ -171,7 +189,11 @@ func ( handlers *Handlers ) addChecklistItem( principal *access.Principal , card
 		_ , inner = models.AddChecklistItem( target , text )
 		return
 	} )
-	if mutate_err != nil { refused = modelRefusal( mutate_err ) }
+	if mutate_err != nil {
+		refused = modelRefusal( mutate_err )
+		return
+	}
+	handlers.checklistActivity( principal , updated )
 	return
 }
 
@@ -179,7 +201,11 @@ func ( handlers *Handlers ) updateChecklistItem( principal *access.Principal , c
 	updated , mutate_err := models.MutateCard( handlers.Store , card.BoardID , card.ID , principal.Name , func( _ *models.Board , target *models.Card ) error {
 		return update.Apply( target , item_id )
 	} )
-	if mutate_err != nil { refused = modelRefusal( mutate_err ) }
+	if mutate_err != nil {
+		refused = modelRefusal( mutate_err )
+		return
+	}
+	handlers.checklistActivity( principal , updated )
 	return
 }
 
@@ -209,6 +235,7 @@ func ( handlers *Handlers ) DeleteChecklistItem( c fiber.Ctx ) ( err error ) {
 	updated , mutate_err := models.MutateCard( handlers.Store , board.ID , card.ID , principal.Name , func( _ *models.Board , target *models.Card ) error {
 		return models.DeleteChecklistItem( target , item_id )
 	} )
+	if mutate_err == nil { handlers.checklistActivity( principal , updated ) }
 	err = handlers.cardResult( c , principal , board , updated , mutate_err )
 	return
 }
@@ -263,6 +290,7 @@ func ( handlers *Handlers ) RestoreCard( c fiber.Ctx ) ( err error ) {
 		return
 	}
 	card , restore_err := models.RestoreCard( handlers.Store , board.ID , card_id , principal.Name )
+	if restore_err == nil { handlers.activity( principal , board.ID , "card_restored" , map[string]string{ "card": card.Title } ) }
 	err = handlers.cardResult( c , principal , board , card , restore_err )
 	return
 }
