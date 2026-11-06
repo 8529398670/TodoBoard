@@ -4,20 +4,21 @@
 const KanbanView = {
   render( root , ctx ) {
     const three = ctx.isThree();
+    if ( ctx.isStaged() ) Dom.get( "stage-slot" ).appendChild( Stages.bar( ctx ) );
+    if ( ctx.isAllView() ) {
+      this.renderAll( root , ctx );
+      return;
+    }
     const scroller = Dom.el( "div" , { class: "kanban scroll-x" + ( three ? " three" : "" ) + ( ctx.isStaged() ? " staged" : "" ) } );
     const lists = ctx.lists();
-    // What the dots count, in scroller order: the All column goes first.
-    const columns = ctx.showAll() ? [ { title: T( "board.all_column" ) } ].concat( lists ) : lists;
-    if ( ctx.showAll() ) scroller.appendChild( this.allColumn( ctx ) );
     lists.forEach( ( list ) => scroller.appendChild( this.column( list , ctx ) ) );
     if ( ctx.canEdit && !three && !ctx.fixedColumns ) scroller.appendChild( this.addListColumn( ctx ) );
-    if ( ctx.isStaged() ) root.appendChild( Stages.bar( ctx ) );
-    if ( ctx.swipeColumns() && columns.length > 1 ) root.appendChild( this.dots( scroller , columns ) );
+    if ( ctx.swipeColumns() && lists.length > 1 ) root.appendChild( this.dots( scroller , lists ) );
     root.appendChild( scroller );
 
     if ( !ctx.canEdit || typeof Sortable === "undefined" ) return;
 
-    Dom.all( ".kanban-cards:not(.is-obscured):not(.all-cards)" , scroller ).forEach( ( container ) => {
+    Dom.all( ".kanban-cards:not(.is-obscured)" , scroller ).forEach( ( container ) => {
       Sortable.create( container , {
         group: "cards",
         animation: 150,
@@ -41,8 +42,6 @@ const KanbanView = {
         },
       } );
     } );
-
-    this.rankDragging( scroller , ctx );
 
     // A three-column board's columns are fixed in place, and a single
     // shared column has nowhere to go.
@@ -136,20 +135,18 @@ const KanbanView = {
     ctx.mutate( function () { return ctx.client.patchCard( cardId , fields ); } );
   },
 
-  // Dragging in the All column changes rank and nothing else: cards neither
-  // leave it nor arrive, and Done cards hold no place to change.
-  rankDragging( scroller , ctx ) {
-    const container = scroller.querySelector( ".all-cards" );
-    if ( !container || !ctx.canRank || ctx.stageIn( "all" ) === "done" ) return;
+  // Dragging in the All list changes rank and nothing else, and finished
+  // cards hold no place to change.
+  rankDragging( container , ctx ) {
+    if ( !ctx.canRank ) return;
     Sortable.create( container , {
-      group: { name: "rank" , pull: false , put: false },
       animation: 150,
       forceFallback: true,
       delay: 150,
       delayOnTouchOnly: true,
       ghostClass: "drag-ghost",
       draggable: ".card-face",
-      filter: ".status-icons",
+      filter: ".card-number, .status-icons",
       preventOnFilter: false,
       onStart: function () { ctx.setDragging( true ); },
       onEnd: function ( event ) {
@@ -160,9 +157,9 @@ const KanbanView = {
     } );
   },
 
-  // The place a card dropped in the All column has taken. Its neighbours'
-  // places are the board's, which also counts cards in other stages, so the
-  // drop is read from them rather than from where it sits in this column.
+  // The place a card dropped in the All list has taken. Its neighbours'
+  // places are the board's, which also counts cards in the other stage, so
+  // the drop is read from them rather than from where it sits in this list.
   ranked( item , ctx ) {
     const cardId = Number( item.getAttribute( "data-card-id" ) );
     const card = ctx.card( cardId );
@@ -221,19 +218,17 @@ const KanbanView = {
     return column;
   },
 
-  // The All column: every list's cards in one, ranked ones first. It is no
-  // list, so it has no menu, no add box, and nothing to resize or drag.
-  allColumn( ctx ) {
+  // The All list: one stage of every list, ranked ones first, in one centred
+  // list in place of the columns. It is no list itself, so it has no menu or
+  // add box.
+  renderAll( root , ctx ) {
     const cards = ctx.allCards();
     const stage = ctx.stageIn( "all" );
-    const column = Dom.el( "section" , { class: "kanban-column all-column" , attrs: { "data-stage-key": "all" } } );
-    const header = Dom.el( "header" , { class: "column-header" } );
-    header.appendChild( Dom.el( "h2" , { class: "column-title" , text: T( "board.all_column" ) } ) );
-    column.appendChild( header );
-    column.appendChild( Stages.tabs( "all" , cards , ctx ) );
+    const view = Dom.el( "section" , { class: "all-view" , attrs: { "data-stage-key": "all" } } );
+    view.appendChild( Stages.tabs( "all" , cards , ctx ) );
     const container = Dom.el( "div" , { class: "kanban-cards all-cards" } );
     cards.filter( function ( card ) { return Stages.of( card ) === stage; } ).forEach( ( card ) => {
-      const face = this.face( card , ctx , null );
+      const face = this.face( card , ctx , null , true );
       face.setAttribute( "data-rank-place" , String( card.rank_place || 0 ) );
       const list = ctx.board.lists.find( function ( item ) { return item.id === card.list_id; } );
       if ( list ) {
@@ -243,8 +238,9 @@ const KanbanView = {
       }
       container.appendChild( face );
     } );
-    column.appendChild( container );
-    return column;
+    view.appendChild( container );
+    root.appendChild( view );
+    if ( stage !== "done" && typeof Sortable !== "undefined" ) this.rankDragging( container , ctx );
   },
 
   // The strip on a column's right edge: drag it to widen or narrow the
@@ -321,8 +317,9 @@ const KanbanView = {
     return container;
   },
 
-  // cards is the card's column (open cards), for its number.
-  face( card , ctx , cards ) {
+  // cards is the card's column (open cards), for its number. ranking is for
+  // the All list, where the number is the card's rank instead.
+  face( card , ctx , cards , ranking ) {
     const face = Dom.el( "article" , {
       class: "card-face has-status" + ( card.done ? " is-done" : "" ) + ( card.archived ? " is-archived" : "" ),
       attrs: { "data-card-id": card.id , "data-position": card.position , tabindex: "0" , role: "button" },
@@ -340,7 +337,7 @@ const KanbanView = {
 
     const title = Dom.el( "div" , { class: "card-title" } );
     if ( cards && !card.archived && ctx.numbered() ) title.appendChild( CardBits.numberField( card , cards , ctx ) );
-    const rank = CardBits.rank( card , ctx );
+    const rank = ranking ? CardBits.rankField( card , ctx ) : CardBits.rank( card , ctx );
     if ( rank ) title.appendChild( rank );
     const text = Dom.el( "span" );
     Markdown.renderInline( card.title , text );

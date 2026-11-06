@@ -792,6 +792,41 @@ const CardBits = {
     } );
   },
 
+  // The All list's number: a card's place in the board's ranking, as
+  // numberField is its place in a column. Type another and press Enter to
+  // move it there, clear it to take it out; Escape puts it back. Finished
+  // cards hold no place, and someone who cannot rank just sees the number.
+  rankField( card , ctx ) {
+    if ( card.done ) return null;
+    const place = card.rank_place || 0;
+    const label = place ? String( place ) : "";
+    const title = place ? I18n.fill( "board.rank_field" , { n: place } ) : T( "board.rank_field_empty" );
+    if ( !ctx.canRank ) return place ? Dom.el( "span" , { class: "card-number" , text: label , attrs: { title: title } } ) : null;
+    const input = Dom.el( "input" , { class: "card-number" , attrs: { type: "text" , inputmode: "numeric" , maxlength: "4" , placeholder: T( "board.rank_none" ) , "aria-label": title , title: title } } );
+    input.value = label;
+    this.inert( input );
+    input.addEventListener( "focus" , function () { input.select(); } );
+    input.addEventListener( "blur" , function () { input.value = label; } );
+    input.addEventListener( "keydown" , function ( event ) {
+      if ( event.key === "Escape" ) {
+        input.value = label;
+        input.blur();
+        return;
+      }
+      if ( event.key !== "Enter" ) return;
+      event.preventDefault();
+      const text = input.value.trim();
+      const wanted = text === "" ? 0 : parseInt( text , 10 );
+      if ( isNaN( wanted ) || wanted < 0 || wanted === place ) {
+        input.value = label;
+        input.blur();
+        return;
+      }
+      ctx.mutate( function () { return ctx.client.patchCard( card.id , { rank_place: wanted } ); } );
+    } );
+    return input;
+  },
+
   positionBetween( before , after ) {
     if ( before == null && after == null ) return 1024;
     if ( before == null ) return after / 2;

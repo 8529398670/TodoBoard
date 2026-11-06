@@ -395,9 +395,24 @@ p.due-chip { margin: 0.5rem 0; }
 }
 
 /* Staged boards: every list shows one of To do / Doing / Done. The bar flips
-   them all, each column's tabs flip that column, and a sideways swipe on the
-   cards is ours rather than the board's (see stages.js). */
-.stage-bar { display: flex; justify-content: center; gap: 0.25rem; padding: 0 1rem 0.5rem; }
+   them all or goes to the All list, each column's tabs flip that column, and
+   a sideways swipe on the cards is ours rather than the board's (see
+   stages.js). The bar has a row to itself under the navbar's on a phone and
+   sits in the middle of it from tablet width up, the sides sharing what is
+   left so it stays truly centred. */
+.board-navbar .container-fluid { flex-wrap: wrap; }
+.board-navbar-start { flex: 1 1 0; min-width: 0; }
+.board-navbar-end { justify-content: flex-end; }
+.stage-slot { order: 3; flex: 0 0 100%; }
+.stage-slot:empty { display: none; }
+.board-navbar:has(.stage-bar) { height: auto; }
+@media (min-width: 48rem) {
+  .board-navbar:has(.stage-bar) { height: var(--navbar-height); }
+  .board-navbar .container-fluid { flex-wrap: nowrap; }
+  .stage-slot { order: 0; flex: 0 0 auto; }
+  .board-navbar:has(.stage-bar) .board-navbar-end { flex: 1 0 0; }
+}
+.stage-bar { display: flex; justify-content: center; gap: 0.25rem; }
 .stage-tabs { display: flex; gap: 0.25rem; margin-bottom: 0.5rem; }
 .stage-button {
   flex: 1 1 0;
@@ -414,10 +429,15 @@ p.due-chip { margin: 0.5rem 0; }
   font-size: 0.8rem;
   white-space: nowrap;
 }
-.stage-bar .stage-button { flex: 0 0 6rem; padding: 0.3rem 0.5rem; font-size: 0.875rem; }
+.stage-bar .stage-button { flex: 1 1 0; padding: 0.3rem 0.5rem; font-size: 0.875rem; }
+@media (min-width: 48rem) {
+  .stage-bar .stage-button { flex: 0 0 5rem; }
+}
 .stage-button.active { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
 .stage-count { opacity: 0.75; font-size: 0.75em; }
 .kanban.staged .kanban-cards { min-height: 6rem; touch-action: pan-y; }
+.all-view { max-width: 42rem; margin: 0 auto; padding: 0 1rem 1rem; }
+.all-view .kanban-cards { min-height: 50vh; touch-action: pan-y; }
 .rank-chip {
   display: inline-block;
   margin-right: 0.3rem;
@@ -431,15 +451,9 @@ p.due-chip { margin: 0.5rem 0; }
 }
 .card-source { display: block; margin-top: 0.2rem; font-size: 0.75rem; color: var(--fg-muted); overflow-wrap: anywhere; }
 .todo-row.is-doing .todo-title { font-weight: 600; }
-/* No menu button in its header, so hold it level with the others'. */
-.all-column .column-header { min-height: 2.75rem; }
 @media (max-width: 39.99rem) and (orientation: portrait) {
   /* Room to swipe even on a column with nothing showing. */
   .swipe-columns .kanban.staged .kanban-cards { min-height: 55vh; }
-}
-/* Pinned: the board's other columns scroll past under it. */
-@media (min-width: 40rem) {
-  .all-column { position: sticky; left: 0; z-index: 2; box-shadow: 0 0 0 0.375rem var(--bg); }
 }
 
 /* Three-column boards: To do / Doing / Done side by side, sharing the width. */

@@ -1,8 +1,10 @@
 // Stages: on a staged board every list holds To do, Doing and Done and shows
 // one at a time. A card's stage comes from its done and doing flags. Which
 // stage a column is showing is BoardPage's; this file is the controls that
-// change it -- the bar over the board, the tabs on a column, swiping a column
-// and the arrow keys -- and the words for the flags.
+// change it -- the bar in the navbar, the tabs on a column, swiping a column
+// and the arrow keys -- and the words for the flags. The bar has one more
+// stop than a column: All, one centred list of every list's cards, which
+// flips through the stages like a column.
 const Stages = {
   order: [ "todo" , "doing" , "done" ],
 
@@ -17,11 +19,16 @@ const Stages = {
     return { doing: stage === "doing" , done: stage === "done" };
   },
 
-  // Buttons for the stages; pick is called with the one pressed. counts, by
+  // Where the bar and the arrow keys can go.
+  boardStages( ctx ) {
+    return ctx.showAll() ? this.order.concat( "all" ) : this.order;
+  },
+
+  // Buttons for stages; pick is called with the one pressed. counts, by
   // stage, are shown beside the names when given.
-  buttons( className , label , current , counts , pick ) {
+  buttons( className , label , stages , current , counts , pick ) {
     const group = Dom.el( "div" , { class: className , attrs: { role: "group" , "aria-label": T( label ) } } );
-    this.order.forEach( function ( stage ) {
+    stages.forEach( function ( stage ) {
       const button = Dom.el( "button" , {
         class: "stage-button" + ( stage === current ? " active" : "" ),
         attrs: { type: "button" , "aria-pressed": stage === current ? "true" : "false" , "data-stage": stage },
@@ -34,16 +41,16 @@ const Stages = {
     return group;
   },
 
-  // Flips every column at once.
+  // Flips every column at once, or goes to the All list.
   bar( ctx ) {
-    return this.buttons( "stage-bar" , "board.stage_bar" , ctx.boardStage() , null , function ( stage ) { BoardPage.setStage( stage ); } );
+    return this.buttons( "stage-bar" , "board.stage_bar" , this.boardStages( ctx ) , ctx.boardStage() , null , function ( stage ) { BoardPage.setStage( stage ); } );
   },
 
   // Flips the one column. key is its list id, or "all".
   tabs( key , cards , ctx ) {
     const counts = { todo: 0 , doing: 0 , done: 0 };
     cards.forEach( ( card ) => { counts[ this.of( card ) ] += 1; } );
-    return this.buttons( "stage-tabs" , "board.stage_tabs" , ctx.stageIn( key ) , counts , function ( stage ) { BoardPage.setColumnStage( key , stage ); } );
+    return this.buttons( "stage-tabs" , "board.stage_tabs" , this.order , ctx.stageIn( key ) , counts , function ( stage ) { BoardPage.setColumnStage( key , stage ); } );
   },
 
   // Both are bound once, on the document: a render replaces every column,
@@ -53,8 +60,9 @@ const Stages = {
     this.bindKeys();
   },
 
-  // A sideways swipe on a column's cards flips that column; CSS leaves
-  // sideways touches on the cards to us (touch-action: pan-y). Touch only:
+  // A sideways swipe on a column's cards flips that column, and on the All
+  // list flips that; CSS leaves sideways touches on the cards to us
+  // (touch-action: pan-y). Touch only:
   // a mouse drags cards, and a trackpad pans the board. Holding still is
   // left to Sortable, which starts a drag; moving first cancels that.
   bindSwipe() {
@@ -65,7 +73,7 @@ const Stages = {
     document.addEventListener( "pointerdown" , function ( event ) {
       start = null;
       if ( event.pointerType !== "touch" || !event.isPrimary || !event.target.closest ) return;
-      const area = event.target.closest( ".kanban.staged .kanban-cards" );
+      const area = event.target.closest( ".kanban.staged .kanban-cards, .all-view .kanban-cards" );
       if ( !area ) return;
       const column = area.closest( "[data-stage-key]" );
       if ( column ) start = { x: event.clientX , y: event.clientY , key: column.getAttribute( "data-stage-key" ) };
@@ -78,7 +86,12 @@ const Stages = {
       const dx = event.clientX - from.x;
       const dy = event.clientY - from.y;
       if ( Math.abs( dx ) < 50 || Math.abs( dx ) < 1.5 * Math.abs( dy ) || stale( from.key ) ) return;
-      const key = from.key === "all" ? "all" : Number( from.key );
+      if ( from.key === "all" ) {
+        this.swallowClick();
+        BoardPage.stepStage( dx < 0 ? 1 : -1 );
+        return;
+      }
+      const key = Number( from.key );
       const index = this.order.indexOf( BoardPage.stageOf( key ) ) + ( dx < 0 ? 1 : -1 );
       if ( index < 0 || index >= this.order.length ) return;
       this.swallowClick();

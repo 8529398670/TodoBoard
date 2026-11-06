@@ -24,18 +24,23 @@
 
     No sidebar: a board wants the whole width. The navbar is index.html's,
     with the board's own actions on the right. Switching view and showing
-    archived cards are in Board settings, under View.
+    archived cards are in Board settings, under View. A staged board's stage
+    bar goes in stage-slot: centred in the navbar, or on a row of its own
+    under it on a phone.
   -->
   <nav class="navbar app-navbar board-navbar sticky-top">
-    <div class="container-fluid gap-2 flex-nowrap">
+    <div class="container-fluid gap-2">
+      <div class="board-navbar-start d-flex align-items-center gap-2">
       <!-- The app's name is the way home, as on every page. A guest has no
            home here, so board.js hides it for them. -->
       <a id="home-link" class="navbar-brand fw-semibold me-0" href="/" data-i18n="app.title"></a>
-      <h1 id="board-title" class="board-title h5 mb-0 me-auto text-truncate"></h1>
+      <h1 id="board-title" class="board-title h5 mb-0 text-truncate"></h1>
+      </div>
+      <div id="stage-slot" class="stage-slot"></div>
       <!-- Share, notifications and export live inside Board settings; your
            own settings live on the home page. A guest has no account, so they
            get the one personal setting they can use (the theme) here. -->
-      <div class="d-flex align-items-center gap-1 flex-shrink-0">
+      <div class="board-navbar-end d-flex align-items-center gap-1 flex-shrink-0">
         <button type="button" id="undo-button" class="btn btn-link app-icon-button" data-i18n-attr="aria-label:board.undo,title:board.undo_hint" hidden disabled><i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i></button>
         <button type="button" id="redo-button" class="btn btn-link app-icon-button" data-i18n-attr="aria-label:board.redo,title:board.redo_hint" hidden disabled><i class="bi bi-arrow-clockwise" aria-hidden="true"></i></button>
         <button type="button" id="trash-button" class="btn btn-link app-icon-button" data-i18n-attr="aria-label:trash.title,title:trash.title" hidden><i class="bi bi-trash3" aria-hidden="true"></i></button>

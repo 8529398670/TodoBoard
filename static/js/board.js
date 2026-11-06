@@ -15,10 +15,13 @@ const BoardPage = {
   loading: false,
   pollTimer: null,
   // What a staged board is showing: stage on every column, except those in
-  // columnStages (by list id, or "all"). Kept out of load(), which runs on
-  // every poll; a fresh page starts on To do.
+  // columnStages (by list id), or "all" for the one master list instead of
+  // the columns. Kept out of load(), which runs on every poll; a fresh page
+  // starts on To do. The All list flips through the stages too, and stays
+  // on the one it was left on.
   stage: "todo",
   columnStages: {},
+  allStage: "todo",
 
   views() {
     return { kanban: KanbanView , todo: TodoView , timeline: TimelineView };
@@ -201,7 +204,7 @@ const BoardPage = {
         return !!data && data.board.layout === "three" && !data.list_only;
       },
       // A staged board keeps its stages for someone shown a single column,
-      // but the All column, being every list, is only for the whole board.
+      // but the All list, being every list, is only for the whole board.
       isStaged() {
         return !!data && data.board.layout === "staged";
       },
@@ -211,7 +214,11 @@ const BoardPage = {
       // The ranking is the whole board's, so a link showing some columns
       // cannot change it even where it edits their cards.
       canRank: ( level === "edit" || level === "manage" ) && !( data && ( data.list_only || data.columns_only ) ),
-      boardStage() { return page.stage; },
+      isAllView() { return page.stage === "all" && this.showAll(); },
+      boardStage() {
+        if ( page.stage !== "all" ) return page.stage;
+        return this.showAll() ? "all" : "todo";
+      },
       stageIn( key ) { return page.stageOf( key ); },
       // Cards are numbered when the board says so, or, left to each person,
       // when their account does. A guest has no account to ask.
@@ -259,8 +266,8 @@ const BoardPage = {
       shownAt( listId , stage ) {
         return this.shownIn( listId ).filter( function ( card ) { return Stages.of( card ) === stage; } );
       },
-      // The All column's cards: every open card of every list shown, ranked
-      // ones first by place, the rest in board order after them.
+      // The All list: every open card of every list shown, ranked ones first
+      // by place, the rest in board order after them.
       allCards() {
         const cards = [];
         this.lists().forEach( ( list ) => { this.cardsIn( list.id ).forEach( function ( card ) { cards.push( card ); } ); } );
@@ -313,9 +320,12 @@ const BoardPage = {
 
     const root = Dom.get( "board-root" );
     const scroller = root.querySelector( ".scroll-x" );
-    const scrollLeft = scroller ? scroller.scrollLeft : 0;
+    // Kept across a render with no scroller, so the All list hands the
+    // columns back where they were.
+    if ( scroller ) this.scrollLeft = scroller.scrollLeft;
     const scrollTop = window.scrollY;
     Dom.clear( root );
+    Dom.clear( Dom.get( "stage-slot" ) );
     root.className = "board-root view-" + ( ctx.cardOnly ? "cards" : this.view );
     if ( ctx.cardOnly ) {
       CardOnlyView.render( root , ctx );
@@ -323,7 +333,7 @@ const BoardPage = {
       this.views()[ this.view ].render( root , ctx );
     }
     const restored = root.querySelector( ".scroll-x" );
-    if ( restored && scrollLeft ) restored.scrollLeft = scrollLeft;
+    if ( restored && this.scrollLeft ) restored.scrollLeft = this.scrollLeft;
     window.scrollTo( 0 , scrollTop );
   },
 
@@ -366,8 +376,10 @@ const BoardPage = {
     this.render();
   },
 
+  // What column key, or "all", is showing; behind the All list, To do.
   stageOf( key ) {
-    return this.columnStages[ key ] || this.stage;
+    if ( key === "all" ) return this.allStage;
+    return this.columnStages[ key ] || ( this.stage === "all" ? "todo" : this.stage );
   },
 
   // Every column to stage, and back in step with each other.
@@ -378,14 +390,24 @@ const BoardPage = {
   },
 
   setColumnStage( key , stage ) {
-    if ( stage === this.stage ) delete this.columnStages[ key ];
+    if ( key === "all" ) this.allStage = stage;
+    else if ( stage === this.stage ) delete this.columnStages[ key ];
     else this.columnStages[ key ] = stage;
     this.render();
   },
 
+  // One stop along: To do, Doing, Done, then All's To do, Doing, Done.
   stepStage( delta ) {
-    const index = Stages.order.indexOf( this.stage ) + delta;
-    this.setStage( Stages.order[ Math.min( Math.max( index , 0 ) , Stages.order.length - 1 ) ] );
+    const ctx = this.context();
+    if ( ctx.isAllView() ) {
+      const index = Stages.order.indexOf( this.allStage ) + delta;
+      if ( index < 0 ) this.setStage( "done" );
+      else if ( index < Stages.order.length ) this.setColumnStage( "all" , Stages.order[ index ] );
+      return;
+    }
+    const stages = Stages.boardStages( ctx );
+    const index = stages.indexOf( ctx.boardStage() ) + delta;
+    this.setStage( stages[ Math.min( Math.max( index , 0 ) , stages.length - 1 ) ] );
   },
 
   openCard( cardId ) {

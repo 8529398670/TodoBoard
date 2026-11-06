@@ -31,8 +31,8 @@ const (
 // Layouts. Free is any number of lists; Three pins the board to its first
 // three lists (to do / doing / done), shown as equal columns. New boards
 // start as Three. Staged is any number of lists again, each holding its own
-// to do / doing / done (see Card.Doing), with an All column in front that
-// merges them by rank (see Card.Rank).
+// to do / doing / done (see Card.Doing), with an All view that merges them
+// by rank (see Card.Rank).
 const (
 	LayoutFree   = ""
 	LayoutThree  = "three"
