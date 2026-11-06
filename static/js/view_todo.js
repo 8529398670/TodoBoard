@@ -112,7 +112,7 @@ const TodoView = {
     Markdown.renderInline( card.title , title );
     body.appendChild( title );
     const meta = Dom.el( "span" , { class: "card-meta" } );
-    [ CardBits.rank( card , ctx ) , CardBits.labels( card , ctx.board ) , CardBits.price( card ) , CardBits.due( card ) , CardBits.checklist( card ) , CardBits.assignees( card , ctx.people ) ]
+    [ ctx.showRank() ? CardBits.rank( card , ctx ) : null , CardBits.labels( card , ctx.board ) , CardBits.price( card ) , CardBits.due( card ) , CardBits.checklist( card ) , CardBits.assignees( card , ctx.people ) ]
       .filter( Boolean ).forEach( function ( node ) { meta.appendChild( node ); } );
     if ( meta.childNodes.length ) body.appendChild( meta );
     row.appendChild( body );

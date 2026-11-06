@@ -185,6 +185,7 @@ func ( handlers *Handlers ) boardPayload( principal *access.Principal , board *m
 			"default_view": board.DefaultView,
 			"color":        board.Color,
 			"shopping":     board.Shopping,
+			"show_rank":    board.ShowRank,
 			"theme":        board.Theme,
 			"rev":          board.Rev,
 			"lists":        lists,

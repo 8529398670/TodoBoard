@@ -121,6 +121,13 @@ a:not([class]):hover { color: var(--bs-link-hover-color); }
 .navbar-brand { color: var(--fg); }
 .navbar-brand:hover, .navbar-brand:focus-visible { color: var(--accent); }
 
+/* The logo: drawn inline rather than as an image so it follows the theme's
+   accent. static/favicon.svg is the same drawing in the default blue. */
+.brand-mark { display: block; width: 30px; height: 30px; }
+.brand-mark-back { fill: var(--accent); opacity: .35; }
+.brand-mark-card { fill: var(--accent); }
+.brand-mark-check { fill: none; stroke: var(--accent-fg); stroke-width: 3.6; stroke-linecap: round; stroke-linejoin: round; }
+
 /* The hidden attribute loses to Bootstrap's display utilities (.d-flex and
    friends are !important and come later), so make it win again: app code
    shows and hides whole sections with it. */

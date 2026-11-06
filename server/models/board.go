@@ -96,6 +96,9 @@ type Board struct {
 	// Shopping: product links from any shop are looked up on every column
 	// (List.Shopping does one column).
 	Shopping    bool              `json:"shopping"`
+	// ShowRank: on a staged board, cards show their board-wide rank outside
+	// the All list too. The All list always shows it.
+	ShowRank    bool              `json:"show_rank"`
 	Rev         uint64            `json:"rev"`
 	NextLocalID uint64            `json:"next_local_id"`
 	CreatedAt   time.Time         `json:"created_at"`
@@ -319,6 +322,7 @@ type BoardSettings struct {
 	Theme       *Theme   `json:"theme"`
 	ClearTheme  bool     `json:"clear_theme"`
 	Shopping    *bool    `json:"shopping"`
+	ShowRank    *bool    `json:"show_rank"`
 	DonePlacement *string `json:"done_placement"`
 	AddPlacement  *string `json:"add_placement"`
 }
@@ -366,6 +370,7 @@ func ( settings *BoardSettings ) Apply( board *Board ) ( err error ) {
 	}
 	if settings.ClearTheme { board.Theme = nil }
 	if settings.Shopping != nil { board.Shopping = *settings.Shopping }
+	if settings.ShowRank != nil { board.ShowRank = *settings.ShowRank }
 	if settings.Layout != nil {
 		if *settings.Layout != LayoutFree && *settings.Layout != LayoutThree && *settings.Layout != LayoutStaged { return ErrBadInput }
 		board.Layout = *settings.Layout

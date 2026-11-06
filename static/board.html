@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="color-scheme" content="light" />
   <title data-i18n="app.title">&nbsp;</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="/favicon.png" type="image/png" sizes="32x32" />
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <!-- Before the stylesheets paint, so a saved dark theme never flashes light. -->
   <script src="/js/theme.js"></script>
   <!-- The same stack as index.html: Bootstrap and its icon font, this app's
@@ -31,9 +34,15 @@
   <nav class="navbar app-navbar board-navbar sticky-top">
     <div class="container-fluid gap-2">
       <div class="board-navbar-start d-flex align-items-center gap-2">
-      <!-- The app's name is the way home, as on every page. A guest has no
+      <!-- The app's logo is the way home, as on every page. A guest has no
            home here, so board.js hides it for them. -->
-      <a id="home-link" class="navbar-brand fw-semibold me-0" href="/" data-i18n="app.title"></a>
+      <a id="home-link" class="navbar-brand me-0" href="/" data-i18n-attr="aria-label:app.title,title:app.title">
+        <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+          <rect class="brand-mark-back" x="2" y="8.5" width="19" height="19" rx="5" />
+          <rect class="brand-mark-card" x="6" y="4.5" width="24" height="24" rx="6" />
+          <path class="brand-mark-check" d="M11.5 17l4.5 4.5 8.5-9.5" />
+        </svg>
+      </a>
       <h1 id="board-title" class="board-title h5 mb-0 text-truncate"></h1>
       </div>
       <div id="stage-slot" class="stage-slot"></div>

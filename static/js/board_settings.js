@@ -138,6 +138,13 @@ const BoardSettings = {
     form.appendChild( options );
     form.appendChild( BoardSettings.swatchField( "settings.color_label" , color ) );
     form.appendChild( Dom.el( "p" , { class: "muted small-print" , text: T( "settings.layout_hint" ) } ) );
+    // Only a staged board has a ranking, so the choice follows the layout.
+    const showRank = Dom.el( "div" , { children: [
+      Ui.checkbox( "settings.show_rank_label" , ctx.board.show_rank , function ( checked ) { save( { show_rank: checked } ); } ),
+      Dom.el( "p" , { class: "muted small-print" , text: T( "settings.show_rank_hint" ) } ),
+    ] } );
+    Dom.show( showRank , layout.value === "staged" );
+    form.appendChild( showRank );
     form.appendChild( Ui.field( "settings.numbering_label" , numbering ) );
     const placements = Dom.el( "div" , { class: "form-row" } );
     placements.appendChild( Ui.field( "settings.done_placement_label" , donePlacement ) );
@@ -182,6 +189,7 @@ const BoardSettings = {
     donePlacement.addEventListener( "change" , function () { save( { done_placement: donePlacement.value } ); } );
     addPlacement.addEventListener( "change" , function () { save( { add_placement: addPlacement.value } ); } );
     layout.addEventListener( "change" , function () {
+      Dom.show( showRank , layout.value === "staged" );
       const changes = { layout: layout.value };
       // Lists to add if the three-column layout finds fewer than three.
       if ( layout.value === "three" ) changes.list_titles = T( "home.default_lists" ).split( "," ).map( function ( name ) { return name.trim(); } );

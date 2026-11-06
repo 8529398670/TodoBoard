@@ -171,6 +171,14 @@ func TestNewBoardDefaults( t *testing.T ) {
 
 	on := NumberingOn
 	if _ , err = UpdateBoardSettings( store , board.ID , &BoardSettings{ Numbering: &on } ); err != nil { t.Fatal( err ) }
+	if board.ShowRank { t.Error( "a new board should not show ranks outside All" ) }
+	show_rank := true
+	updated , err := UpdateBoardSettings( store , board.ID , &BoardSettings{ ShowRank: &show_rank } )
+	if err != nil { t.Fatal( err ) }
+	if updated.ShowRank == false { t.Error( "show_rank was not saved" ) }
+	updated , err = UpdateBoardSettings( store , board.ID , &BoardSettings{ Numbering: &on } )
+	if err != nil { t.Fatal( err ) }
+	if updated.ShowRank == false { t.Error( "another setting's save cleared show_rank" ) }
 	bad := "sometimes"
 	if _ , err = UpdateBoardSettings( store , board.ID , &BoardSettings{ Numbering: &bad } ); errors.Is( err , ErrBadInput ) == false {
 		t.Errorf( "numbering must be on, off or empty, got %v" , err )

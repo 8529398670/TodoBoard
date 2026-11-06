@@ -208,6 +208,10 @@ const BoardPage = {
       isStaged() {
         return !!data && data.board.layout === "staged";
       },
+      // Whether cards outside the All list show their rank (Board settings).
+      showRank() {
+        return this.isStaged() && !!data.board.show_rank;
+      },
       showAll() {
         return this.isStaged() && !data.list_only && !data.card_only;
       },

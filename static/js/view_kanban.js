@@ -337,7 +337,7 @@ const KanbanView = {
 
     const title = Dom.el( "div" , { class: "card-title" } );
     if ( cards && !card.archived && ctx.numbered() ) title.appendChild( CardBits.numberField( card , cards , ctx ) );
-    const rank = ranking ? CardBits.rankField( card , ctx ) : CardBits.rank( card , ctx );
+    const rank = ranking ? CardBits.rankField( card , ctx ) : ( ctx.showRank() ? CardBits.rank( card , ctx ) : null );
     if ( rank ) title.appendChild( rank );
     const text = Dom.el( "span" );
     Markdown.renderInline( card.title , text );

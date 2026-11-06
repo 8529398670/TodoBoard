@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="color-scheme" content="light" />
   <title data-i18n="app.title">&nbsp;</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="/favicon.png" type="image/png" sizes="32x32" />
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <!-- Before the stylesheets paint, so a saved dark theme never flashes light. -->
   <script src="/js/theme.js"></script>
   <!-- Bootstrap 5 and its icon font, vendored (see /vendor/README.md), then
@@ -37,8 +40,14 @@
               data-i18n-attr="aria-label:nav.menu,title:nav.menu" hidden>
         <i class="bi bi-list" aria-hidden="true"></i>
       </button>
-      <!-- The app's name is the way home, from any screen. -->
-      <a href="/" class="navbar-brand fw-semibold me-auto" data-i18n="app.title"></a>
+      <!-- The app's logo is the way home, from any screen. -->
+      <a href="/" class="navbar-brand me-auto" data-i18n-attr="aria-label:app.title,title:app.title">
+        <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+          <rect class="brand-mark-back" x="2" y="8.5" width="19" height="19" rx="5" />
+          <rect class="brand-mark-card" x="6" y="4.5" width="24" height="24" rx="6" />
+          <path class="brand-mark-check" d="M11.5 17l4.5 4.5 8.5-9.5" />
+        </svg>
+      </a>
       <span class="navbar-text small d-none d-md-inline" data-i18n="app.tagline"></span>
     </div>
   </nav>
