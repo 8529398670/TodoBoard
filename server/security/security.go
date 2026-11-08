@@ -12,6 +12,7 @@ package security
 
 import (
 	strings "strings"
+	time "time"
 
 	fiber "github.com/gofiber/fiber/v3"
 
@@ -84,16 +85,24 @@ func New( store *db.Store , cfg *config.Config ) ( guard *Guard ) {
 func ( guard *Guard ) SetSessionCookie( c fiber.Ctx , credential string ) ( err error ) {
 	sealed , err := encryption.ChaChaEncryptString( guard.Config.SecretKey , credential )
 	if err != nil { return }
+	guard.writeSessionCookie( c , sealed , guard.Config.SessionTTL )
+	return
+}
+
+// writeSessionCookie is the one place the cookie's attributes are spelled, so
+// the copy sent when a session extends cannot drift from the one sent at
+// sign-in. A later cookie of the same name on this response replaces it, so
+// logging out or switching account on a request that extended still wins.
+func ( guard *Guard ) writeSessionCookie( c fiber.Ctx , sealed string , lifetime time.Duration ) {
 	c.Cookie( &fiber.Cookie{
 		Name:     guard.Config.CookieName,
 		Value:    sealed,
 		Path:     "/",
-		MaxAge:   int( guard.Config.SessionTTL.Seconds() ),
+		MaxAge:   int( lifetime.Seconds() ),
 		Secure:   guard.Config.SecureCookies,
 		HTTPOnly: true,
 		SameSite: "Strict",
 	} )
-	return
 }
 
 func ( guard *Guard ) ClearSessionCookie( c fiber.Ctx ) {
@@ -151,6 +160,11 @@ func ( guard *Guard ) resolveSession( c fiber.Ctx ) ( actor *Actor ) {
 	session , user := models.LoadSession( guard.Store , credential )
 	if user == nil { return }
 
+	// The browser drops the cookie at its own expiry, so extending only the
+	// record would still sign this person out when that arrived.
+	if models.TouchSession( guard.Store , session , guard.Config.SessionTTL , guard.Config.SessionMaxAge ) {
+		guard.writeSessionCookie( c , raw , time.Until( session.ExpiresAt ) )
+	}
 	actor = &Actor{ User: user , Session: session , Role: user.Role }
 	return
 }
@@ -262,6 +276,25 @@ func ( guard *Guard ) RequireAPIKey( c fiber.Ctx ) ( err error ) {
 	}
 	if actor.ViaAPIKey() == false {
 		err = c.Status( fiber.StatusForbidden ).JSON( fiber.Map{ "error": "this endpoint requires an API key, not a signed-in session" } )
+		return
+	}
+	err = c.Next()
+	return
+}
+
+// RequireOwner lets through only the owner, signed in from a browser. It
+// guards what only the owner decides, such as whether one account may use a
+// password. Everyone else, any API key included, gets the 404 an unknown
+// route gets.
+func ( guard *Guard ) RequireOwner( c fiber.Ctx ) ( err error ) {
+	actor := ActorFrom( c )
+	allowed := actor != nil && actor.ViaAPIKey() == false && actor.IsAdmin()
+	if allowed {
+		owner_id , owner_err := models.OwnerID( guard.Store )
+		allowed = owner_err == nil && owner_id != 0 && actor.User.ID == owner_id
+	}
+	if allowed == false {
+		err = c.Status( fiber.StatusNotFound ).JSON( fiber.Map{ "error": "not_found" } )
 		return
 	}
 	err = c.Next()

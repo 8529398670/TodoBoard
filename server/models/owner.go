@@ -48,6 +48,14 @@ var (
 	// ErrDeleteSelf is the refusal for deleting your own account, which
 	// would sign you out with no record left to sign back in to.
 	ErrDeleteSelf = errors.New( "you cannot delete your own account" )
+
+	// ErrRoleSelf is the refusal for changing your own role: it could only
+	// take your own admin rights away, or sign you out.
+	ErrRoleSelf = errors.New( "you cannot change your own role" )
+
+	// ErrResetSelf is the refusal for resetting your own 2FA: that would skip
+	// the code turning it off asks for.
+	ErrResetSelf = errors.New( "you cannot reset your own two-factor sign-in" )
 )
 
 // ownerIDTx reads the marker inside the caller's transaction. Zero means no

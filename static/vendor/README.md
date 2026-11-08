@@ -40,6 +40,7 @@ Commit what lands here. It is part of the app, not a build artifact.
 | [html-to-image](https://github.com/bubkoo/html-to-image) | 1.11.13 | `html-to-image/html-to-image.js` | exporting a card as a PNG |
 | [Bootstrap](https://getbootstrap.com) | 5.3.8 | `bootstrap.min.css`, `bootstrap.bundle.min.js` (the bundle includes Popper) | layout, components and utilities |
 | [Bootstrap Icons](https://icons.getbootstrap.com) | 1.13.1 | `bootstrap-icons.min.css`, `fonts/bootstrap-icons.woff2`, `fonts/bootstrap-icons.woff` | icons; the stylesheet loads its font from `fonts/` beside it, so keep that layout |
+| [qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator) | 1.4.4 (MIT) | `qrcode.js` | the QR code on the two-factor setup screen (`js/qr.js`) |
 
 sha256 of each file as downloaded:
 
@@ -56,6 +57,7 @@ e4fd49181388c48ec5040bd3fe66f57c29c8e67fcd8502b3354b96ec7ab47cc7  bootstrap.bund
 a5d6387a32ca3baec4d02336b5b3edab50c9dd518355576a011ea3dd9c1d884e  bootstrap-icons.min.css
 6c75710364a1ca5604267716f6d28997b26319fdb078cf11e0b42ab66ff2ea61  fonts/bootstrap-icons.woff2
 f55513b7b591cb84a3b87ff0e34ea24d4831d6fedc22e54b911ca64b5b544a15  fonts/bootstrap-icons.woff
+18ae399f81182bc9de916e9c77b195df20cc58d6f2d55a62b085a299f1bf1780  qrcode.js
 ```
 
 Only the `.woff2` KaTeX fonts are vendored; every browser this app supports
@@ -75,6 +77,12 @@ misc/vendor.sh https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.8/js/bootstr
 misc/vendor.sh https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.13.1/font/bootstrap-icons.min.css
 misc/vendor.sh https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.13.1/font/fonts/bootstrap-icons.woff2 fonts/bootstrap-icons.woff2
 misc/vendor.sh https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.13.1/font/fonts/bootstrap-icons.woff fonts/bootstrap-icons.woff
+```
+
+qrcode.js came from:
+
+```bash
+misc/vendor.sh https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js qrcode.js
 ```
 
 Bootstrap's colour-mode script, which would follow `prefers-color-scheme`, is

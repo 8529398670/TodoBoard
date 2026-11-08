@@ -99,6 +99,25 @@
           <h2 class="h4 mb-3" data-i18n="signed_out.heading"></h2>
           <p data-i18n="signed_out.body"></p>
           <p id="invalid-link" class="alert alert-warning mb-0" data-i18n="signed_out.invalid_link" hidden></p>
+          <p id="sign-in-expired" class="alert alert-warning mb-0" data-i18n="signed_out.sign_in_expired" hidden></p>
+          <!-- Only while the owner has auth.passwords on; see password.js. -->
+          <div id="password-login" class="mt-3" hidden>
+            <hr />
+            <h3 class="h6" data-i18n="signed_out.password_heading"></h3>
+            <form id="password-login-form" class="row g-3 align-items-end">
+              <div class="col-md">
+                <label for="login-username" class="form-label" data-i18n="signed_out.username_label"></label>
+                <input id="login-username" class="form-control" name="username" autocomplete="username" autocapitalize="off" spellcheck="false" required />
+              </div>
+              <div class="col-md">
+                <label for="login-password" class="form-label" data-i18n="signed_out.password_label"></label>
+                <input id="login-password" class="form-control" name="password" type="password" autocomplete="current-password" required />
+              </div>
+              <div class="col-md-auto">
+                <button id="password-login-button" class="btn btn-primary" type="submit" data-i18n="signed_out.password_button"></button>
+              </div>
+            </form>
+          </div>
           <!-- Only in a Home Screen app; see bindPasteLogin in app.js. -->
           <form id="paste-login" class="mt-3" hidden>
             <label class="form-label" for="paste-login-value" data-i18n="signed_out.paste_label"></label>
@@ -117,6 +136,24 @@
           <p data-i18n="login_confirm.body"></p>
           <p id="login-switch-warning" class="alert alert-warning" hidden></p>
           <button id="login-confirm-button" class="btn btn-primary" data-i18n="login_confirm.button"></button>
+        </div>
+      </section>
+
+      <!-- Any sign-in on an account with two-factor on ends here: a login
+           link, a password or an invite link. See two_factor.js. -->
+      <section id="two-factor-step" class="card" hidden>
+        <div class="card-body">
+          <h2 class="h4 mb-3" data-i18n="two_factor.step_heading"></h2>
+          <p data-i18n="two_factor.step_body"></p>
+          <form id="two-factor-step-form" class="row g-3 align-items-end" autocomplete="off">
+            <div class="col-md">
+              <label for="two-factor-step-code" class="form-label" data-i18n="two_factor.code_label"></label>
+              <input id="two-factor-step-code" class="form-control" name="code" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" maxlength="24" required />
+            </div>
+            <div class="col-md-auto">
+              <button id="two-factor-step-button" class="btn btn-primary" type="submit" data-i18n="two_factor.step_button"></button>
+            </div>
+          </form>
         </div>
       </section>
 
@@ -238,13 +275,30 @@
               </div>
             </form>
 
-            <!-- A one-time login link for yourself; see login_link.js.
+            <!-- A login link for yourself; see login_link.js.
                  Sessions only: an API key cannot mint one. -->
             <div id="own-login-panel" hidden>
               <hr />
               <h3 class="h6" data-i18n="own_login.heading"></h3>
               <p class="text-body-secondary" data-i18n="own_login.description"></p>
-              <button type="button" id="own-login-button" class="btn btn-outline-secondary" data-i18n="own_login.create_button"></button>
+              <div id="own-login-live" class="d-flex flex-wrap align-items-center gap-2 mb-3" hidden>
+                <span id="own-login-live-text"></span>
+                <button type="button" id="own-login-cancel" class="btn btn-sm btn-outline-danger" data-i18n="login_links.cancel_button"></button>
+              </div>
+              <div class="row g-3 align-items-end">
+                <div class="col-sm">
+                  <label for="own-login-uses" class="form-label" data-i18n="login_links.uses_label"></label>
+                  <select id="own-login-uses" class="form-select"></select>
+                </div>
+                <div class="col-sm">
+                  <label for="own-login-expires" class="form-label" data-i18n="login_links.expires_label"></label>
+                  <select id="own-login-expires" class="form-select"></select>
+                </div>
+                <div class="col-sm-auto">
+                  <button type="button" id="own-login-button" class="btn btn-outline-secondary" data-i18n="own_login.create_button"></button>
+                </div>
+              </div>
+              <div class="form-text" data-i18n="login_links.expires_help"></div>
               <div id="own-login-box" class="alert alert-info mt-3" hidden>
                 <p id="own-login-expiry" class="mb-2"></p>
                 <div class="link-box">
@@ -252,6 +306,106 @@
                   <button type="button" id="own-login-copy" class="btn btn-sm btn-outline-secondary" data-i18n="own_login.copy_button"></button>
                 </div>
               </div>
+            </div>
+
+            <!-- Password sign-in, while the owner has auth.passwords on; see
+                 password.js. -->
+            <div id="password-panel" hidden>
+              <hr />
+              <h3 class="h6" data-i18n="password.heading"></h3>
+              <p class="text-body-secondary" data-i18n="password.description"></p>
+              <p><span id="password-status" class="badge text-bg-secondary"></span></p>
+              <form id="password-form" class="row g-3" autocomplete="off">
+                <div class="col-md-4">
+                  <label for="password-username" class="form-label" data-i18n="password.username_label"></label>
+                  <input id="password-username" class="form-control" name="username" autocomplete="username" autocapitalize="off" spellcheck="false" maxlength="32" required />
+                  <div class="form-text" data-i18n="password.username_help"></div>
+                </div>
+                <div class="col-md-4">
+                  <label for="password-new" class="form-label" data-i18n="password.new_label"></label>
+                  <input id="password-new" class="form-control" name="password" type="password" autocomplete="new-password" required />
+                  <div class="form-text" data-i18n="password.new_help"></div>
+                </div>
+                <div class="col-md-4">
+                  <label for="password-confirm" class="form-label" data-i18n="password.confirm_label"></label>
+                  <input id="password-confirm" class="form-control" name="confirm" type="password" autocomplete="new-password" required />
+                </div>
+                <div id="password-code-row" class="col-md-4" hidden>
+                  <label for="password-code" class="form-label" data-i18n="two_factor.code_label"></label>
+                  <input id="password-code" class="form-control" name="code" autocomplete="one-time-code" spellcheck="false" maxlength="24" />
+                </div>
+                <div class="col-12 d-flex flex-wrap gap-2">
+                  <button id="password-save-button" type="submit" class="btn btn-primary" data-i18n="password.save_button"></button>
+                  <button type="button" id="password-remove-button" class="btn btn-outline-danger" data-i18n="password.remove_button" hidden></button>
+                </div>
+              </form>
+            </div>
+
+            <!-- Two-factor sign-in with an authenticator app; see two_factor.js. -->
+            <div id="two-factor-panel" hidden>
+              <hr />
+              <h3 class="h6" data-i18n="two_factor.heading"></h3>
+              <p class="text-body-secondary" data-i18n="two_factor.description"></p>
+              <p><span id="two-factor-status" class="badge text-bg-secondary"></span></p>
+              <button type="button" id="two-factor-start-button" class="btn btn-outline-secondary" data-i18n="two_factor.start_button" hidden></button>
+              <form id="two-factor-disable-form" class="row g-3 align-items-end" autocomplete="off" hidden>
+                <div class="col-md">
+                  <label for="two-factor-disable-code" class="form-label" data-i18n="two_factor.code_label"></label>
+                  <input id="two-factor-disable-code" class="form-control" name="code" autocomplete="one-time-code" spellcheck="false" maxlength="24" required />
+                </div>
+                <div class="col-md-auto">
+                  <button type="submit" class="btn btn-outline-danger" data-i18n="two_factor.disable_button"></button>
+                </div>
+              </form>
+              <div id="two-factor-setup" hidden>
+                <p data-i18n="two_factor.setup_scan"></p>
+                <canvas id="two-factor-qr" class="two-factor-qr mb-3"></canvas>
+                <p class="mb-1" data-i18n="two_factor.setup_manual"></p>
+                <div class="link-box mb-3">
+                  <code id="two-factor-secret"></code>
+                  <button type="button" id="two-factor-secret-copy" class="btn btn-sm btn-outline-secondary" data-i18n="two_factor.copy_secret_button"></button>
+                </div>
+                <form id="two-factor-confirm-form" class="row g-3 align-items-end" autocomplete="off">
+                  <div class="col-md">
+                    <label for="two-factor-code" class="form-label" data-i18n="two_factor.setup_code_label"></label>
+                    <input id="two-factor-code" class="form-control" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required />
+                  </div>
+                  <div class="col-md-auto">
+                    <button type="submit" class="btn btn-primary" data-i18n="two_factor.confirm_button"></button>
+                  </div>
+                </form>
+              </div>
+              <div id="two-factor-recovery" class="alert alert-info" hidden>
+                <p class="mb-2" data-i18n="two_factor.recovery_notice"></p>
+                <pre id="two-factor-recovery-codes" class="mb-2"></pre>
+                <div class="d-flex flex-wrap gap-2">
+                  <button type="button" id="two-factor-recovery-copy" class="btn btn-sm btn-outline-secondary" data-i18n="two_factor.copy_button"></button>
+                  <button type="button" id="two-factor-recovery-download" class="btn btn-sm btn-outline-secondary" data-i18n="two_factor.download_button"></button>
+                  <button type="button" id="two-factor-recovery-done" class="btn btn-sm btn-primary" data-i18n="two_factor.done_button"></button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Where this account is signed in; see sessions.js. -->
+            <div id="sessions-panel" hidden>
+              <hr />
+              <h3 class="h6" data-i18n="sessions.heading"></h3>
+              <p class="text-body-secondary" data-i18n="sessions.description"></p>
+              <div class="table-responsive">
+                <table id="sessions-table" class="table table-hover align-middle">
+                  <thead>
+                    <tr>
+                      <th scope="col" data-i18n="sessions.table_device"></th>
+                      <th scope="col" data-i18n="sessions.table_ip"></th>
+                      <th scope="col" data-i18n="sessions.table_seen"></th>
+                      <th scope="col" data-i18n="sessions.table_signed_in"></th>
+                      <th scope="col" data-i18n="sessions.table_actions"></th>
+                    </tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+              <button type="button" id="sessions-revoke-others" class="btn btn-outline-danger" data-i18n="sessions.revoke_others_button" hidden></button>
             </div>
 
             <hr />
@@ -398,13 +552,22 @@
                   <option value="admin" data-i18n="admin.role_admin"></option>
                 </select>
               </div>
+              <div class="col-md">
+                <label for="new-uses" class="form-label" data-i18n="login_links.uses_label"></label>
+                <select id="new-uses" class="form-select" name="max_uses"></select>
+              </div>
+              <div class="col-md">
+                <label for="new-expires" class="form-label" data-i18n="login_links.expires_label"></label>
+                <select id="new-expires" class="form-select" name="expires_in_minutes"></select>
+              </div>
               <div class="col-md-auto">
                 <button type="submit" class="btn btn-primary" data-i18n="admin.create_button"></button>
               </div>
             </form>
 
             <div id="login-link-box" class="alert alert-info mt-3" hidden>
-              <p class="mb-2" data-i18n="admin.link_notice"></p>
+              <p id="login-link-for" class="fw-semibold mb-1"></p>
+              <p id="login-link-notice" class="mb-2"></p>
               <div class="link-box">
                 <code id="login-link-value"></code>
                 <button id="copy-link-button" class="btn btn-sm btn-outline-secondary" data-i18n="admin.copy_button"></button>
@@ -431,6 +594,30 @@
                 </thead>
                 <tbody></tbody>
               </table>
+            </div>
+
+            <!-- One account's devices, opened from its row's menu; see
+                 Sessions.showFor in sessions.js. -->
+            <div id="user-sessions" class="mt-4" hidden>
+              <div class="d-flex align-items-center justify-content-between gap-2 mb-2">
+                <h3 id="user-sessions-heading" class="h6 mb-0"></h3>
+                <button type="button" id="user-sessions-close" class="btn-close" data-i18n-attr="aria-label:ui.close,title:ui.close"></button>
+              </div>
+              <p id="user-sessions-empty" class="text-body-secondary" data-i18n="sessions.user_empty" hidden></p>
+              <div class="table-responsive">
+                <table id="user-sessions-table" class="table table-hover align-middle">
+                  <thead>
+                    <tr>
+                      <th scope="col" data-i18n="sessions.table_device"></th>
+                      <th scope="col" data-i18n="sessions.table_ip"></th>
+                      <th scope="col" data-i18n="sessions.table_seen"></th>
+                      <th scope="col" data-i18n="sessions.table_signed_in"></th>
+                      <th scope="col" data-i18n="sessions.table_actions"></th>
+                    </tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+              </div>
             </div>
           </div>
         </section>
@@ -550,7 +737,13 @@
   <script src="/js/keys.js"></script>
   <script src="/js/join.js"></script>
   <script src="/js/pin.js"></script>
+  <script src="/vendor/qrcode.js"></script>
+  <script src="/js/qr.js"></script>
+  <script src="/js/login_links.js"></script>
   <script src="/js/login_link.js"></script>
+  <script src="/js/password.js"></script>
+  <script src="/js/two_factor.js"></script>
+  <script src="/js/sessions.js"></script>
   <script src="/js/invites.js"></script>
   <script src="/js/ui.js"></script>
   <script src="/js/color_picker.js"></script>

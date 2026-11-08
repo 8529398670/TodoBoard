@@ -133,7 +133,12 @@ const Join = {
 
   async claim( pin ) {
     try {
-      await Api.joinClaim( this.credential() , this.picked.id , pin );
+      const result = await Api.joinClaim( this.credential() , this.picked.id , pin );
+      // Someone with two-factor on gives their code before the sign-in ends.
+      if ( result.two_factor ) {
+        TwoFactor.ask( result.challenge );
+        return;
+      }
       this.done();
     } catch ( error ) {
       this.failed( error );

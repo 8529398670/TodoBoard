@@ -40,11 +40,14 @@ const usage = `manage -- account administration for TodoBoard
 
 Usage:
   bootstrap-admin -name "Ada"        create the first admin + login link
-  create-login    -name "Grace" -role user
-  reissue-login   -user-id 3         fresh link for an existing user
+  create-login    -name "Grace" -role user [-uses 5|unlimited] [-expires 7d|never]
+  reissue-login   -user-id 3 [-uses 5|unlimited] [-expires 7d|never]
+                                     fresh link for an existing user; once, for
+                                     30 minutes unless -uses/-expires say otherwise
   list-users                         id, name, role, status
   set-disabled    -user-id 3 -disabled=true
   revoke-access   -user-id 3         end every session, login link and API key
+  reset-2fa       -user-id 3         take two-factor sign-in off an account
   delete-user     -user-id 3 -yes    remove the account and everything it held
   transfer-owner  -user-id 3         make another enabled admin the owner
   list-keys       [-user-id 3]       API keys, whose they are, when last used
@@ -92,8 +95,9 @@ func Usage() {
 // the shape that survives the socket; the direct implementation converts.
 type backend interface {
 	ListUsers() ( users []control.UserResponse , err error )
-	CreateUser( display_name string , role string ) ( user control.UserResponse , err error )
-	ReissueLogin( user_id uint64 ) ( user control.UserResponse , err error )
+	CreateUser( display_name string , role string , link models.LoginLinkRequest ) ( user control.UserResponse , err error )
+	ReissueLogin( user_id uint64 , link models.LoginLinkRequest ) ( user control.UserResponse , err error )
+	ResetTwoFactor( user_id uint64 ) ( err error )
 	SetDisabled( user_id uint64 , disabled bool ) ( user control.UserResponse , err error )
 	RevokeAccess( user_id uint64 ) ( revoked models.Revoked , err error )
 	DeleteUser( user_id uint64 ) ( removed models.Revoked , err error )
@@ -153,6 +157,8 @@ func Run( arguments []string ) ( err error ) {
 		err = commandSetDisabled( back , rest )
 	case "revoke-access":
 		err = commandRevokeAccess( back , rest )
+	case "reset-2fa":
+		err = commandResetTwoFactor( back , rest )
 	case "delete-user":
 		err = commandDeleteUser( back , rest )
 	case "transfer-owner":
@@ -235,13 +241,18 @@ func ( b *controlBackend ) ListUsers() ( users []control.UserResponse , err erro
 	return
 }
 
-func ( b *controlBackend ) CreateUser( display_name string , role string ) ( user control.UserResponse , err error ) {
-	user , err = b.client.CreateUser( display_name , role )
+func ( b *controlBackend ) CreateUser( display_name string , role string , link models.LoginLinkRequest ) ( user control.UserResponse , err error ) {
+	user , err = b.client.CreateUser( display_name , role , link )
 	return
 }
 
-func ( b *controlBackend ) ReissueLogin( user_id uint64 ) ( user control.UserResponse , err error ) {
-	user , err = b.client.ReissueLogin( user_id )
+func ( b *controlBackend ) ReissueLogin( user_id uint64 , link models.LoginLinkRequest ) ( user control.UserResponse , err error ) {
+	user , err = b.client.ReissueLogin( user_id , link )
+	return
+}
+
+func ( b *controlBackend ) ResetTwoFactor( user_id uint64 ) ( err error ) {
+	err = b.client.ResetTwoFactor( user_id )
 	return
 }
 
@@ -355,24 +366,37 @@ func ( b *directBackend ) ListUsers() ( users []control.UserResponse , err error
 	return
 }
 
-func ( b *directBackend ) CreateUser( display_name string , role string ) ( user control.UserResponse , err error ) {
+func ( b *directBackend ) CreateUser( display_name string , role string , link models.LoginLinkRequest ) ( user control.UserResponse , err error ) {
+	options , err := models.ResolveLoginLink( link , b.cfg.LoginTokenTTL , b.cfg.MultiUseLoginTokenTTL )
+	if err != nil { return }
 	created , err := models.CreateUser( b.store , display_name , role )
 	if err != nil { return }
-	credential , err := models.IssueLoginToken( b.store , created.ID , b.cfg.LoginTokenTTL )
+	credential , info , err := models.IssueLoginLink( b.store , created.ID , options )
 	if err != nil { return }
 	user , err = b.response( created.ID , credential )
+	user.LoginLink = &info
 	return
 }
 
-func ( b *directBackend ) ReissueLogin( user_id uint64 ) ( user control.UserResponse , err error ) {
+func ( b *directBackend ) ReissueLogin( user_id uint64 , link models.LoginLinkRequest ) ( user control.UserResponse , err error ) {
+	options , err := models.ResolveLoginLink( link , b.cfg.LoginTokenTTL , b.cfg.MultiUseLoginTokenTTL )
+	if err != nil { return }
 	found , err := models.GetUser( b.store , user_id )
 	if err != nil {
 		err = fmt.Errorf( "no user with id %d" , user_id )
 		return
 	}
-	credential , err := models.IssueLoginToken( b.store , found.ID , b.cfg.LoginTokenTTL )
+	credential , info , err := models.IssueLoginLink( b.store , found.ID , options )
 	if err != nil { return }
 	user , err = b.response( found.ID , credential )
+	user.LoginLink = &info
+	return
+}
+
+// ResetTwoFactor acts as the operator (actor 0), who may reset anyone.
+func ( b *directBackend ) ResetTwoFactor( user_id uint64 ) ( err error ) {
+	err = models.ResetTwoFactor( b.store , user_id , 0 )
+	if errors.Is( err , db.ErrNotFound ) { err = fmt.Errorf( "no user with id %d" , user_id ) }
 	return
 }
 
@@ -382,7 +406,7 @@ func ( b *directBackend ) SetDisabled( user_id uint64 , disabled bool ) ( user c
 		err = fmt.Errorf( "no user with id %d" , user_id )
 		return
 	}
-	// Disabling deletes the account's sessions and unused login links in the
+	// Disabling deletes the account's sessions and live login links in the
 	// same transaction -- see models.SetUserDisabled.
 	if err = models.SetUserDisabled( b.store , found.ID , disabled ); err != nil { return }
 	user , err = b.response( found.ID , "" )
@@ -559,10 +583,10 @@ func commandBootstrapAdmin( back backend , cfg *config.Config , arguments []stri
 		return
 	}
 
-	user , err := back.CreateUser( *name , models.RoleAdmin )
+	user , err := back.CreateUser( *name , models.RoleAdmin , models.LoginLinkRequest{} )
 	if err != nil { return }
 
-	bootstrap.PrintLoginLink( cfg , fmt.Sprintf( "admin #%d %q" , user.ID , user.DisplayName ) , user.Credential )
+	bootstrap.PrintLoginLink( cfg , fmt.Sprintf( "admin #%d %q" , user.ID , user.DisplayName ) , user.Credential , user.LoginLink )
 	return
 }
 
@@ -570,6 +594,8 @@ func commandCreateLogin( back backend , cfg *config.Config , arguments []string 
 	set := flag.NewFlagSet( "create-login" , flag.ExitOnError )
 	name := set.String( "name" , "" , "display name" )
 	role := set.String( "role" , models.RoleUser , "admin or user" )
+	uses := set.String( "uses" , "" , "how many sign-ins the link allows: a number (1-1000) or unlimited (default once)" )
+	expires := set.String( "expires" , "" , "how long the link lasts: 30m, 12h, 7d, or never (default from config)" )
 	set.Parse( arguments )
 
 	if models.ValidDisplayName( *name ) == false {
@@ -581,22 +607,29 @@ func commandCreateLogin( back backend , cfg *config.Config , arguments []string 
 		return
 	}
 
-	user , err := back.CreateUser( *name , *role )
+	link , err := models.ParseLoginLinkFlags( *uses , *expires )
 	if err != nil { return }
 
-	bootstrap.PrintLoginLink( cfg , fmt.Sprintf( "%s #%d %q" , user.Role , user.ID , user.DisplayName ) , user.Credential )
+	user , err := back.CreateUser( *name , *role , link )
+	if err != nil { return }
+
+	bootstrap.PrintLoginLink( cfg , fmt.Sprintf( "%s #%d %q" , user.Role , user.ID , user.DisplayName ) , user.Credential , user.LoginLink )
 	return
 }
 
 func commandReissueLogin( back backend , cfg *config.Config , arguments []string ) ( err error ) {
 	set := flag.NewFlagSet( "reissue-login" , flag.ExitOnError )
 	user_id := set.Uint64( "user-id" , 0 , "id of an existing user" )
+	uses := set.String( "uses" , "" , "how many sign-ins the link allows: a number (1-1000) or unlimited (default once)" )
+	expires := set.String( "expires" , "" , "how long the link lasts: 30m, 12h, 7d, or never (default from config)" )
 	set.Parse( arguments )
 
-	user , err := back.ReissueLogin( *user_id )
+	link , err := models.ParseLoginLinkFlags( *uses , *expires )
+	if err != nil { return }
+	user , err := back.ReissueLogin( *user_id , link )
 	if err != nil { return }
 
-	bootstrap.PrintLoginLink( cfg , fmt.Sprintf( "%s #%d %q" , user.Role , user.ID , user.DisplayName ) , user.Credential )
+	bootstrap.PrintLoginLink( cfg , fmt.Sprintf( "%s #%d %q" , user.Role , user.ID , user.DisplayName ) , user.Credential , user.LoginLink )
 	return
 }
 
@@ -862,6 +895,19 @@ func commandSetDisabled( back backend , arguments []string ) ( err error ) {
 // commandRevokeAccess is the incident-response command: run it when an
 // account's credentials may be in someone else's hands. The account stays
 // enabled; follow it with reissue-login to let its owner back in.
+// commandResetTwoFactor is the way back for someone with neither their phone
+// nor their recovery codes -- the owner included, who no one can reset from
+// the web.
+func commandResetTwoFactor( back backend , arguments []string ) ( err error ) {
+	set := flag.NewFlagSet( "reset-2fa" , flag.ExitOnError )
+	user_id := set.Uint64( "user-id" , 0 , "id of an existing user" )
+	set.Parse( arguments )
+
+	if err = back.ResetTwoFactor( *user_id ); err != nil { return }
+	fmt.Printf( "user #%d: two-factor sign-in is off\n" , *user_id )
+	return
+}
+
 func commandRevokeAccess( back backend , arguments []string ) ( err error ) {
 	set := flag.NewFlagSet( "revoke-access" , flag.ExitOnError )
 	user_id := set.Uint64( "user-id" , 0 , "id of an existing user" )
@@ -869,8 +915,8 @@ func commandRevokeAccess( back backend , arguments []string ) ( err error ) {
 
 	revoked , err := back.RevokeAccess( *user_id )
 	if err != nil { return }
-	fmt.Printf( "user #%d: ended %d sessions, deleted %d unused login links, revoked %d API keys\n" ,
-		*user_id , revoked.Sessions , revoked.LoginLinks , revoked.APIKeys )
+	fmt.Printf( "user #%d: ended %d sessions, deleted %d live login links, removed %d passwords, revoked %d API keys\n" ,
+		*user_id , revoked.Sessions , revoked.LoginLinks , revoked.Passwords , revoked.APIKeys )
 	fmt.Printf( "To let them back in: reissue-login -user-id %d\n" , *user_id )
 	return
 }

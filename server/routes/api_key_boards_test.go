@@ -58,8 +58,9 @@ func ( fixture *keyBoards ) session( t *testing.T ) ( cookie string , csrf strin
 	t.Helper()
 	token , err := models.IssueLoginToken( fixture.store , fixture.member.ID , time.Hour )
 	if err != nil { t.Fatal( err ) }
-	credential , _ , err := models.RedeemLoginToken( fixture.store , token , time.Hour )
+	signed , err := models.RedeemLoginToken( fixture.store , token , models.SignInRules{ SessionTTL: time.Hour } )
 	if err != nil { t.Fatal( err ) }
+	credential := signed.SessionCredential
 	session , _ := models.LoadSession( fixture.store , credential )
 	sealed , err := encryption.ChaChaEncryptString( fixture.cfg.SecretKey , credential )
 	if err != nil { t.Fatal( err ) }

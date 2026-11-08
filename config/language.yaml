@@ -18,15 +18,21 @@ app:
 
 signed_out:
   heading: "You are not signed in"
-  body: "There is no signup form here on purpose. Ask an admin for a one-time login link, or for your group's invite link."
-  invalid_link: "That login link is invalid, expired, or has already been used. Ask for a new one."
+  body: "There is no signup form here on purpose. Ask an admin for a login link, or for your group's invite link."
+  invalid_link: "That login link is invalid, expired, cancelled, or used up. Ask for a new one."
+  sign_in_expired: "That sign-in took too long and has expired. Start again."
+  # The password form, shown only while auth.passwords is on.
+  password_heading: "Sign in with a password"
+  username_label: "Username"
+  password_label: "Password"
+  password_button: "Sign in"
   paste_label: "Paste your login link"
   paste_help: "This app cannot open links. In your browser, create a login link on the Account page, copy it, and paste it here."
   paste_button: "Sign in"
 
 login_confirm:
   heading: "Sign in"
-  body: "This is a one-time login link. It stops working once you use it."
+  body: "This is a login link for one account. It may work only once, so open it on the device you mean to use."
   # {name} is replaced with the account currently signed in.
   switch_warning: "You are signed in as {name}. Continuing signs you out of that account and into the one this link is for."
   button: "Sign in"
@@ -65,23 +71,134 @@ account:
 # A login link for yourself, from the Account page.
 own_login:
   heading: "Sign in on another device"
-  description: "Make a one-time login link for yourself -- to sign in on your phone, or to keep for when this browser forgets you. Making a new one cancels the last one you did not use. You stay signed in here."
+  description: "Make a login link for yourself -- to sign in on your phone, or to keep for when this browser forgets you. It can work once, or several times until it expires. Making a new one cancels the link you had. You stay signed in here."
   create_button: "Create login link"
   again_button: "Create a new link"
-  link_notice: "Anyone with this link can sign in as you. It works once, within {minutes} minutes."
+  # {summary} says how often and how long it works.
+  link_notice: "Anyone with this link can sign in as you. {summary}."
   copy_button: "Copy link"
   copied_notice: "Copied."
 
+# How many times a login link works and for how long: the choices on the
+# create-user form, the New link panel and Sign in on another device, and how
+# a link is described afterwards. {count}, {used}, {max} are numbers, {date}
+# a date, {name} an account's display name.
+login_links:
+  uses_label: "Works"
+  uses_once: "Once"
+  uses_times: "{count} times"
+  uses_unlimited: "Any number of times"
+  expires_label: "Expires"
+  expires_default: "Default"
+  expires_help: "Default is short for a link that works once (30 minutes) and longer for one that works more than once (7 days)."
+  expires_30m: "In 30 minutes"
+  expires_1h: "In 1 hour"
+  expires_1d: "In 1 day"
+  expires_7d: "In 7 days"
+  expires_30d: "In 30 days"
+  expires_90d: "In 90 days"
+  expires_never: "Never"
+  make_button: "Make link"
+  works_once: "Works once"
+  works_times: "Works up to {count} times"
+  works_unlimited: "Works any number of times"
+  until: "until {date}"
+  never_expires: "never expires"
+  # On a user's row and the Account screen: the link they could still use.
+  live: "Link: {used} of {max} used, {expires}"
+  live_unlimited: "Link: used {used} times, {expires}"
+  cancel_button: "Cancel link"
+  cancel_confirm: "Stop {name}'s login link working? Devices already signed in stay signed in."
+  cancelled_toast: "{name}'s login link has stopped working."
+  my_live: "Your login link: {used} of {max} used, {expires}."
+  my_live_unlimited: "Your login link: used {used} times, {expires}."
+  my_cancel_confirm: "Stop your login link working? Devices already signed in stay signed in."
+  my_cancelled_toast: "Your login link has stopped working."
+
+# The password panel on the Account screen, shown while auth.passwords is on.
+password:
+  heading: "Password"
+  description: "Sign in with a username and password as well as a login link. If you forget it, sign in with a new login link and set another. Setting one signs you out everywhere else."
+  status_set: "Password set"
+  status_none: "No password"
+  username_label: "Username"
+  username_help: "3 to 32 letters, digits, dots, dashes or underscores. Changing it means entering your password again."
+  new_label: "New password"
+  new_help: "At least 12 characters."
+  confirm_label: "Type it again"
+  save_button: "Save"
+  remove_button: "Remove password"
+  # Empty this string to stop asking first.
+  remove_confirm: "Remove your password? You will sign in with login links only."
+
+# The two-factor panel, and the step every sign-in shows on an account with
+# it on.
+two_factor:
+  heading: "Two-factor sign-in"
+  description: "Ask for a code from an authenticator app every time you sign in in a browser, whichever way you sign in. API keys are not affected."
+  status_on: "On"
+  status_off: "Off"
+  start_button: "Set up"
+  setup_scan: "Scan this with your authenticator app."
+  setup_manual: "Or enter this key by hand:"
+  setup_code_label: "The 6-digit code it shows"
+  confirm_button: "Turn on"
+  copy_secret_button: "Copy"
+  recovery_notice: "Save these recovery codes somewhere safe. Each one works once, in place of a code, if you lose your phone. They are shown only now."
+  recovery_filename: "todoboards-recovery-codes.txt"
+  copy_button: "Copy"
+  download_button: "Download"
+  done_button: "Done"
+  disable_button: "Turn off"
+  code_label: "Code from your app, or a recovery code"
+  step_heading: "Enter your code"
+  step_body: "This account has two-factor sign-in on. Enter the code from your authenticator app, or a recovery code."
+  step_button: "Sign in"
+
+# Where you are signed in, on the Account screen, and an admin's view of
+# someone's devices from the Users screen.
+sessions:
+  heading: "Where you're signed in"
+  description: "Every device with this account open. If you don't recognise one, sign it out and change how you sign in."
+  user_heading: "Where {name} is signed in"
+  user_empty: "Not signed in anywhere."
+  table_device: "Device"
+  table_ip: "Address"
+  table_seen: "Last active"
+  table_signed_in: "Signed in"
+  table_actions: "Actions"
+  this_device: "This device"
+  # {browser} and {system} are worked out from what the device said it was.
+  device_name: "{browser} on {system}"
+  unknown_device: "Unknown device"
+  unknown: "Unknown"
+  rename_button: "Rename"
+  rename_title: "Name this device"
+  rename_label: "Name"
+  rename_help: "Leave it empty to go back to the name worked out from the browser."
+  revoke_button: "Sign out"
+  # Empty this string to stop asking for confirmation.
+  revoke_confirm: "Sign this device out? It will need a new way in."
+  revoke_others_button: "Sign out all other devices"
+  # Empty this string to stop asking for confirmation.
+  revoke_others_confirm: "Sign out every device but this one? They will need a new way in."
+
 admin:
   heading: "Admin"
-  description: "Create an account by minting a login link. Send the link to the person; it works once."
+  description: "Create an account by minting a login link and send it to the person. It works once unless you choose otherwise."
   new_name_label: "Name"
   new_name_placeholder: "Their name"
   new_role_label: "Role"
   role_user: "user"
   role_admin: "admin"
   create_button: "Create login link"
-  link_notice: "Send this one-time link. It is shown once and cannot be recovered, and any earlier unused link for this person has stopped working."
+  # {summary} says how often and how long it works.
+  link_notice: "{summary}. Send it now: it is shown once and cannot be recovered, and any earlier link for this person has stopped working."
+  # Above the link, so it is clear whose it is.
+  link_for: "Login link for {name}"
+  # The New link panel: its heading, and the line above the choices.
+  reissue_title: "New login link"
+  reissue_confirm: "A link {name} could still use stops working. Devices already signed in stay signed in."
   copy_button: "Copy"
   copied_notice: "Copied."
   table_name: "Name"
@@ -97,7 +214,7 @@ admin:
   key_notice: "This key acts as {name}. Copy it now: it is shown once and cannot be recovered."
   revoke_button: "Revoke access"
   # {name} is replaced with the account's display name.
-  revoke_confirm: "End every session, unused login link and API key that {name} has? The account stays enabled; send them a new link to let them back in."
+  revoke_confirm: "End every session, login link, password and API key that {name} has? The account stays enabled; send them a new link to let them back in."
   disable_button: "Disable"
   enable_button: "Enable"
   delete_button: "Delete"
@@ -105,6 +222,31 @@ admin:
   delete_confirm: "Permanently delete {name}? Their sessions, login links and API keys go with the account, and it cannot be undone. Disable the account instead if they might come back."
   # Shown after the role of the one owner account, e.g. "admin (owner)".
   owner_label: "owner"
+  # Badges in the Status column. Empty one to stop showing it.
+  two_factor_badge: "2FA"
+  password_badge: "password"
+  password_blocked_badge: "password blocked"
+  # The ⋯ menu on a user's row, and what its items do.
+  more_actions: "More actions"
+  rename_button: "Rename"
+  rename_title: "Rename account"
+  sessions_button: "Devices"
+  make_admin_button: "Make admin"
+  make_user_button: "Make user"
+  # {name} is the account's display name, {role} admin or user. Empty a
+  # confirm to stop asking, or a toast to stop showing it.
+  make_admin_confirm: "Make {name} an admin? They can then manage accounts. This signs them out everywhere and stops their login link, so send them a new link. They can no longer sign in through an invite link."
+  make_user_confirm: "Take admin rights from {name}? It applies at once. Their admin API keys drop to user level, and invite links they made stop working until they are an admin again."
+  role_changed_toast: "{name} is now: {role}"
+  reset_two_factor_button: "Reset 2FA"
+  reset_two_factor_confirm: "Turn off two-factor sign-in for {name}? Do this only if you are sure it is them asking."
+  two_factor_reset_toast: "Two-factor sign-in reset for {name}."
+  block_password_button: "Block password"
+  block_password_confirm: "Stop {name}'s password working? They keep it, and it works again if you allow it."
+  password_blocked_toast: "{name}'s password is blocked."
+  allow_password_button: "Allow password"
+  allow_password_confirm: "Let {name} sign in with a password again?"
+  password_allowed_toast: "{name} can use a password again."
 
 api_keys:
   heading: "API keys"
@@ -218,6 +360,22 @@ errors:
   pin_wrong: "That PIN is not right."
   pin_locked: "Too many wrong PINs. Try again in 15 minutes."
   bad_pin: "A PIN is 4 to 8 digits."
+  # And the ones password and two-factor sign-in answer with.
+  invalid_login: "That username or password is not right."
+  login_locked: "Too many wrong tries. Try again in 15 minutes."
+  use_password: "This account has a password. Open the home page and sign in with it."
+  username_taken: "That username is taken."
+  bad_username: "A username is 3 to 32 letters, digits, dots, dashes or underscores."
+  bad_digest: "That password could not be processed."
+  password_blocked: "The owner has blocked passwords for this account."
+  password_too_short: "A password is at least 12 characters."
+  password_mismatch: "Those two passwords are not the same."
+  insecure_context: "Password sign-in needs HTTPS. Your password was not sent."
+  two_factor_wrong: "That code is not right."
+  two_factor_locked: "Too many wrong codes. Try again in 15 minutes."
+  two_factor_on: "Two-factor sign-in is already on."
+  two_factor_off: "Two-factor sign-in is not on."
+  challenge_invalid: "That sign-in has expired. Start again."
   # Boards and cards.
   board_not_found: "This board does not exist, or you do not have access to it."
   card_not_found: "That card no longer exists, or you cannot see it."
@@ -772,6 +930,7 @@ settings:
   color_none: "Default"
   saved: "Saved."
   labels_heading: "Labels"
+  labels_button: "Edit labels ({n})"
   label_name: "Label name"
   label_name_placeholder: "e.g. Urgent"
   label_color: "Color"
@@ -815,6 +974,7 @@ theme:
   field_card: "Cards"
   reset: "Reset colors"
   board_heading: "Theme"
+  board_edit: "Edit theme"
   board_hint: "Everyone on this board sees its theme, unless they have chosen to always use their own."
   board_choice: "Board theme"
   board_inherit: "Each person's own theme"

@@ -88,6 +88,11 @@ func ( handlers *Handlers ) JoinMatch( c fiber.Ctx ) ( err error ) {
 
 // JoinClaim signs in as an account this link created -- the same person on
 // another device -- asking for the PIN if that person set one.
+//
+// An account with a password and no PIN is refused: anyone holding the link
+// can pick any name on it, and that must not walk around the password. The
+// person signs in with it instead. An account with two-factor on still has to
+// give its code after this, PIN or not.
 func ( handlers *Handlers ) JoinClaim( c fiber.Ctx ) ( err error ) {
 	var body joinRequest
 	link , err := handlers.joinLink( c , &body )
@@ -110,9 +115,12 @@ func ( handlers *Handlers ) JoinClaim( c fiber.Ctx ) ( err error ) {
 			err = forbidden( c , code )
 			return
 		}
+	} else if user.PasswordUsable( handlers.Config.PasswordsEnabled ) {
+		err = forbidden( c , "use_password" )
+		return
 	}
 
-	session_credential , _ , claim_err := models.ClaimInviteAccount( handlers.Store , body.Credential , user.ID , handlers.Config.SessionTTL )
+	signed , _ , claim_err := models.ClaimInviteAccount( handlers.Store , body.Credential , user.ID , handlers.signInRules() )
 	switch {
 	case errors.Is( claim_err , models.ErrInviteLinkInvalid ):
 		err = notFound( c , "invite_link_invalid" )
@@ -124,11 +132,7 @@ func ( handlers *Handlers ) JoinClaim( c fiber.Ctx ) ( err error ) {
 		err = serverError( c )
 		return
 	}
-	if handlers.startSession( c , session_credential ) != nil {
-		err = serverError( c )
-		return
-	}
-	err = c.JSON( fiber.Map{ "ok": true , "display_name": user.DisplayName } )
+	err = handlers.signInResponse( c , signed , fiber.Map{ "ok": true , "display_name": user.DisplayName } , fiber.StatusOK )
 	return
 }
 
@@ -155,18 +159,7 @@ func ( handlers *Handlers ) JoinCreate( c fiber.Ctx ) ( err error ) {
 		err = serverError( c )
 		return
 	}
-	if handlers.startSession( c , session_credential ) != nil {
-		err = serverError( c )
-		return
-	}
-	err = c.Status( fiber.StatusCreated ).JSON( fiber.Map{ "ok": true , "display_name": user.DisplayName } )
-	return
-}
-
-// startSession switches this browser to a session that was just stored: the
-// one it had is ended server-side first, exactly like RedeemLoginLink.
-func ( handlers *Handlers ) startSession( c fiber.Ctx , session_credential string ) ( err error ) {
-	handlers.destroyCookieSession( c )
-	err = handlers.Guard.SetSessionCookie( c , session_credential )
+	signed := &models.SignIn{ UserID: user.ID , SessionCredential: session_credential }
+	err = handlers.signInResponse( c , signed , fiber.Map{ "ok": true , "display_name": user.DisplayName } , fiber.StatusCreated )
 	return
 }

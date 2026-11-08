@@ -64,7 +64,13 @@ const App = {
       const banner = Dom.get( "invalid-link" );
       if ( I18n.get( "signed_out.invalid_link" ) !== "" ) Dom.show( banner , true );
     }
+    // A sign-in that waited too long for its two-factor code.
+    if ( params.get( "login" ) === "expired" ) {
+      const banner = Dom.get( "sign-in-expired" );
+      if ( I18n.get( "signed_out.sign_in_expired" ) !== "" ) Dom.show( banner , true );
+    }
     if ( PushClient.homeScreenApp() ) this.bindPasteLogin();
+    Password.initLogin();
   },
 
   // A Home Screen app keeps its own cookies and has no address bar, and a
@@ -81,7 +87,11 @@ const App = {
       Dom.show( Dom.get( "invalid-link" ) , false );
       button.disabled = true;
       try {
-        await Api.login( credential );
+        const result = await Api.login( credential );
+        if ( result.two_factor ) {
+          TwoFactor.ask( result.challenge );
+          return;
+        }
         window.location.replace( "/" );
       } catch ( error ) {
         button.disabled = false;
@@ -137,7 +147,13 @@ const App = {
     button.addEventListener( "click" , async () => {
       button.disabled = true;
       try {
-        await Api.login( this.loginCredential() );
+        const result = await Api.login( this.loginCredential() );
+        // The account has two-factor on: the link is accepted, and the code
+        // finishes the sign-in (see two_factor.js).
+        if ( result.two_factor ) {
+          TwoFactor.ask( result.challenge );
+          return;
+        }
         // replace, not assign: the link should not stay in the back button.
         window.location.replace( "/" );
       } catch ( error ) {
@@ -175,11 +191,15 @@ const App = {
     await NotifySettings.init( me );
     Pin.init( me );
     LoginLink.init( me );
+    Password.init( me );
+    TwoFactor.init( me );
+    await Sessions.init( me );
     Backup.initAccount( me );
     await Keys.init( me );
 
     if ( me.role === "admin" ) {
       Dom.show( Dom.get( "admin-panel" ) , true );
+      LoginLinks.fill( Dom.get( "new-uses" ) , Dom.get( "new-expires" ) );
       Dom.get( "create-user-form" ).addEventListener( "submit" , this.onCreateUser.bind( this ) );
       Dom.get( "copy-link-button" ).addEventListener( "click" , this.onCopyLink.bind( this ) );
       Dom.get( "copy-admin-key-button" ).addEventListener( "click" , function () { Dom.copy( Dom.get( "admin-key-value" ) ); } );
@@ -229,9 +249,10 @@ const App = {
     event.preventDefault();
     const name = Dom.get( "new-name" ).value.trim();
     const role = Dom.get( "new-role" ).value;
+    const options = LoginLinks.body( Dom.get( "new-uses" ).value , Dom.get( "new-expires" ).value );
     try {
-      const created = await Api.createUser( name , role );
-      this.showLoginLink( created.login_path );
+      const created = await Api.createUser( name , role , options );
+      this.showLoginLink( created , name );
       Dom.get( "new-name" ).value = "";
       await this.refreshUsers();
     } catch ( error ) {
@@ -241,9 +262,127 @@ const App = {
 
   // The server returns a path, not a full URL: behind a reverse proxy it does
   // not reliably know its own public origin, whereas the browser always does.
-  showLoginLink( loginPath ) {
-    Dom.text( Dom.get( "login-link-value" ) , window.location.origin + loginPath );
-    Dom.show( Dom.get( "login-link-box" ) , true );
+  // issued is the server's answer, which also says how often and how long
+  // the link works; name says whose it is.
+  showLoginLink( issued , name ) {
+    Dom.text( Dom.get( "login-link-for" ) , I18n.fill( "admin.link_for" , { name: name } ) );
+    Dom.text( Dom.get( "login-link-notice" ) , I18n.fill( "admin.link_notice" , { summary: LoginLinks.summary( issued ) } ) );
+    Dom.text( Dom.get( "login-link-value" ) , window.location.origin + issued.login_path );
+    const box = Dom.get( "login-link-box" );
+    Dom.show( box , true );
+    box.scrollIntoView( { block: "nearest" } );
+  },
+
+  // New link for someone: how many times and how long, asked in the panel.
+  // Making it stops the link they had.
+  reissueFor( user ) {
+    Panel.open( "admin.reissue_title" , ( body ) => {
+      body.appendChild( Dom.el( "p" , { class: "text-body-secondary" , text: I18n.fill( "admin.reissue_confirm" , { name: user.display_name } ) } ) );
+      const form = Dom.el( "form" , { attrs: { autocomplete: "off" } } );
+      const choices = LoginLinks.fields();
+      choices.nodes.forEach( function ( node ) { form.appendChild( node ); } );
+      form.appendChild( Dom.el( "button" , { class: "btn btn-primary mt-2" , text: I18n.get( "login_links.make_button" ) , attrs: { type: "submit" } } ) );
+      form.addEventListener( "submit" , async ( event ) => {
+        event.preventDefault();
+        let issued;
+        try {
+          issued = await Api.reissueLogin( user.id , choices.body() );
+        } catch ( error ) {
+          Ui.error( error );
+          return;
+        }
+        Panel.close();
+        this.showLoginLink( issued , user.display_name );
+        await this.refreshUsers();
+      } );
+      body.appendChild( form );
+    } );
+  },
+
+  // Rename someone. Only the owner renames an admin; the server says so.
+  renameUser( user ) {
+    Panel.open( "admin.rename_title" , ( body ) => {
+      const form = Dom.el( "form" , { attrs: { autocomplete: "off" } } );
+      const input = Dom.el( "input" , { class: "form-control" , attrs: { maxlength: "80" , required: "" } } );
+      input.value = user.display_name;
+      form.appendChild( Ui.field( "admin.new_name_label" , input ) );
+      form.appendChild( Dom.el( "button" , { class: "btn btn-primary mt-2" , text: I18n.get( "account.save_button" ) , attrs: { type: "submit" } } ) );
+      form.addEventListener( "submit" , async ( event ) => {
+        event.preventDefault();
+        const name = input.value.trim();
+        if ( name === user.display_name ) {
+          Panel.close();
+          return;
+        }
+        try {
+          await Api.renameUser( user.id , name , user.display_name );
+        } catch ( error ) {
+          Ui.error( error );
+          return;
+        }
+        Panel.close();
+        await this.refreshUsers();
+        Dom.toast( I18n.get( "ui.saved" ) , "ok" );
+      } );
+      body.appendChild( form );
+      window.setTimeout( function () { input.focus(); input.select(); } , 0 );
+    } );
+  },
+
+  // Asks first when the language file has a question for it ("" skips
+  // asking), then runs action, refreshes the table and says it is done.
+  async confirmed( questionKey , user , action , toastKey , extra ) {
+    const question = I18n.fill( questionKey , Object.assign( { name: user.display_name } , extra || {} ) );
+    if ( question !== "" && !window.confirm( question ) ) return;
+    try {
+      await action();
+    } catch ( error ) {
+      this.showError( error.message );
+      return;
+    }
+    await this.refreshUsers();
+    if ( toastKey ) Dom.toast( I18n.fill( toastKey , Object.assign( { name: user.display_name } , extra || {} ) ) , "ok" );
+  },
+
+  // The less used actions on a user's row, in a menu behind ⋯ so the row
+  // keeps its everyday buttons in sight.
+  moreActions( user , isSelf , isProtected ) {
+    const me = this.currentUser;
+    const items = [];
+    // Only the owner renames an admin.
+    if ( user.role !== "admin" || me.is_owner ) {
+      items.push( { key: "admin.rename_button" , action: () => this.renameUser( user ) } );
+    }
+    // Nobody changes their own role; the owner is always an admin; only the
+    // owner takes an admin's rights away.
+    if ( !isProtected && user.role === "user" ) {
+      items.push( { key: "admin.make_admin_button" , action: () => this.confirmed( "admin.make_admin_confirm" , user , () => Api.setRole( user.id , "admin" ) , "admin.role_changed_toast" , { role: I18n.get( "admin.role_admin" ) } ) } );
+    }
+    if ( !isProtected && user.role === "admin" && me.is_owner ) {
+      items.push( { key: "admin.make_user_button" , action: () => this.confirmed( "admin.make_user_confirm" , user , () => Api.setRole( user.id , "user" ) , "admin.role_changed_toast" , { role: I18n.get( "admin.role_user" ) } ) } );
+    }
+    // Devices: the owner's own are the owner's alone.
+    if ( me.auth === "session" && ( !user.owner || me.is_owner ) ) {
+      items.push( { key: "admin.sessions_button" , action: () => Sessions.showFor( user ) } );
+    }
+    if ( user.login_link ) {
+      items.push( { key: "login_links.cancel_button" , action: () => this.confirmed( "login_links.cancel_confirm" , user , () => Api.cancelLoginLink( user.id ) , "login_links.cancelled_toast" ) } );
+    }
+    // Resetting 2FA follows deleting's rules: not yourself, not the owner,
+    // and another admin's only by the owner.
+    if ( user.two_factor && !isProtected && ( user.role !== "admin" || me.is_owner ) ) {
+      items.push( { key: "admin.reset_two_factor_button" , danger: true , action: () => this.confirmed( "admin.reset_two_factor_confirm" , user , () => Api.resetTwoFactor( user.id ) , "admin.two_factor_reset_toast" ) } );
+    }
+    // Whether one account may use a password is the owner's call.
+    if ( me.is_owner && me.passwords_enabled && !isSelf ) {
+      items.push( user.password_blocked
+        ? { key: "admin.allow_password_button" , action: () => this.confirmed( "admin.allow_password_confirm" , user , () => Api.setPasswordAccess( user.id , true ) , "admin.password_allowed_toast" ) }
+        : { key: "admin.block_password_button" , danger: true , action: () => this.confirmed( "admin.block_password_confirm" , user , () => Api.setPasswordAccess( user.id , false ) , "admin.password_blocked_toast" ) } );
+    }
+    if ( items.length === 0 ) return null;
+    return Ui.iconButton( "three-dots" , I18n.get( "admin.more_actions" ) , function ( event ) {
+      ContextMenu.open( event , items );
+    } , "btn-sm" );
   },
 
   async onCopyLink() {
@@ -313,12 +452,7 @@ const App = {
       const reissueButton = Dom.el( "button" , {
         class: "btn btn-sm btn-outline-secondary",
         text: I18n.get( "admin.reissue_button" ),
-        on: { click: async function () {
-          try {
-            const issued = await Api.reissueLogin( user.id );
-            App.showLoginLink( issued.login_path );
-          } catch ( error ) { App.showError( error.message ); }
-        } },
+        on: { click: function () { App.reissueFor( user ); } },
       } );
 
       // The server is the authority on all of these; the rules below only
@@ -335,7 +469,7 @@ const App = {
       } );
 
       // Revoking is for "someone else may have this account's credentials":
-      // it ends every session, unused login link, and API key, and leaves the
+      // it ends every session, login link, password and API key, and leaves the
       // account enabled. Not offered on your own row -- the server refuses
       // that, since it would sign you out with no way back in.
       const revokeButton = isProtected ? null : Dom.el( "button" , {
@@ -382,14 +516,28 @@ const App = {
       const ownerLabel = I18n.get( "admin.owner_label" );
       const roleText = user.owner && ownerLabel !== "" ? user.role + " (" + ownerLabel + ")" : user.role;
 
+      // The name, with the username under it once they have set a password.
+      const nameCell = [ Dom.el( "div" , { text: user.display_name } ) ];
+      if ( user.username ) nameCell.push( Dom.el( "div" , { class: "small text-body-secondary" , text: user.username } ) );
+
+      // Status: active or disabled, whether 2FA or a password is on, and the
+      // login link they could still use.
+      const badges = [ Dom.badge( I18n.get( statusKey ) , statusTone ) ];
+      if ( user.two_factor && I18n.get( "admin.two_factor_badge" ) !== "" ) badges.push( Dom.badge( I18n.get( "admin.two_factor_badge" ) , "info" ) );
+      if ( user.has_password && I18n.get( "admin.password_badge" ) !== "" ) {
+        badges.push( Dom.badge( I18n.get( user.password_blocked ? "admin.password_blocked_badge" : "admin.password_badge" ) , user.password_blocked ? "warning" : "secondary" ) );
+      }
+      const statusCell = [ Dom.el( "div" , { class: "d-flex flex-wrap gap-1" , children: badges } ) ];
+      if ( user.login_link ) statusCell.push( Dom.el( "div" , { class: "small text-body-secondary mt-1" , text: LoginLinks.live( user.login_link , "live" ) } ) );
+
       // Built with createElement + textContent, never an HTML string: a
       // display name is user-controlled input.
       body.appendChild( Dom.el( "tr" , { children: [
-        Dom.el( "td" , { text: user.display_name } ),
+        Dom.el( "td" , { children: nameCell } ),
         Dom.el( "td" , { text: roleText } ),
-        Dom.el( "td" , { children: [ Dom.badge( I18n.get( statusKey ) , statusTone ) ] } ),
+        Dom.el( "td" , { children: statusCell } ),
         Dom.el( "td" , { children: [
-          Dom.el( "div" , { class: "row-actions" , children: [ reissueButton , keyButton , revokeButton , toggleButton , deleteButton ].filter( Boolean ) } ),
+          Dom.el( "div" , { class: "row-actions" , children: [ reissueButton , keyButton , revokeButton , toggleButton , deleteButton , App.moreActions( user , isSelf , isProtected ) ].filter( Boolean ) } ),
         ] } ),
       ] } ) );
     } );

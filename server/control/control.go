@@ -166,6 +166,7 @@ func ( server *Server ) routes() ( handler http.Handler ) {
 	mux.HandleFunc( "POST /v1/users/{id}/login-token" , server.handleReissueLogin )
 	mux.HandleFunc( "POST /v1/users/{id}/disabled" , server.handleSetDisabled )
 	mux.HandleFunc( "POST /v1/users/{id}/revoke-access" , server.handleRevokeAccess )
+	mux.HandleFunc( "POST /v1/users/{id}/reset-two-factor" , server.handleResetTwoFactor )
 	mux.HandleFunc( "POST /v1/users/{id}/delete" , server.handleDeleteUser )
 	mux.HandleFunc( "POST /v1/owner" , server.handleTransferOwner )
 	mux.HandleFunc( "GET /v1/api-keys" , server.handleListAPIKeys )
@@ -226,6 +227,8 @@ type UserResponse struct {
 	Disabled    bool   `json:"disabled"`
 	Owner       bool   `json:"owner"`
 	Credential  string `json:"credential,omitempty"`
+	// LoginLink describes the link Credential opens: how often, how long.
+	LoginLink *models.LoginLinkInfo `json:"login_link,omitempty"`
 }
 
 func userResponse( user *models.User , owner_id uint64 , credential string ) ( result UserResponse ) {
@@ -247,7 +250,7 @@ type TransferOwnerRequest struct {
 
 // writeOwnedUser re-reads a user and the owner marker and answers with both,
 // so every response reflects what is actually stored.
-func ( server *Server ) writeOwnedUser( w http.ResponseWriter , user_id uint64 , credential string ) {
+func ( server *Server ) writeOwnedUser( w http.ResponseWriter , user_id uint64 , credential string , link *models.LoginLinkInfo ) {
 	user , err := models.GetUser( server.store , user_id )
 	if err != nil {
 		writeError( w , http.StatusInternalServerError , err.Error() )
@@ -258,13 +261,27 @@ func ( server *Server ) writeOwnedUser( w http.ResponseWriter , user_id uint64 ,
 		writeError( w , http.StatusInternalServerError , err.Error() )
 		return
 	}
-	writeJSON( w , http.StatusOK , userResponse( user , owner_id , credential ) )
+	result := userResponse( user , owner_id , credential )
+	result.LoginLink = link
+	writeJSON( w , http.StatusOK , result )
 }
 
 // CreateUserRequest is the body of POST /v1/users.
 type CreateUserRequest struct {
 	DisplayName string `json:"display_name"`
 	Role        string `json:"role"`
+	models.LoginLinkRequest
+}
+
+// loginLink resolves a link request against the config, as the web routes do.
+func ( server *Server ) loginLink( w http.ResponseWriter , request models.LoginLinkRequest ) ( options models.LoginLinkOptions , ok bool ) {
+	options , err := models.ResolveLoginLink( request , server.cfg.LoginTokenTTL , server.cfg.MultiUseLoginTokenTTL )
+	if err != nil {
+		writeError( w , http.StatusBadRequest , err.Error() )
+		return
+	}
+	ok = true
+	return
 }
 
 // SetDisabledRequest is the body of POST /v1/users/{id}/disabled.
@@ -560,22 +577,30 @@ func ( server *Server ) handleCreateUser( w http.ResponseWriter , r *http.Reques
 		writeError( w , http.StatusBadRequest , "role must be admin or user" )
 		return
 	}
+	options , ok := server.loginLink( w , body.LoginLinkRequest )
+	if ok == false { return }
 
 	user , err := models.CreateUser( server.store , body.DisplayName , body.Role )
 	if err != nil {
 		writeError( w , http.StatusInternalServerError , err.Error() )
 		return
 	}
-	credential , err := models.IssueLoginToken( server.store , user.ID , server.cfg.LoginTokenTTL )
+	credential , info , err := models.IssueLoginLink( server.store , user.ID , options )
 	if err != nil {
 		writeError( w , http.StatusInternalServerError , err.Error() )
 		return
 	}
-	server.writeOwnedUser( w , user.ID , credential )
+	server.writeOwnedUser( w , user.ID , credential , &info )
 }
 
 func ( server *Server ) handleReissueLogin( w http.ResponseWriter , r *http.Request ) {
 	user_id , ok := pathUserID( w , r )
+	if ok == false { return }
+
+	// The body is optional: no body is a link that works once.
+	body := models.LoginLinkRequest{}
+	if r.ContentLength != 0 && decodeBody( w , r , &body ) == false { return }
+	options , ok := server.loginLink( w , body )
 	if ok == false { return }
 
 	user , err := models.GetUser( server.store , user_id )
@@ -583,12 +608,12 @@ func ( server *Server ) handleReissueLogin( w http.ResponseWriter , r *http.Requ
 		writeError( w , http.StatusNotFound , fmt.Sprintf( "no user with id %d" , user_id ) )
 		return
 	}
-	credential , err := models.IssueLoginToken( server.store , user.ID , server.cfg.LoginTokenTTL )
+	credential , info , err := models.IssueLoginLink( server.store , user.ID , options )
 	if err != nil {
 		writeError( w , http.StatusInternalServerError , err.Error() )
 		return
 	}
-	server.writeOwnedUser( w , user.ID , credential )
+	server.writeOwnedUser( w , user.ID , credential , &info )
 }
 
 // handleSetDisabled goes through models.SetUserDisabled, which deletes the
@@ -619,7 +644,7 @@ func ( server *Server ) handleSetDisabled( w http.ResponseWriter , r *http.Reque
 
 	// Re-read rather than patching the copy in hand, so the response
 	// reflects what is actually stored.
-	server.writeOwnedUser( w , user.ID , "" )
+	server.writeOwnedUser( w , user.ID , "" , nil )
 }
 
 // handleRevokeAccess is models.RevokeAllCredentials over the socket: every
@@ -642,6 +667,23 @@ func ( server *Server ) handleRevokeAccess( w http.ResponseWriter , r *http.Requ
 		return
 	}
 	writeJSON( w , http.StatusOK , revoked )
+}
+
+// handleResetTwoFactor is models.ResetTwoFactor with the operator as the actor,
+// who may reset anyone: it is the way back for an owner locked out.
+func ( server *Server ) handleResetTwoFactor( w http.ResponseWriter , r *http.Request ) {
+	user_id , ok := pathUserID( w , r )
+	if ok == false { return }
+
+	err := models.ResetTwoFactor( server.store , user_id , 0 )
+	switch {
+	case err == nil:
+		writeJSON( w , http.StatusOK , map[ string ]bool{ "ok": true } )
+	case errors.Is( err , db.ErrNotFound ):
+		writeError( w , http.StatusNotFound , fmt.Sprintf( "no user with id %d" , user_id ) )
+	default:
+		writeError( w , http.StatusInternalServerError , err.Error() )
+	}
 }
 
 // handleDeleteUser is models.DeleteUser with the operator as the actor: any
@@ -673,7 +715,7 @@ func ( server *Server ) handleTransferOwner( w http.ResponseWriter , r *http.Req
 	err := models.TransferOwner( server.store , body.UserID )
 	switch {
 	case err == nil:
-		server.writeOwnedUser( w , body.UserID , "" )
+		server.writeOwnedUser( w , body.UserID , "" , nil )
 	case errors.Is( err , db.ErrNotFound ):
 		writeError( w , http.StatusNotFound , fmt.Sprintf( "no user with id %d" , body.UserID ) )
 	case errors.Is( err , models.ErrNotAdmin ):

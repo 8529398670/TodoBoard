@@ -57,6 +57,19 @@ const Api = {
     return this.request( "/api/login" , { method: "POST" , body: { credential: credential } } );
   },
 
+  // What the signed-out page may offer, and the salt a password is hashed
+  // with in the browser (see password.js).
+  loginOptions() { return this.request( "/api/login/options" ); },
+
+  // Signing in with a password, and the code step any sign-in goes on to when
+  // the account has two-factor on. No session yet, so the same rule as login().
+  passwordLogin( username , digest ) {
+    return this.request( "/api/login/password" , { method: "POST" , body: { username: username , password_digest: digest } } );
+  },
+  finishSignIn( challenge , code ) {
+    return this.request( "/api/login/two-factor" , { method: "POST" , body: { challenge: challenge , code: code } } );
+  },
+
   // Invite links: no session yet either, so the same JSON-body rule as
   // login() applies. The credential always goes in the body.
   joinInfo( credential )                { return this.request( "/api/join/info" , { method: "POST" , body: { credential: credential } } ); },
@@ -68,12 +81,38 @@ const Api = {
 
   rename( displayName )        { return this.post( "/api/account/rename" , { display_name: displayName } ); },
   setPin( pin )                { return this.post( "/api/account/pin" , { pin: pin } ); },
-  createMyLoginLink()          { return this.post( "/api/account/login-link" ); },
+  createMyLoginLink( options ) { return this.post( "/api/account/login-link" , options ); },
+  cancelMyLoginLink()          { return this.post( "/api/account/login-link/cancel" ); },
+  setPassword( username , digest , code ) {
+    return this.post( "/api/account/password" , { username: username , password_digest: digest , code: code } );
+  },
+  startTwoFactor()             { return this.post( "/api/account/two-factor/start" ); },
+  confirmTwoFactor( code )     { return this.post( "/api/account/two-factor/confirm" , { code: code } ); },
+  disableTwoFactor( code )     { return this.post( "/api/account/two-factor/disable" , { code: code } ); },
+  sessions()                   { return this.request( "/api/account/sessions" ); },
+  labelSession( sessionId , label , expect ) {
+    return this.post( "/api/account/sessions/" + encodeURIComponent( sessionId ) + "/label" , { label: label , expect: expect } );
+  },
+  revokeSession( sessionId )   { return this.post( "/api/account/sessions/" + encodeURIComponent( sessionId ) + "/revoke" ); },
+  revokeOtherSessions()        { return this.post( "/api/account/sessions/revoke-others" ); },
   logout()                     { return this.post( "/api/logout" ); },
   listTeam()                   { return this.request( "/api/team" ); },
   listUsers()                  { return this.request( "/api/admin/users" ); },
-  createUser( name , role )    { return this.post( "/api/admin/users" , { display_name: name , role: role } ); },
-  reissueLogin( userId )       { return this.post( "/api/admin/users/" + userId + "/reissue-login" ); },
+  createUser( name , role , options ) {
+    return this.post( "/api/admin/users" , Object.assign( { display_name: name , role: role } , options || {} ) );
+  },
+  reissueLogin( userId , options ) { return this.post( "/api/admin/users/" + userId + "/reissue-login" , options ); },
+  cancelLoginLink( userId )    { return this.post( "/api/admin/users/" + userId + "/cancel-login-link" ); },
+  renameUser( userId , name , expect ) { return this.post( "/api/admin/users/" + userId + "/rename" , { display_name: name , expect: expect } ); },
+  setRole( userId , role )     { return this.post( "/api/admin/users/" + userId + "/role" , { role: role } ); },
+  resetTwoFactor( userId )     { return this.post( "/api/admin/users/" + userId + "/reset-two-factor" ); },
+  setPasswordAccess( userId , allowed ) {
+    return this.post( "/api/owner/users/" + userId + "/password-access" , { allowed: allowed } );
+  },
+  userSessions( userId )       { return this.request( "/api/admin/users/" + userId + "/sessions" ); },
+  revokeUserSession( userId , sessionId ) {
+    return this.post( "/api/admin/users/" + userId + "/sessions/" + encodeURIComponent( sessionId ) + "/revoke" );
+  },
   setDisabled( userId , flag ) { return this.post( "/api/admin/users/" + userId + "/disabled" , { disabled: flag } ); },
   revokeAccess( userId )       { return this.post( "/api/admin/users/" + userId + "/revoke-access" ); },
   deleteUser( userId )         { return this.post( "/api/admin/users/" + userId + "/delete" ); },

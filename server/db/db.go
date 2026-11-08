@@ -31,6 +31,9 @@ const (
 	BucketLoginTokens = "login_tokens"
 	BucketAPIKeys     = "api_keys"
 	BucketInviteLinks = "invite_links"
+	// BucketSignInChallenges holds the half-finished sign-ins waiting for a
+	// two-factor code. See models/sign_in.go.
+	BucketSignInChallenges = "sign_in_challenges"
 	BucketMeta        = "meta"
 
 	// Boards. Composite keys are big-endian uint64s concatenated, so a
@@ -54,7 +57,7 @@ const (
 )
 
 var bucketNames = []string{
-	BucketUsers , BucketSessions , BucketLoginTokens , BucketAPIKeys , BucketInviteLinks , BucketMeta ,
+	BucketUsers , BucketSessions , BucketLoginTokens , BucketAPIKeys , BucketInviteLinks , BucketSignInChallenges , BucketMeta ,
 	BucketBoards , BucketCards , BucketUserBoards , BucketUserCards , BucketShareLinks ,
 	BucketUserPrefs , BucketSubscriptions , BucketNotifySent , BucketBoardSlugs , BucketFolders ,
 	BucketTrash , BucketProductImages , BucketCardImages , BucketPushSubscriptions , BucketComments ,

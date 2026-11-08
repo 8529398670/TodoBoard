@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
-# Print a one-time login link -- by default for user 1, the owner -- for
-# whichever deployment of this checkout is actually live.
+# Print a login link -- by default for user 1, the owner -- for whichever
+# deployment of this checkout is actually live. It works once, for
+# auth.login_token_ttl_seconds, unless --uses or --expires say otherwise.
 #
 #   scripts/login.sh               the owner (user 1)
 #   scripts/login.sh 3             user 3
+#   scripts/login.sh 3 --uses 5    a link that works up to 5 times
+#   scripts/login.sh --uses unlimited --expires 7d
+#                                  any number of times, for 7 days
+#                                  (--expires takes 30m, 12h, 7d or never)
 #   scripts/login.sh --docker      the docker container, even if a local
 #                                  server is running too
 #   scripts/login.sh --local       this checkout's local database
@@ -26,13 +31,26 @@ cd "$( dirname "${BASH_SOURCE[0]}" )/.."
 
 USER_ID=1
 MODE=auto
-for argument in "$@"; do
+LINK_FLAGS=()
+while [ $# -gt 0 ]; do
+  argument="$1"
+  shift
   case "$argument" in
     --docker) MODE=docker ;;
     --local)  MODE=local ;;
-    -h|--help) sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --uses|--expires)
+      if [ $# -eq 0 ]; then
+        echo "ERROR: ${argument} needs a value." >&2
+        exit 1
+      fi
+      LINK_FLAGS+=( "-${argument#--}" "$1" )
+      shift ;;
+    --uses=*|--expires=*)
+      name="${argument%%=*}"
+      LINK_FLAGS+=( "-${name#--}" "${argument#*=}" ) ;;
+    -h|--help) sed -n '2,28p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *[!0-9]*|"")
-      echo "ERROR: expected a numeric user id, --docker or --local; got '${argument}'." >&2
+      echo "ERROR: expected a numeric user id, --uses, --expires, --docker or --local; got '${argument}'." >&2
       exit 1 ;;
     *) USER_ID="$argument" ;;
   esac
@@ -87,7 +105,7 @@ if [ "$MODE" = "docker" ]; then
   esac
   echo "  database ${DATA_DIR}/app.db on the host (docker.data_dir)"
   echo ""
-  if ! docker exec "$docker_container" /app/server manage reissue-login -user-id "$USER_ID"; then
+  if ! docker exec "$docker_container" /app/server manage reissue-login -user-id "$USER_ID" ${LINK_FLAGS[@]+"${LINK_FLAGS[@]}"}; then
     echo "" >&2
     echo "Accounts in the container: docker exec ${docker_container} /app/server manage list-users" >&2
     exit 1
@@ -110,7 +128,7 @@ else
 fi
 echo "  database ${database}"
 echo ""
-if ! "$BINARY" manage reissue-login -user-id "$USER_ID"; then
+if ! "$BINARY" manage reissue-login -user-id "$USER_ID" ${LINK_FLAGS[@]+"${LINK_FLAGS[@]}"}; then
   echo "" >&2
   echo "Accounts in this database: scripts/run.sh manage list-users" >&2
   exit 1

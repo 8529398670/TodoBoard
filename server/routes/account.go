@@ -16,7 +16,11 @@ type pinRequest struct {
 
 type renameRequest struct {
 	DisplayName string `json:"display_name"`
-	CSRFToken   string `json:"csrf_token"`
+	// Expect is optional: the name the caller expects to replace. The
+	// frontend always sends it, so its undo cannot overwrite a rename made
+	// elsewhere.
+	Expect    *string `json:"expect"`
+	CSRFToken string  `json:"csrf_token"`
 }
 
 // GetMe is the frontend's first call on every page load: it answers "who am
@@ -48,6 +52,8 @@ func ( handlers *Handlers ) meRow( actor *security.Actor ) ( payload fiber.Map ,
 	// server checks ownership again on every request that depends on it.
 	owner_id , err := models.OwnerID( handlers.Store )
 	if err != nil { return }
+	login_link , err := models.LiveLoginLink( handlers.Store , user.ID )
+	if err != nil { return }
 
 	display := fiber.Map{ "timezone": "" , "hour12": nil , "number_cards": false , "plain_icons": false , "done_on_top": false , "add_on_top": false , "theme": nil , "own_theme_on_boards": false , "swipe_columns": true , "folder_sort": "" , "label_colors": []models.SavedColor{} }
 	if prefs , prefs_err := models.GetUserPrefs( handlers.Store , user.ID ); prefs_err == nil {
@@ -62,7 +68,14 @@ func ( handlers *Handlers ) meRow( actor *security.Actor ) ( payload fiber.Map ,
 		"role":             actor.Role,
 		"account_role":     user.Role,
 		"is_owner":         user.ID == owner_id,
+		"login_link":       login_link,
 		"has_pin":          user.HasPin(),
+		"username":           user.Username,
+		"has_password":       user.HasPassword(),
+		"password_blocked":   user.PasswordBlocked,
+		"two_factor":         user.TwoFactorOn(),
+		"passwords_enabled":  handlers.Config.PasswordsEnabled,
+		"two_factor_enabled": handlers.Config.TwoFactorEnabled,
 		"auth":             actor.Method(),
 		"api_keys_enabled": handlers.Config.APIKeysEnabled,
 	}
@@ -95,7 +108,13 @@ func ( handlers *Handlers ) RenameAccount( c fiber.Ctx ) ( err error ) {
 	}
 
 	user := security.UserFrom( c )
-	if models.RenameUser( handlers.Store , user.ID , body.DisplayName ) != nil {
+	rename_err := models.RenameUser( handlers.Store , user.ID , body.DisplayName , body.Expect )
+	var refusal *models.RenameConflictError
+	if errors.As( rename_err , &refusal ) {
+		err = conflict( c , refusal.Error() , fiber.Map{ "display_name": refusal.Current } )
+		return
+	}
+	if rename_err != nil {
 		err = serverError( c )
 		return
 	}
@@ -223,15 +242,37 @@ func ( handlers *Handlers ) SetPin( c fiber.Ctx ) ( err error ) {
 	return
 }
 
-// CreateMyLoginLink mints a one-time login link for the caller's own
-// account: the way to sign in on another device without asking an admin.
-// It is ReissueLogin pointed at yourself, so it has the same effect: any
-// unused link the account had stops working, and existing sessions stay
-// signed in.
+// CreateMyLoginLink mints a login link for the caller's own account: the way
+// to sign in on another device without asking an admin. Once by default, or
+// reusable, like ReissueLogin -- it is ReissueLogin pointed at yourself, so it
+// has the same effect: any link the account could still use stops working,
+// and existing sessions stay signed in.
 //
 // Session only (see routes.go): a login link becomes a session, so an API
 // key that could call this could turn itself into one.
 func ( handlers *Handlers ) CreateMyLoginLink( c fiber.Ctx ) ( err error ) {
+	var body loginLinkBody
+	if c.Bind().JSON( &body ) != nil {
+		err = badRequest( c , "malformed request body" )
+		return
+	}
+	if handlers.Guard.CheckCSRF( c , body.CSRFToken ) == false {
+		err = forbidden( c , "invalid csrf token" )
+		return
+	}
+	options , ok := handlers.loginLinkOptions( c , body.LoginLinkRequest )
+	if ok == false { return }
+	credential , info , token_err := models.IssueLoginLink( handlers.Store , security.UserFrom( c ).ID , options )
+	if token_err != nil {
+		err = serverError( c )
+		return
+	}
+	err = c.JSON( loginLinkResponse( credential , info ) )
+	return
+}
+
+// CancelMyLoginLink stops the caller's own live login link working.
+func ( handlers *Handlers ) CancelMyLoginLink( c fiber.Ctx ) ( err error ) {
 	var body csrfOnlyRequest
 	if c.Bind().JSON( &body ) != nil {
 		err = badRequest( c , "malformed request body" )
@@ -241,15 +282,12 @@ func ( handlers *Handlers ) CreateMyLoginLink( c fiber.Ctx ) ( err error ) {
 		err = forbidden( c , "invalid csrf token" )
 		return
 	}
-	credential , token_err := models.IssueLoginToken( handlers.Store , security.UserFrom( c ).ID , handlers.Config.LoginTokenTTL )
-	if token_err != nil {
+	removed , cancel_err := models.CancelLoginLink( handlers.Store , security.UserFrom( c ).ID )
+	if cancel_err != nil {
 		err = serverError( c )
 		return
 	}
-	err = c.JSON( fiber.Map{
-		"login_path":         "/login/" + credential,
-		"expires_in_seconds": int( handlers.Config.LoginTokenTTL.Seconds() ),
-	} )
+	err = c.JSON( fiber.Map{ "ok": true , "removed": removed } )
 	return
 }
 

@@ -246,3 +246,8 @@ th { color: var(--bs-secondary-color); font-size: 0.8rem; text-transform: upperc
 
 /* The home page's search box, between the create card and the folders. */
 .home-search { max-width: 30rem; }
+
+/* Two-factor setup: the QR code stays black on white whatever the theme
+   (scanners want the contrast), and the recovery codes keep their lines. */
+.two-factor-qr { display: block; width: 200px; max-width: 100%; height: auto; image-rendering: pixelated; }
+#two-factor-recovery-codes { white-space: pre; font-size: 0.95rem; color: inherit; background: transparent; }

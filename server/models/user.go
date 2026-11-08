@@ -17,9 +17,10 @@ const (
 	RoleUser  = "user"
 )
 
-// User has no password field, and adding one would undo the entire design
-// here: identity is proven only by redeeming a login link or presenting a
-// session cookie. See references/architecture.md before changing that.
+// User: links are the way in. A password is optional and off by default (see
+// password.go): an account gets one only by signing in with a link first, so
+// there is no signup, and the owner decides whether passwords work at all. See
+// references/architecture.md.
 type User struct {
 	ID          uint64     `json:"id"`
 	DisplayName string     `json:"display_name"`
@@ -30,6 +31,21 @@ type User struct {
 	// through an invite link. It is not a password: nothing else checks it.
 	// See pin.go.
 	PinHash string `json:"pin_hash,omitempty"`
+	// What password sign-in needs: a unique name to look the account up by,
+	// since display names are not unique, and a bcrypt hash of what the
+	// browser derived from the password. See password.go.
+	Username     string `json:"username,omitempty"`
+	PasswordHash string `json:"password_hash,omitempty"`
+	// PasswordBlocked is the owner's per-account block. It stops the password
+	// working and keeps the hash, so unblocking restores it.
+	PasswordBlocked bool `json:"password_blocked,omitempty"`
+	// TOTP secrets are encrypted here as well as with the record, because
+	// server.encrypt_at_rest can be off and a secret cannot be hashed. See
+	// two_factor.go.
+	TOTPSecret     string   `json:"totp_secret,omitempty"`
+	TOTPPending    string   `json:"totp_pending,omitempty"`
+	TOTPLastStep   uint64   `json:"totp_last_step,omitempty"`
+	RecoveryHashes []string `json:"recovery_hashes,omitempty"`
 }
 
 func ( user *User ) Disabled() ( result bool ) {
@@ -122,13 +138,108 @@ func SaveUser( store *db.Store , user *User ) ( err error ) {
 // by SaveUser. That is what stops two concurrent admin requests from each
 // reading the old row and the slower one silently discarding the other's
 // change.
-func RenameUser( store *db.Store , user_id uint64 , display_name string ) ( err error ) {
+//
+// expect, when not nil, is the name the caller believes is stored, checked in
+// the same transaction: a *RenameConflictError if it is not. It is what makes
+// an undo of a rename safe -- putting the old name back must not overwrite
+// one somebody chose in another tab since.
+func RenameUser( store *db.Store , user_id uint64 , display_name string , expect *string ) ( err error ) {
 	err = store.UpdateValue( db.BucketUsers , encryption.Uint64ToBytes( user_id ) ,
 		func() any { return &User{} } ,
 		func( item any ) ( mutate_err error ) {
-			item.( *User ).DisplayName = strings.TrimSpace( display_name )
+			user := item.( *User )
+			if expect != nil && user.DisplayName != strings.TrimSpace( *expect ) {
+				mutate_err = &RenameConflictError{ Current: user.DisplayName }
+				return
+			}
+			user.DisplayName = strings.TrimSpace( display_name )
 			return
 		} )
+	return
+}
+
+// RenameUserAs is RenameUser for one account acting on another: any admin may
+// rename an ordinary user, and only the owner may rename an admin
+// (ErrOwnerRequired), because a name is how people tell who they are dealing
+// with. Your own name goes through RenameUser, from the Account screen.
+func RenameUserAs( store *db.Store , user_id uint64 , actor_id uint64 , display_name string , expect *string ) ( err error ) {
+	err = store.Write( func( tx *db.Tx ) ( tx_err error ) {
+		key := encryption.Uint64ToBytes( user_id )
+		user := &User{}
+		if tx_err = tx.Get( db.BucketUsers , key , user ); tx_err != nil { return }
+		owner_id , tx_err := ownerIDTx( tx )
+		if tx_err != nil { return }
+		if user.IsAdmin() && actor_id != owner_id {
+			tx_err = ErrOwnerRequired
+			return
+		}
+		if expect != nil && user.DisplayName != strings.TrimSpace( *expect ) {
+			tx_err = &RenameConflictError{ Current: user.DisplayName }
+			return
+		}
+		user.DisplayName = strings.TrimSpace( display_name )
+		tx_err = tx.Put( db.BucketUsers , key , user )
+		return
+	} )
+	return
+}
+
+// SetUserRole makes an account an admin or an ordinary user, and says whether
+// that changed anything. The rules follow deleting: nobody changes their own
+// role (ErrRoleSelf), the owner is always an admin (ErrOwnerProtected, transfer
+// ownership first), and only the owner takes an admin's rights away
+// (ErrOwnerRequired). Any admin may make one, as any admin can create one.
+//
+// Becoming an admin ends the account's sessions and live login links in the
+// same transaction. Whoever holds an invite link can sign in as an account that
+// joined through it, so a session already open may not be the person being
+// promoted. An admin cannot sign in through an invite link, so a new login link
+// is the way back in.
+//
+// Losing admin rights ends nothing: the role is read on every request, so it
+// applies at once, and API keys narrow to it (see NarrowRole). Invite links the
+// account made stop working while it is not an admin (see inviteLinkUsable).
+func SetUserRole( store *db.Store , user_id uint64 , actor_id uint64 , role string ) ( changed bool , err error ) {
+	err = store.Write( func( tx *db.Tx ) ( tx_err error ) {
+		key := encryption.Uint64ToBytes( user_id )
+		user := &User{}
+		if tx_err = tx.Get( db.BucketUsers , key , user ); tx_err != nil { return }
+		if user_id == actor_id {
+			tx_err = ErrRoleSelf
+			return
+		}
+		owner_id , tx_err := ownerIDTx( tx )
+		if tx_err != nil { return }
+		if user_id == owner_id {
+			tx_err = ErrOwnerProtected
+			return
+		}
+		if user.Role == role { return }
+		if user.IsAdmin() && actor_id != owner_id {
+			tx_err = ErrOwnerRequired
+			return
+		}
+		user.Role = role
+		if tx_err = tx.Put( db.BucketUsers , key , user ); tx_err != nil { return }
+		changed = true
+		if user.IsAdmin() == false { return }
+		if _ , tx_err = destroySessionsForUser( tx , user_id ); tx_err != nil { return }
+		if _ , tx_err = deletePendingLoginTokens( tx , user_id ); tx_err != nil { return }
+		tx_err = deleteChallengesForUser( tx , user_id )
+		return
+	} )
+	if err != nil { changed = false }
+	return
+}
+
+// RenameConflictError is RenameUser's answer when the name was not what the
+// caller expected: someone changed it since. Current is the name it has now.
+type RenameConflictError struct {
+	Current string
+}
+
+func ( conflict *RenameConflictError ) Error() ( result string ) {
+	result = "the name was changed somewhere else in the meantime"
 	return
 }
 
@@ -156,7 +267,8 @@ func SetUserDisabled( store *db.Store , user_id uint64 , disabled bool ) ( err e
 		if tx_err = tx.Put( db.BucketUsers , key , user ); tx_err != nil { return }
 		if disabled == false { return }
 		if _ , tx_err = destroySessionsForUser( tx , user_id ); tx_err != nil { return }
-		_ , tx_err = deletePendingLoginTokens( tx , user_id )
+		if _ , tx_err = deletePendingLoginTokens( tx , user_id ); tx_err != nil { return }
+		tx_err = deleteChallengesForUser( tx , user_id )
 		return
 	} )
 	return

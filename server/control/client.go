@@ -143,14 +143,19 @@ func ( client *Client ) ListUsers() ( users []UserResponse , err error ) {
 	return
 }
 
-func ( client *Client ) CreateUser( display_name string , role string ) ( user UserResponse , err error ) {
+func ( client *Client ) CreateUser( display_name string , role string , link models.LoginLinkRequest ) ( user UserResponse , err error ) {
 	err = client.do( http.MethodPost , "/v1/users" ,
-		CreateUserRequest{ DisplayName: display_name , Role: role } , &user )
+		CreateUserRequest{ DisplayName: display_name , Role: role , LoginLinkRequest: link } , &user )
 	return
 }
 
-func ( client *Client ) ReissueLogin( user_id uint64 ) ( user UserResponse , err error ) {
-	err = client.do( http.MethodPost , fmt.Sprintf( "/v1/users/%d/login-token" , user_id ) , nil , &user )
+func ( client *Client ) ReissueLogin( user_id uint64 , link models.LoginLinkRequest ) ( user UserResponse , err error ) {
+	err = client.do( http.MethodPost , fmt.Sprintf( "/v1/users/%d/login-token" , user_id ) , link , &user )
+	return
+}
+
+func ( client *Client ) ResetTwoFactor( user_id uint64 ) ( err error ) {
+	err = client.do( http.MethodPost , fmt.Sprintf( "/v1/users/%d/reset-two-factor" , user_id ) , nil , nil )
 	return
 }
 

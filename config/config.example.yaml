@@ -126,7 +126,14 @@ server:
 
 auth:
   session_ttl_seconds: 1209600     # 14 days
+  # A session in use keeps moving its end out by session_ttl_seconds, but
+  # never past this long after it was signed in.
+  session_max_age_seconds: 7776000 # 90 days
+  # A login link that works once lasts login_token_ttl_seconds; one that
+  # works more than once lasts multi_use_login_token_ttl_seconds unless the
+  # admin making it picks another expiry.
   login_token_ttl_seconds: 1800    # 30 minutes
+  multi_use_login_token_ttl_seconds: 604800 # 7 days
 
   # API keys let a script, a cron job, or another service call the API at the
   # role of the account that owns them, never higher. false closes the surface
@@ -137,6 +144,22 @@ auth:
   # Lifetime of a new key when the request does not say. A key that never
   # expires has to be asked for (expires_in_days: 0, or `-days 0`).
   api_key_ttl_seconds: 7776000     # 90 days
+
+  # Password sign-in. true lets any account set a username and password on
+  # its own Account screen, after signing in with a link -- there is still no
+  # signup, and a forgotten password is still "get a new login link". The
+  # owner can block one account from the Users screen. false stops every
+  # password working and hides the form; the hashes stay, so switching it
+  # back on restores them. Needs HTTPS (or localhost), because the browser
+  # hashes the password with WebCrypto before sending it. Read at start.
+  passwords: false
+
+  # Two-factor sign-in with an authenticator app, which each person turns on
+  # for themselves. It is asked for on every browser sign-in -- password,
+  # login link, and invite link -- never for an API key. false stops offering
+  # it and stops asking for it; the secrets stay, so switching it back on
+  # restores them. Read at start.
+  two_factor: true
 
 pushover:
   # The application token from https://pushover.net/apps/build. Each person

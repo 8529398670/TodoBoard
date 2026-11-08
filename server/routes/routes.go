@@ -31,6 +31,14 @@ type Handlers struct {
 	Language *language.Language
 	Static   *static.Server
 	Pins     *models.PinGuard
+	// Codes counts wrong two-factor codes per account, wherever they are
+	// typed. Six digits with a window of three steps would otherwise fall to
+	// a patient guesser.
+	Codes *models.AttemptGuard[ uint64 ]
+	// Per name typed, not per account, so a lockout does not say which names
+	// are real; and per address, across names.
+	PasswordNames     *models.AttemptGuard[ string ]
+	PasswordAddresses *models.AttemptGuard[ string ]
 	Notify   *notify.Service
 	// Version is reported to MCP clients as serverInfo.version.
 	Version string
@@ -46,6 +54,9 @@ func New( store *db.Store , cfg *config.Config , guard *security.Guard , lang *l
 		Language: lang,
 		Static:   static_server,
 		Pins:     models.NewPinGuard(),
+		Codes:    models.NewAttemptGuard[ uint64 ]( models.AttemptMaxFailures ),
+		PasswordNames:     models.NewAttemptGuard[ string ]( models.AttemptMaxFailures ),
+		PasswordAddresses: models.NewAttemptGuard[ string ]( passwordAddressMaxFailures ),
 		Notify:   notifier,
 		Version:  version,
 	}
@@ -64,6 +75,11 @@ func ( handlers *Handlers ) Register( app *fiber.App ) {
 	// the person confirms. See auth.go.
 	app.Get( "/login/*" , handlers.ShowLoginPage )
 	app.Post( "/api/login" , handlers.RedeemLoginLink )
+	// Signing in another way, or finishing a sign-in that waits for a
+	// two-factor code (see passwords.go and two_factor.go).
+	app.Get( "/api/login/options" , handlers.GetLoginOptions )
+	app.Post( "/api/login/two-factor" , handlers.FinishSignIn )
+	app.Post( "/api/login/password" , handlers.RequirePasswords , handlers.PasswordLogin )
 	app.Get( "/api/language" , handlers.GetLanguage )
 	app.Get( "/api/health" , handlers.GetHealth )
 
@@ -100,6 +116,19 @@ func ( handlers *Handlers ) Register( app *fiber.App ) {
 	// A session only, for the same reason as every route that hands out a
 	// login link: the link becomes a session. See the admin group below.
 	account.Post( "/account/login-link" , handlers.Guard.RequireSession , handlers.CreateMyLoginLink )
+	account.Post( "/account/login-link/cancel" , handlers.CancelMyLoginLink )
+	// Password and two-factor: a session only, since both decide how this
+	// account is signed in to.
+	account.Post( "/account/password" , handlers.RequirePasswords , handlers.Guard.RequireSession , handlers.SetPassword )
+	account.Post( "/account/two-factor/start" , handlers.RequireTwoFactor , handlers.Guard.RequireSession , handlers.StartTwoFactor )
+	account.Post( "/account/two-factor/confirm" , handlers.RequireTwoFactor , handlers.Guard.RequireSession , handlers.ConfirmTwoFactor )
+	account.Post( "/account/two-factor/disable" , handlers.RequireTwoFactor , handlers.Guard.RequireSession , handlers.DisableTwoFactor )
+	// Where this account is signed in. A session only: a key that could end
+	// sessions could end the one that would revoke it.
+	account.Get( "/account/sessions" , handlers.Guard.RequireSession , handlers.ListMySessions )
+	account.Post( "/account/sessions/revoke-others" , handlers.Guard.RequireSession , handlers.RevokeMyOtherSessions )
+	account.Post( "/account/sessions/:session_id/label" , handlers.Guard.RequireSession , handlers.LabelMySession )
+	account.Post( "/account/sessions/:session_id/revoke" , handlers.Guard.RequireSession , handlers.RevokeMySession )
 	account.Post( "/logout" , handlers.Logout )
 	account.Get( "/team" , handlers.ListTeam )
 	account.Get( "/openapi.json" , handlers.GetOpenAPI )
@@ -191,9 +220,18 @@ func ( handlers *Handlers ) Register( app *fiber.App ) {
 	admin.Get( "/users" , handlers.ListUsers )
 	admin.Post( "/users" , handlers.Guard.RequireSession , handlers.CreateUser )
 	admin.Post( "/users/:user_id/reissue-login" , handlers.Guard.RequireSession , handlers.ReissueLogin )
+	admin.Post( "/users/:user_id/cancel-login-link" , handlers.CancelLoginLink )
+	admin.Post( "/users/:user_id/rename" , handlers.Guard.RequireSession , handlers.RenameUser )
+	admin.Post( "/users/:user_id/role" , handlers.Guard.RequireSession , handlers.SetUserRole )
 	admin.Post( "/users/:user_id/disabled" , handlers.SetUserDisabled )
 	admin.Post( "/users/:user_id/revoke-access" , handlers.RevokeAccess )
 	admin.Post( "/users/:user_id/delete" , handlers.Guard.RequireSession , handlers.DeleteUser )
+	admin.Post( "/users/:user_id/reset-two-factor" , handlers.Guard.RequireSession , handlers.ResetTwoFactor )
+	// A session only, like your own devices list.
+	admin.Get( "/users/:user_id/sessions" , handlers.Guard.RequireSession , handlers.ListUserSessions )
+	admin.Post( "/users/:user_id/sessions/:session_id/revoke" , handlers.Guard.RequireSession , handlers.RevokeUserSession )
+	// Only the owner decides whether one account may use a password.
+	app.Post( "/api/owner/users/:user_id/password-access" , handlers.RequirePasswords , handlers.Guard.RequireOwner , handlers.SetPasswordAccess )
 
 	// Invite links: one link for a group, each person who opens it joins as a
 	// new user (see invite_links.go). Creating one needs a session for the
@@ -284,6 +322,19 @@ func badRequest( c fiber.Ctx , message string ) ( err error ) {
 
 func notFound( c fiber.Ctx , message string ) ( err error ) {
 	err = c.Status( fiber.StatusNotFound ).JSON( fiber.Map{ "error": message } )
+	return
+}
+
+func tooMany( c fiber.Ctx , code string ) ( err error ) {
+	err = c.Status( fiber.StatusTooManyRequests ).JSON( fiber.Map{ "error": code } )
+	return
+}
+
+// conflict is a 409 that says what is there now, so the page can show it.
+func conflict( c fiber.Ctx , message string , extra fiber.Map ) ( err error ) {
+	payload := fiber.Map{ "error": message }
+	for key , value := range extra { payload[ key ] = value }
+	err = c.Status( fiber.StatusConflict ).JSON( payload )
 	return
 }
 

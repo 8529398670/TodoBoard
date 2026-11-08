@@ -2,8 +2,8 @@
 // tiles for the notes, the purpose, sharing, notifications and export (each
 // its own panel, with a way back here), the switch for the Purpose section,
 // then which view to show, name, default view, colour,
-// numbering, theme, labels, the way to the archive and the trash (each its
-// own panel too), and leaving or deleting the board.
+// numbering, and the ways to the theme, the labels, the archive and the
+// trash (each its own panel too), and leaving or deleting the board.
 const BoardSettings = {
   open( ctx ) {
     Panel.open( "settings.title" , ( body ) => {
@@ -90,8 +90,20 @@ const BoardSettings = {
     return section;
   },
 
-  openLabels( ctx ) {
-    Panel.open( "settings.labels_heading" , ( body ) => body.appendChild( this.labelsSection( ctx ) ) );
+  // The label editor in its own panel: from Board settings (with a way
+  // back) or from a card's Manage labels.
+  openLabels( ctx , back ) {
+    Panel.open( "settings.labels_heading" , ( body ) => body.appendChild( this.labelsEditor( ctx ) ) , back );
+  },
+
+  labelsSection( ctx ) {
+    const section = Dom.el( "section" , { class: "panel-section" } );
+    section.appendChild( Dom.el( "h3" , { text: T( "settings.labels_heading" ) } ) );
+    const back = function () { BoardSettings.open( BoardPage.context() ); };
+    const button = Ui.button( "settings.labels_button" , function () { BoardSettings.openLabels( ctx , back ); } );
+    button.textContent = I18n.fill( "settings.labels_button" , { n: ctx.board.labels.length } );
+    section.appendChild( button );
+    return section;
   },
 
   general( ctx ) {
@@ -269,16 +281,25 @@ const BoardSettings = {
   },
 
   // The board's theme, which everyone on it sees unless they keep their
-  // own (their Account setting).
+  // own (their Account setting). The editor is long, so it opens as its own
+  // panel; here is just what the board uses now and the way in.
   theme( ctx ) {
     const section = Dom.el( "section" , { class: "panel-section" } );
     section.appendChild( Dom.el( "h3" , { text: T( "theme.board_heading" ) } ) );
-    section.appendChild( Dom.el( "p" , { class: "muted small-print" , text: T( "theme.board_hint" ) } ) );
-    section.appendChild( ThemeEditor.render( ctx.board.theme , async function ( theme ) {
-      const result = await ctx.mutate( function () { return ctx.client.updateBoard( theme ? { theme: theme } : { clear_theme: true } ); } );
-      if ( result ) Ui.toast( T( "settings.saved" ) , "ok" );
-    } , { inherit: true , start: Theme.user } ) );
+    section.appendChild( Dom.el( "p" , { class: "muted small-print" , text: T( ctx.board.theme ? "theme.board_own" : "theme.board_inherit" ) } ) );
+    const back = function () { BoardSettings.open( BoardPage.context() ); };
+    section.appendChild( Ui.button( "theme.board_edit" , function () { BoardSettings.openTheme( ctx , back ); } ) );
     return section;
+  },
+
+  openTheme( ctx , back ) {
+    Panel.open( "theme.board_heading" , ( body ) => {
+      body.appendChild( Dom.el( "p" , { class: "muted small-print" , text: T( "theme.board_hint" ) } ) );
+      body.appendChild( ThemeEditor.render( ctx.board.theme , async function ( theme ) {
+        const result = await ctx.mutate( function () { return ctx.client.updateBoard( theme ? { theme: theme } : { clear_theme: true } ); } );
+        if ( result ) Ui.toast( T( "settings.saved" ) , "ok" );
+      } , { inherit: true , start: Theme.user } ) );
+    } , back );
   },
 
   // How this board looks to you alone; nobody else on it is affected.
@@ -302,13 +323,12 @@ const BoardSettings = {
     return section;
   },
 
-  labelsSection( ctx ) {
-    const section = Dom.el( "section" , { class: "panel-section" } );
-    section.appendChild( Dom.el( "h3" , { text: T( "settings.labels_heading" ) } ) );
+  labelsEditor( ctx ) {
+    const section = Dom.el( "div" );
     const list = Dom.el( "ul" , { class: "label-editor" } );
     const redraw = () => {
       const fresh = BoardPage.context();
-      section.replaceWith( this.labelsSection( fresh ) );
+      section.replaceWith( this.labelsEditor( fresh ) );
     };
     ctx.board.labels.forEach( function ( label ) {
       const name = Dom.el( "input" , { class: "form-control" , attrs: { maxlength: "40" , "aria-label": T( "settings.label_name" ) } } );

@@ -120,9 +120,13 @@ type ServerSection struct {
 
 type AuthSection struct {
 	SessionTTLSeconds    int  `yaml:"session_ttl_seconds"`
+	SessionMaxAgeSeconds int  `yaml:"session_max_age_seconds"`
 	LoginTokenTTLSeconds int  `yaml:"login_token_ttl_seconds"`
+	MultiUseLoginTokenTTLSeconds int `yaml:"multi_use_login_token_ttl_seconds"`
 	APIKeys              bool `yaml:"api_keys"`
 	APIKeyTTLSeconds     int  `yaml:"api_key_ttl_seconds"`
+	Passwords            bool `yaml:"passwords"`
+	TwoFactor            bool `yaml:"two_factor"`
 }
 
 type PushoverSection struct {
@@ -239,7 +243,21 @@ type Config struct {
 	CookieName    string
 
 	SessionTTL    time.Duration
+	// SessionMaxAge caps how far use can push a session's end out: a
+	// session ends this long after it was signed in, however busy it is.
+	SessionMaxAge time.Duration
 	LoginTokenTTL time.Duration
+	// MultiUseLoginTokenTTL is the default expiry of a link that works more
+	// than once (see models.ResolveLoginLink).
+	MultiUseLoginTokenTTL time.Duration
+
+	// PasswordsEnabled decides whether a password is believed at all, and
+	// whether an account can set one. Off keeps the hashes, so switching it
+	// back on restores them. Read at start: change config.yaml and restart.
+	PasswordsEnabled bool
+	// TwoFactorEnabled decides whether 2FA is offered and asked for. Off keeps
+	// the secrets, the same way.
+	TwoFactorEnabled bool
 
 	// APIKeysEnabled decides whether the Authorization: Bearer header is
 	// believed at all, and whether the endpoints that mint keys exist.
@@ -499,6 +517,8 @@ func ( file *File ) Validate() ( err error ) {
 
 	auth := file.Auth
 	check( auth.SessionTTLSeconds > 0 , "auth.session_ttl_seconds must be positive" )
+	check( auth.SessionMaxAgeSeconds >= auth.SessionTTLSeconds , "auth.session_max_age_seconds must be at least auth.session_ttl_seconds" )
+	check( auth.MultiUseLoginTokenTTLSeconds > 0 , "auth.multi_use_login_token_ttl_seconds must be positive" )
 	check( auth.LoginTokenTTLSeconds > 0 , "auth.login_token_ttl_seconds must be positive" )
 	check( auth.APIKeyTTLSeconds > 0 , "auth.api_key_ttl_seconds must be positive" )
 
@@ -729,6 +749,10 @@ func Load() ( cfg *Config , err error ) {
 
 		SessionTTL:    seconds( file.Auth.SessionTTLSeconds ),
 		LoginTokenTTL: seconds( file.Auth.LoginTokenTTLSeconds ),
+		SessionMaxAge: seconds( file.Auth.SessionMaxAgeSeconds ),
+		MultiUseLoginTokenTTL: seconds( file.Auth.MultiUseLoginTokenTTLSeconds ),
+		PasswordsEnabled: file.Auth.Passwords,
+		TwoFactorEnabled: file.Auth.TwoFactor,
 
 		APIKeysEnabled: file.Auth.APIKeys,
 		APIKeyTTL:      seconds( file.Auth.APIKeyTTLSeconds ),
