@@ -21,6 +21,9 @@ const BoardPage = {
   // stages too, and stays on the one it was left on.
   stage: "todo",
   allStage: "todo",
+  // Columns flipped by their own stage buttons, by list id: this tab's alone,
+  // and put back in step by the bar (setStage).
+  columnStages: {},
   // The columns this person keeps collapsed, by list id. Read once, on the
   // first load, and this page's own from then on: a save moves no rev, so a
   // poll would otherwise bring back whatever was read before it.
@@ -287,6 +290,7 @@ const BoardPage = {
       },
       stageIn( key ) { return page.stageOf( key ); },
       columnView( listId ) { return page.columnView( listId ); },
+      columnTabs( list ) { return page.columnTabs( list ); },
       canCollapse() { return page.canCollapse(); },
       isCollapsed( listId ) { return page.canCollapse() && page.collapsed.indexOf( listId ) >= 0; },
       // Cards are numbered when the board says so, or, left to each person,
@@ -465,7 +469,29 @@ const BoardPage = {
   // What column key, or "all", is showing; behind the All list, To do.
   stageOf( key ) {
     if ( key === "all" ) return this.allStage;
+    return this.flippedStage( key ) || this.unflippedStage( key );
+  },
+
+  // What a column shows when nobody has pressed its own buttons.
+  unflippedStage( key ) {
     return this.columnView( key ) || ( this.stage === "all" ? "todo" : this.stage );
+  },
+
+  // A column's own buttons' choice, while they are on show.
+  flippedStage( key ) {
+    const stage = this.columnStages[ key ];
+    if ( !stage ) return "";
+    const list = this.data.board.lists.find( function ( item ) { return item.id === key; } );
+    return list && this.columnTabs( list ) ? stage : "";
+  },
+
+  // Whether a column has its own stage buttons: its own choice, or the
+  // board's. Not where the bar is the only switch, as for columnView.
+  columnTabs( list ) {
+    if ( this.data.board.layout !== "staged" || Stages.singleColumn() || this.data.list_only || this.data.card_only ) return false;
+    if ( list.stage_tabs === "on" ) return true;
+    if ( list.stage_tabs === "off" ) return false;
+    return !!this.data.board.stage_tabs;
   },
 
   // The stage a column is set to show whatever the bar says, or "" for none.
@@ -516,6 +542,15 @@ const BoardPage = {
   // Every column that follows the bar to stage.
   setStage( stage ) {
     this.stage = stage;
+    this.columnStages = {};
+    this.render();
+  },
+
+  // One column, from its own buttons. Back to what it would show anyway is
+  // back in step.
+  setColumnStage( key , stage ) {
+    if ( stage === this.unflippedStage( key ) ) delete this.columnStages[ key ];
+    else this.columnStages[ key ] = stage;
     this.render();
   },
 

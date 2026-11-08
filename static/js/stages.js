@@ -2,10 +2,12 @@
 // one at a time. A card's stage comes from its done and doing flags. Which
 // stage a column is showing is BoardPage's; this file is the controls that
 // change it -- the bar in the navbar, swiping and the arrow keys, which all
-// move every column at once -- and the words for the flags. A column that
-// wants a stage of its own has that in its settings (List.stage_view). The bar
-// has one more stop than a column: All, one centred list of every list's
-// cards, which flips through the stages with its own tabs.
+// move every column at once, and a column's own buttons when the board or the
+// column turns them on (stage_tabs), which flip that column for this person
+// only -- and the words for the flags. A column that wants a stage of its own
+// for everyone has that in its settings (List.stage_view). The bar has one
+// more stop than a column: All, one centred list of every list's cards, which
+// flips through the stages with its own tabs.
 const Stages = {
   order: [ "todo" , "doing" , "done" ],
 
@@ -64,11 +66,16 @@ const Stages = {
     return this.buttons( ctx , "stage-bar" , "board.stage_bar" , this.boardStages( ctx ) , ctx.boardStage() , null , function ( stage ) { BoardPage.setStage( stage ); } );
   },
 
-  // Flips the All list, which shows its stage apart from the bar.
-  tabs( cards , ctx ) {
+  // Flips one column, or the All list, apart from the bar. key is the list
+  // id or "all"; cards are all of its cards, for the counts.
+  tabs( key , cards , ctx ) {
     const counts = { todo: 0 , doing: 0 , done: 0 };
     cards.forEach( ( card ) => { counts[ this.of( card ) ] += 1; } );
-    return this.buttons( ctx , "stage-tabs" , "board.stage_tabs" , this.order , ctx.stageIn( "all" ) , counts , function ( stage ) { BoardPage.setAllStage( stage ); } );
+    const label = key === "all" ? "board.stage_tabs" : "board.column_stage_tabs";
+    return this.buttons( ctx , "stage-tabs" , label , this.order , ctx.stageIn( key ) , counts , function ( stage ) {
+      if ( key === "all" ) BoardPage.setAllStage( stage );
+      else BoardPage.setColumnStage( key , stage );
+    } );
   },
 
   // Both are bound once, on the document: a render replaces every column,
@@ -89,7 +96,9 @@ const Stages = {
       if ( !document.body.classList.contains( "swipe-columns" ) ) return;
       const active = document.activeElement;
       if ( active && active.closest && active.closest( "input, textarea, select, [contenteditable]:not([contenteditable=\"false\"])" ) ) return;
-      if ( BoardPage.collapsed.length || BoardPage.data.board.lists.some( function ( list ) { return list.stage_view; } ) ) BoardPage.render();
+      const board = BoardPage.data.board;
+      const ownStages = board.stage_tabs || board.lists.some( function ( list ) { return list.stage_view || list.stage_tabs === "on"; } );
+      if ( BoardPage.collapsed.length || ownStages ) BoardPage.render();
     } );
   },
 

@@ -275,6 +275,7 @@ func ( handlers *Handlers ) boardPayload( principal *access.Principal , board *m
 		"shopping":     board.Shopping,
 		"show_rank":    board.ShowRank,
 		"center_columns": board.CenterColumns,
+		"stage_tabs":   board.StageTabs,
 		"stage_todo":   board.StageTodo,
 		"stage_doing":  board.StageDoing,
 		"stage_done":   board.StageDone,

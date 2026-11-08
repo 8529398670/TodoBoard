@@ -15,8 +15,11 @@ image or as one self-contained binary.
   there has *Doing* and *Done* tick boxes that move it between them.
 - **Staged lists** (a layout in Board settings): any number of lists, each
   with its own To do / Doing / Done. A column shows one stage at a time,
-  starting on To do; swipe it or use its tabs to flip it, or use the bar in
-  the navbar or the Left and Right arrow keys to flip every column. The bar's
+  starting on To do; use the bar in the navbar, a swipe, or the Left and
+  Right arrow keys to flip every column. Turn on *Stage buttons on every
+  column* in Board settings (or per column, in its settings) to give columns
+  their own To do / Doing / Done buttons, which flip just that column for
+  you; the navbar bar puts them back in step. The bar's
   *All* tab merges every list into one centred list, which flips through
   To do, Doing and Done the same way, sorted by a board-wide rank: set a
   card's rank in its details or drag it in All, and the others shift to make

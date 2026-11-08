@@ -106,6 +106,50 @@ func TestListStageView( t *testing.T ) {
 	if copy.SortedLists()[ 0 ].StageView != "" { t.Errorf( "a bad view should not be restored: %q" , copy.SortedLists()[ 0 ].StageView ) }
 }
 
+func TestStageTabs( t *testing.T ) {
+	store := testStore( t )
+	owner , _ := CreateUser( store , "Owner" , RoleAdmin )
+	board , err := CreateBoard( store , owner.ID , "Staged" , []string{ "Work" , "Home" } )
+	if err != nil { t.Fatal( err ) }
+	if board.StageTabs { t.Error( "a new board leaves stage buttons to the navbar" ) }
+	list := board.SortedLists()[ 0 ]
+	if list.StageTabs != "" { t.Errorf( "a new column follows the board: %q" , list.StageTabs ) }
+
+	on := true
+	board , err = UpdateBoardSettings( store , board.ID , &BoardSettings{ StageTabs: &on } )
+	if err != nil { t.Fatal( err ) }
+	if board.StageTabs == false { t.Error( "stage_tabs was not saved" ) }
+	numbering := NumberingOn
+	board , err = UpdateBoardSettings( store , board.ID , &BoardSettings{ Numbering: &numbering } )
+	if err != nil { t.Fatal( err ) }
+	if board.StageTabs == false { t.Error( "another setting's save cleared stage_tabs" ) }
+
+	set := func( value string ) ( err error ) {
+		update := &ListUpdate{ StageTabs: &value }
+		_ , err = MutateBoard( store , board.ID , func( board *Board ) error { return update.Apply( board , list.ID ) } )
+		return
+	}
+	for _ , value := range []string{ "on" , "off" , "" } {
+		if err = set( value ); err != nil { t.Errorf( "%q should be allowed: %v" , value , err ) }
+	}
+	if err = set( "maybe" ); errors.Is( err , ErrBadInput ) == false {
+		t.Errorf( "only on, off or empty, got %v" , err )
+	}
+
+	if err = set( "off" ); err != nil { t.Fatal( err ) }
+	board , _ = GetBoard( store , board.ID )
+	snap := SnapshotBoard( board , nil , everyCard , 0 , nil )
+	copy , _ , err := ImportBoardSkeleton( store , owner.ID , snap )
+	if err != nil { t.Fatal( err ) }
+	if copy.StageTabs == false { t.Error( "a restored board lost stage_tabs" ) }
+	if copy.SortedLists()[ 0 ].StageTabs != "off" { t.Error( "a restored column lost stage_tabs" ) }
+
+	snap.Lists[ 0 ].StageTabs = "sometimes"
+	copy , _ , err = ImportBoardSkeleton( store , owner.ID , snap )
+	if err != nil { t.Fatal( err ) }
+	if copy.SortedLists()[ 0 ].StageTabs != "" { t.Errorf( "a bad value should not be restored: %q" , copy.SortedLists()[ 0 ].StageTabs ) }
+}
+
 func TestCollapsedListsArePersonal( t *testing.T ) {
 	store := testStore( t )
 	owner , _ := CreateUser( store , "Owner" , RoleAdmin )

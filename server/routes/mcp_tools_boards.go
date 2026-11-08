@@ -361,7 +361,7 @@ func ( handlers *Handlers ) registerBoardTools( server *mcp.Server ) {
 	server.Register( &mcp.Tool{
 		Name:        "update_list",
 		Title:       "Rename, move or archive a column",
-		Description: "Change a column's title or position, archive it (archived: true hides it; false brings it back), or on a staged board fix the stage it shows for everyone (stage_view; empty follows the navbar). Leave out what should not change.",
+		Description: "Change a column's title or position, archive it (archived: true hides it; false brings it back), or on a staged board fix the stage it shows for everyone (stage_view; empty follows the navbar), or give it its own To do/Doing/Done buttons (stage_tabs: on, off, or empty to follow the board's setting). Leave out what should not change.",
 		InputSchema: objectSchema( fiber.Map{
 			"board":    boardRefSchema,
 			"list_id":  listIDSchema,
@@ -369,6 +369,7 @@ func ( handlers *Handlers ) registerBoardTools( server *mcp.Server ) {
 			"position": positionSchema,
 			"archived": fiber.Map{ "type": "boolean" },
 			"stage_view": fiber.Map{ "type": "string" , "enum": []string{ "" , "todo" , "doing" , "done" } },
+			"stage_tabs": fiber.Map{ "type": "string" , "enum": []string{ "" , "on" , "off" } },
 		} , "board" , "list_id" ),
 		Call: func( call *mcp.Call ) ( result any , err error ) {
 			var args struct {

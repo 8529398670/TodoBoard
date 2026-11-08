@@ -200,9 +200,9 @@ const KanbanView = {
     Markdown.renderInline( list.title , title );
     header.appendChild( title );
     // A column set to a stage of its own says so, since it will not follow
-    // the bar.
+    // the bar; not once its own buttons have flipped it to another.
     const own = staged ? ctx.columnView( list.id ) : "";
-    if ( own ) {
+    if ( own && own === stage ) {
       const name = Stages.label( ctx , own );
       header.appendChild( Dom.el( "span" , { class: "column-view-badge" , text: name , attrs: { title: I18n.fill( "board.column_view_badge" , { stage: name } ) } } ) );
     }
@@ -212,6 +212,7 @@ const KanbanView = {
     }
     header.appendChild( ListMenu.button( list , ctx ) );
     column.appendChild( header );
+    if ( staged && ctx.columnTabs( list ) ) column.appendChild( Stages.tabs( list.id , ctx.cardsIn( list.id ) , ctx ) );
 
     const container = Dom.el( "div" , { class: "kanban-cards" , attrs: { "data-list-id": list.id } } );
     if ( staged ) container.setAttribute( "data-stage" , stage );
@@ -266,7 +267,7 @@ const KanbanView = {
     const cards = ctx.allCards();
     const stage = ctx.stageIn( "all" );
     const view = Dom.el( "section" , { class: "all-view" , attrs: { "data-stage-key": "all" } } );
-    view.appendChild( Stages.tabs( cards , ctx ) );
+    view.appendChild( Stages.tabs( "all" , cards , ctx ) );
     const container = Dom.el( "div" , { class: "kanban-cards all-cards" } );
     cards.filter( function ( card ) { return Stages.of( card ) === stage; } ).forEach( ( card ) => {
       const face = this.face( card , ctx , null , true );
@@ -785,6 +786,18 @@ const ListMenu = {
         } );
         form.appendChild( Ui.field( "board.column_view_label" , stageView ) );
         form.appendChild( Dom.el( "p" , { class: "muted small-print" , text: T( "board.column_view_hint" ) } ) );
+        const stageTabs = Ui.select( [
+          { value: "" , text: T( ctx.board.stage_tabs ? "board.column_tabs_follow_on" : "board.column_tabs_follow_off" ) },
+          { value: "on" , text: T( "board.column_tabs_on" ) },
+          { value: "off" , text: T( "board.column_tabs_off" ) },
+        ] , list.stage_tabs || "" );
+        stageTabs.addEventListener( "change" , async function () {
+          Dom.text( status , T( "card.autosave_saving" ) );
+          const result = await ctx.mutate( function () { return ctx.client.updateList( list.id , { stage_tabs: stageTabs.value } ); } );
+          Dom.text( status , result ? T( "card.autosave_saved" ) : "" );
+        } );
+        form.appendChild( Ui.field( "board.column_tabs_label" , stageTabs ) );
+        form.appendChild( Dom.el( "p" , { class: "muted small-print" , text: T( "board.column_tabs_hint" ) } ) );
       }
       // The name saves itself after a pause in typing, or when it is left;
       // Enter saves and closes the menu.

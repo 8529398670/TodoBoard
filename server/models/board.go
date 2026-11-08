@@ -115,6 +115,10 @@ type Board struct {
 	// CenterColumns: on a free or staged board the columns sit in the middle
 	// of the page rather than against its left edge.
 	CenterColumns bool            `json:"center_columns"`
+	// StageTabs: on a staged board every column has its own To do, Doing and
+	// Done buttons, which flip just that column for whoever presses them.
+	// List.StageTabs can turn them on or off for one column.
+	StageTabs   bool              `json:"stage_tabs"`
 	// What a staged board calls its stages. Empty is the app's own word, in
 	// whatever language it is set to. Three fields rather than a map so that
 	// saving one name cannot overwrite another person's change to the next.
@@ -170,6 +174,9 @@ type List struct {
 	// StageView: on a staged board, the stage this column always shows, for
 	// everyone. Empty follows the bar in the navbar.
 	StageView string `json:"stage_view"`
+	// StageTabs: this column's own stage buttons. Empty follows
+	// Board.StageTabs; "on" or "off" decides for this column alone.
+	StageTabs string `json:"stage_tabs"`
 }
 
 type Label struct {
@@ -395,6 +402,7 @@ type BoardSettings struct {
 	Shopping    *bool    `json:"shopping"`
 	ShowRank    *bool    `json:"show_rank"`
 	CenterColumns *bool  `json:"center_columns"`
+	StageTabs   *bool    `json:"stage_tabs"`
 	StageTodo   *string  `json:"stage_todo"`
 	StageDoing  *string  `json:"stage_doing"`
 	StageDone   *string  `json:"stage_done"`
@@ -457,6 +465,7 @@ func ( settings *BoardSettings ) Apply( board *Board ) ( err error ) {
 	if settings.Shopping != nil { board.Shopping = *settings.Shopping }
 	if settings.ShowRank != nil { board.ShowRank = *settings.ShowRank }
 	if settings.CenterColumns != nil { board.CenterColumns = *settings.CenterColumns }
+	if settings.StageTabs != nil { board.StageTabs = *settings.StageTabs }
 	for _ , stage := range []struct{ value *string ; field *string }{
 		{ settings.StageTodo , &board.StageTodo } ,
 		{ settings.StageDoing , &board.StageDoing } ,
@@ -559,6 +568,7 @@ type ListUpdate struct {
 	Shopping *bool    `json:"shopping"`
 	Width    *int     `json:"width"`
 	StageView *string `json:"stage_view"`
+	StageTabs *string `json:"stage_tabs"`
 }
 
 // A dragged column stays between these; 0 puts it back to the standard width.
@@ -596,6 +606,15 @@ func ( update *ListUpdate ) Apply( board *Board , list_id uint64 ) ( err error )
 		if validStageView( *update.StageView ) == false { return ErrBadInput }
 		list.StageView = *update.StageView
 	}
+	if update.StageTabs != nil {
+		if validStageTabs( *update.StageTabs ) == false { return ErrBadInput }
+		list.StageTabs = *update.StageTabs
+	}
+	return
+}
+
+func validStageTabs( value string ) ( ok bool ) {
+	ok = value == "" || value == "on" || value == "off"
 	return
 }
 

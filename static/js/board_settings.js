@@ -175,6 +175,12 @@ const BoardSettings = {
     ] } );
     Dom.show( showRank , layout.value === "staged" );
     form.appendChild( showRank );
+    const stageTabs = Dom.el( "div" , { children: [
+      Ui.checkbox( "settings.stage_tabs_label" , ctx.board.stage_tabs , function ( checked ) { save( { stage_tabs: checked } ); } ),
+      Dom.el( "p" , { class: "muted small-print" , text: T( "settings.stage_tabs_hint" ) } ),
+    ] } );
+    Dom.show( stageTabs , layout.value === "staged" );
+    form.appendChild( stageTabs );
     // What this board calls its stages; empty keeps the app's word, shown as
     // the placeholder. Each saves by itself when it is left. Only a staged
     // board has them: on three columns the column titles are the names.
@@ -256,6 +262,7 @@ const BoardSettings = {
     addPlacement.addEventListener( "change" , function () { save( { add_placement: addPlacement.value } ); } );
     layout.addEventListener( "change" , function () {
       Dom.show( showRank , layout.value === "staged" );
+      Dom.show( stageTabs , layout.value === "staged" );
       Dom.show( stageNames , layout.value === "staged" || layout.value === "calendar" );
       Dom.show( carryOver , layout.value === "calendar" );
       Dom.show( centerColumns , layout.value !== "three" );

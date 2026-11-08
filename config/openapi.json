@@ -1935,6 +1935,10 @@
                     "type": "boolean",
                     "description": "Free and staged boards: columns sit in the middle of the page."
                   },
+                  "stage_tabs": {
+                    "type": "boolean",
+                    "description": "Staged boards: every column gets its own To do, Doing and Done buttons; a column's stage_tabs can override."
+                  },
                   "stage_todo": {
                     "type": "string",
                     "maxLength": 40,
@@ -4764,6 +4768,15 @@
                       "done"
                     ],
                     "description": "Staged boards: the stage this column shows for everyone; empty follows the navbar."
+                  },
+                  "stage_tabs": {
+                    "type": "string",
+                    "enum": [
+                      "",
+                      "on",
+                      "off"
+                    ],
+                    "description": "Staged boards: this column's own To do, Doing and Done buttons; empty follows the board's stage_tabs."
                   },
                   "csrf_token": {
                     "type": "string",
@@ -8075,6 +8088,10 @@
                     "type": "boolean",
                     "description": "Free and staged boards: columns sit in the middle of the page."
                   },
+                  "stage_tabs": {
+                    "type": "boolean",
+                    "description": "Staged boards: every column gets its own To do, Doing and Done buttons; a column's stage_tabs can override."
+                  },
                   "stage_todo": {
                     "type": "string",
                     "maxLength": 40,
@@ -10207,6 +10224,15 @@
                       "done"
                     ],
                     "description": "Staged boards: the stage this column shows for everyone; empty follows the navbar."
+                  },
+                  "stage_tabs": {
+                    "type": "string",
+                    "enum": [
+                      "",
+                      "on",
+                      "off"
+                    ],
+                    "description": "Staged boards: this column's own To do, Doing and Done buttons; empty follows the board's stage_tabs."
                   }
                 }
               }
@@ -14075,6 +14101,10 @@
           "stage_view": {
             "type": "string",
             "description": "Staged boards: the stage this column shows for everyone; empty follows the navbar."
+          },
+          "stage_tabs": {
+            "type": "string",
+            "description": "Staged boards: this column's own stage buttons: on, off, or empty to follow the board."
           }
         },
         "required": [
@@ -14084,7 +14114,8 @@
           "archived",
           "shopping",
           "width",
-          "stage_view"
+          "stage_view",
+          "stage_tabs"
         ]
       },
       "Label": {
@@ -14577,6 +14608,9 @@
               "center_columns": {
                 "type": "boolean"
               },
+              "stage_tabs": {
+                "type": "boolean"
+              },
               "stage_todo": {
                 "type": "string"
               },
@@ -14653,6 +14687,7 @@
               "shopping",
               "show_rank",
               "center_columns",
+              "stage_tabs",
               "stage_todo",
               "stage_doing",
               "stage_done",
@@ -15182,6 +15217,9 @@
           "stage_view": {
             "type": "string"
           },
+          "stage_tabs": {
+            "type": "string"
+          },
           "cards": {
             "oneOf": [
               {
@@ -15256,6 +15294,9 @@
             "type": "string"
           },
           "center_columns": {
+            "type": "boolean"
+          },
+          "stage_tabs": {
             "type": "boolean"
           },
           "shopping": {
