@@ -1207,8 +1207,10 @@ transfer:
   face_copy: "Follows another card"
 
 calendar:
-  previous: "Previous"
-  next: "Next"
+  previous: "Previous day (←, Shift+← a week)"
+  next: "Next day (→, Shift+→ a week)"
+  previous_month: "Previous month (←)"
+  next_month: "Next month (→)"
   today: "Today"
   mode_label: "Calendar range"
   mode_month: "Month"
@@ -1216,7 +1218,6 @@ calendar:
   mode_day: "Day"
   today_hint: "Go to today (T)"
   today_week_hint: "Start the week today (T)"
-  keys_hint: "← → a day · Shift ← → a week · T today"
   stage_count: "{n} of {total} in {stage}"
   open_day: "Open this day"
   empty: "Nothing here."

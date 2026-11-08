@@ -457,8 +457,17 @@ const QuickAdd = {
   // card once it is added.
   // stage, on a staged board, is the one the column is showing: new cards
   // start there.
-  forCards( list , ctx , buttonKey , stage ) {
-    const key = "card-" + list.id;
+  // where, for a box that is not a list's (a calendar day), says what it is
+  // instead: { key, lockId, cards(), create( title , position ) } -- its
+  // form key, the id its locked direction is kept under, the cards a new
+  // one goes above, and how to make one.
+  forCards( list , ctx , buttonKey , stage , where ) {
+    const key = where ? where.key : "card-" + list.id;
+    if ( where ) list = { id: where.lockId };
+    const cardsHere = where ? where.cards : function () { return ctx.cardsIn( list.id ); };
+    const create = where ? where.create : function ( title , position ) {
+      return ctx.client.createCard( list.id , title , position , stage && stage !== "todo" ? Stages.fields( stage ) : undefined );
+    };
     const onTop = function () {
       const lock = QuickAdd.locked( ctx , list );
       return lock ? lock === "top" : ctx.addOnTop() !== !!QuickAdd.flipped[ key ];
@@ -487,9 +496,9 @@ const QuickAdd = {
     };
     show();
     const wrap = this.build( key , buttonKey , "board.card_title_placeholder" , function ( title , image ) {
-      const position = onTop() ? CardBits.edgePosition( ctx.cardsIn( list.id ) , true ) : undefined;
+      const position = onTop() ? CardBits.edgePosition( cardsHere() , true ) : undefined;
       return ctx.mutate( async function () {
-        const card = await ctx.client.createCard( list.id , title || T( "board.image_card_title" ) , position , stage && stage !== "todo" ? Stages.fields( stage ) : undefined );
+        const card = await create( title || T( "board.image_card_title" ) , position );
         if ( image ) await ctx.client.uploadImage( card.id , await CardBits.shrinkImage( image ) );
         return card;
       } );

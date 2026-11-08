@@ -328,6 +328,15 @@ const BoardPage = {
           .filter( function ( card ) { return card.list_id === listId && !card.archived; } )
           .sort( function ( a , b ) { return a.position - b.position; } );
       },
+      // The open cards a card is placed among: its day's on a calendar
+      // board, its list's on any other.
+      siblings( card ) {
+        if ( !this.isCalendar() ) return this.cardsIn( card.list_id );
+        const day = card.day || "";
+        return data.cards
+          .filter( function ( other ) { return ( other.day || "" ) === day && !other.archived; } )
+          .sort( function ( a , b ) { return a.position - b.position; } );
+      },
       // cardsIn and shownIn, for the one stage.
       cardsAt( listId , stage ) {
         return this.cardsIn( listId ).filter( function ( card ) { return Stages.of( card ) === stage; } );

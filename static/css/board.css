@@ -1098,7 +1098,11 @@ input.card-number:focus { color: var(--fg); background: var(--bg); border-color:
 .calendar-title { flex: 1 1 auto; margin: 0; font-size: 1.15rem; font-weight: 600; }
 /* The range buttons and the stage bar side by side in the navbar's middle; on
    a phone they share the row under it. */
-.calendar-navbar { display: flex; align-items: center; justify-content: center; gap: 0.5rem; padding-bottom: 0.25rem; }
+.calendar-navbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 0.35rem 0.5rem; padding-bottom: 0.25rem; }
+/* A week's or a day's previous / Today / next and its dates. On a phone they
+   take a line of their own under the range buttons and the stages. */
+.calendar-navbar-dates { display: flex; align-items: center; gap: 0.5rem; min-width: 0; order: 1; flex: 0 0 100%; justify-content: center; }
+.calendar-navbar-title { font-size: 0.95rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .calendar-navbar .stage-bar { flex: 1 1 auto; min-width: 0; }
 /* Beside the range buttons a phone has room for the names or the counts,
    not both; each day still shows its own. */
@@ -1107,11 +1111,10 @@ input.card-number:focus { color: var(--fg); background: var(--bg); border-color:
   .calendar-navbar .stage-bar .stage-button { padding: 0.3rem 0.35rem; }
 }
 @media (min-width: 48rem) {
-  .calendar-navbar { padding-bottom: 0; }
+  .calendar-navbar { padding-bottom: 0; flex-wrap: nowrap; }
+  .calendar-navbar-dates { order: 0; flex: 0 1 auto; }
   .calendar-navbar .stage-bar { flex: 0 1 auto; }
 }
-.calendar-keys { flex: 0 0 auto; }
-@media (hover: none) { .calendar-keys { display: none; } }
 .calendar-modes .btn.active { background: var(--accent); border-color: var(--accent); color: var(--accent-fg, #fff); }
 
 .calendar-days .kanban-column.calendar-day { flex: 1 0 15.5rem; max-width: 22rem; }

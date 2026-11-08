@@ -2,10 +2,12 @@
 // columns. Every card is filed under a day (card.day, "2026-11-07"), and each
 // day has its own To do, Doing and Done, from the card's flags as on a staged
 // board. Three ways to look: a month of day cells with counts, a week of day
-// columns, or one day. The range buttons and, for a week or a day, the stage
-// every day shows sit in the navbar, as a staged board's bar does. A week is
-// any seven days in a row: it opens on Monday, Today puts today first, and
-// the arrow keys slide it a day at a time. The board's lists still hold the cards, so switching
+// columns, or one day. The range buttons and, for a week or a day, the
+// previous / Today / next buttons, the dates on show and the stage every day
+// shows sit in the navbar, as a staged board's bar does. A week is any seven
+// days in a row: it opens on Monday, Today puts today first, and the arrow
+// keys slide it a day at a time. Where it was left is kept per board in this
+// browser, so a refresh comes back to it. The board's lists still hold the cards, so switching
 // the layout back shows them where they were; new cards go into the first
 // list. Cards with no day wait in a tray under the days, to be dragged onto
 // one.
@@ -17,6 +19,8 @@ const CalendarView = {
   anchor: "",
   // The first of the seven days the week shows; "" until a week is shown.
   weekFrom: "",
+  // The board anchor and weekFrom belong to.
+  boardId: null,
   // Boards already carried over today in this tab, by id.
   carried: {},
 
@@ -51,7 +55,34 @@ const CalendarView = {
       if ( offset < 0 || offset > 6 ) this.weekFrom = "";
     }
     try { window.localStorage.setItem( "calendar-mode:" + ctx.board.id , mode ); } catch ( error ) { /* this tab only */ }
+    this.remember( ctx );
     BoardPage.render();
+  },
+
+  // Where the calendar was left on this board, kept in this browser so a
+  // refresh opens on the same day or week.
+  remember( ctx ) {
+    try {
+      window.localStorage.setItem( "calendar-spot:" + ctx.board.id , JSON.stringify( { anchor: this.anchor , weekFrom: this.weekFrom } ) );
+    } catch ( error ) { /* this tab only */ }
+  },
+
+  // On first showing a board (or another board in the same tab): its saved
+  // spot, else today.
+  recall( ctx ) {
+    if ( this.boardId === ctx.board.id && this.anchor ) return;
+    this.boardId = ctx.board.id;
+    this.anchor = "";
+    this.weekFrom = "";
+    const valid = function ( day ) { return typeof day === "string" && /^\d{4}-\d{2}-\d{2}$/.test( day ) ? day : ""; };
+    try {
+      const saved = JSON.parse( window.localStorage.getItem( "calendar-spot:" + ctx.board.id ) || "null" );
+      if ( saved ) {
+        this.anchor = valid( saved.anchor );
+        this.weekFrom = this.anchor ? valid( saved.weekFrom ) : "";
+      }
+    } catch ( error ) { /* today, then */ }
+    if ( !this.anchor ) this.anchor = this.today();
   },
 
   // Moves by days, or for a month by months. A week moves its first day
@@ -69,6 +100,7 @@ const CalendarView = {
     } else {
       this.anchor = this.iso( Dates.addDays( this.parse( this.anchor ) , direction ) );
     }
+    this.remember( ctx );
     BoardPage.render();
   },
 
@@ -76,6 +108,7 @@ const CalendarView = {
   goToday( ctx ) {
     this.anchor = this.today();
     if ( this.mode( ctx ) === "week" ) this.weekFrom = this.anchor;
+    this.remember( ctx );
     BoardPage.render();
   },
 
@@ -105,11 +138,13 @@ const CalendarView = {
 
   render( root , ctx ) {
     this.carryOver( ctx );
-    if ( !this.anchor ) this.anchor = this.today();
+    this.recall( ctx );
     const mode = this.mode( ctx );
     const days = this.byDay( ctx );
     Dom.get( "stage-slot" ).appendChild( this.navbar( ctx , mode , days ) );
-    root.appendChild( this.toolbar( ctx , mode ) );
+    // A month keeps its dates above the grid; a week or a day has them in
+    // the navbar.
+    if ( mode === "month" ) root.appendChild( this.toolbar( ctx , mode ) );
     root.appendChild( mode === "month" ? this.month( ctx , days ) : this.columns( ctx , mode , days ) );
     if ( mode === "week" ) this.showToday( root , mode );
     const tray = this.tray( ctx , days[ "" ] || [] );
@@ -129,22 +164,29 @@ const CalendarView = {
     } ).catch( function () { /* tried again tomorrow, or on reload */ } );
   },
 
-  toolbar( ctx , mode ) {
-    const bar = Dom.el( "div" , { class: "calendar-toolbar" } );
+  // Previous, Today and next. Their tooltips name the keys that do the same.
+  navButtons( ctx , mode ) {
     const nav = Dom.el( "div" , { class: "calendar-nav" } );
-    nav.appendChild( Ui.iconButton( "chevron-left" , T( "calendar.previous" ) , () => this.step( ctx , -1 ) , "calendar-step" ) );
+    const hint = mode === "month" ? "_month" : "";
+    nav.appendChild( Ui.iconButton( "chevron-left" , T( "calendar.previous" + hint ) , () => this.step( ctx , -1 ) , "calendar-step" ) );
     const today = Ui.button( "calendar.today" , () => this.goToday( ctx ) , "secondary small" );
     today.title = T( mode === "week" ? "calendar.today_week_hint" : "calendar.today_hint" );
     nav.appendChild( today );
-    nav.appendChild( Ui.iconButton( "chevron-right" , T( "calendar.next" ) , () => this.step( ctx , 1 ) , "calendar-step" ) );
-    bar.appendChild( nav );
+    nav.appendChild( Ui.iconButton( "chevron-right" , T( "calendar.next" + hint ) , () => this.step( ctx , 1 ) , "calendar-step" ) );
+    return nav;
+  },
+
+  // A month's dates, above its grid.
+  toolbar( ctx , mode ) {
+    const bar = Dom.el( "div" , { class: "calendar-toolbar" } );
+    bar.appendChild( this.navButtons( ctx , mode ) );
     bar.appendChild( Dom.el( "h2" , { class: "calendar-title" , text: this.title( mode ) } ) );
-    if ( mode !== "month" ) bar.appendChild( Dom.el( "span" , { class: "muted small-print calendar-keys" , text: T( "calendar.keys_hint" ) } ) );
     return bar;
   },
 
-  // In the navbar: the range, and for a week or a day the stage all its days
-  // show, with the cards in each across the days on show.
+  // In the navbar: the range, and for a week or a day the way to move, the
+  // dates on show and the stage all its days show, with the cards in each
+  // across the days on show.
   navbar( ctx , mode , days ) {
     const wrap = Dom.el( "div" , { class: "calendar-navbar" } );
     const group = Dom.el( "div" , { class: "btn-group calendar-modes" , attrs: { role: "group" , "aria-label": T( "calendar.mode_label" ) } } );
@@ -159,6 +201,10 @@ const CalendarView = {
     } );
     wrap.appendChild( group );
     if ( mode === "month" ) return wrap;
+    const dates = Dom.el( "div" , { class: "calendar-navbar-dates" } );
+    dates.appendChild( this.navButtons( ctx , mode ) );
+    dates.appendChild( Dom.el( "span" , { class: "calendar-navbar-title" , text: this.title( mode , true ) } ) );
+    wrap.appendChild( dates );
     const counts = { todo: 0 , doing: 0 , done: 0 };
     this.shownDays( mode ).forEach( function ( day ) {
       ( days[ day ] || [] ).forEach( function ( card ) { counts[ Stages.of( card ) ] += 1; } );
@@ -176,10 +222,12 @@ const CalendarView = {
     return result;
   },
 
-  title( mode ) {
+  // short, for the navbar: the day column under it already spells out the
+  // day in full.
+  title( mode , short ) {
     const date = this.parse( this.anchor );
     if ( mode === "month" ) return this.format( date , { month: "long" , year: "numeric" } );
-    if ( mode === "day" ) return this.format( date , { weekday: "long" , month: "long" , day: "numeric" , year: "numeric" } );
+    if ( mode === "day" ) return this.format( date , short ? { weekday: "short" , month: "short" , day: "numeric" , year: "numeric" } : { weekday: "long" , month: "long" , day: "numeric" , year: "numeric" } );
     const start = this.parse( this.firstDay() );
     const end = Dates.addDays( start , 6 );
     try {
@@ -215,6 +263,8 @@ const CalendarView = {
   column( ctx , day , cards , mode ) {
     const today = this.today();
     const stage = this.stage();
+    // The day's cards in the stage on show: what is counted, numbered and
+    // added to.
     const shown = cards.filter( function ( card ) { return Stages.of( card ) === stage; } );
     const column = Dom.el( "section" , { class: "kanban-column calendar-day" + ( day === today ? " is-today" : "" ) + ( day < today ? " is-past" : "" ) , attrs: { "data-day": day , "data-stage-key": "day-" + day } } );
     const header = Dom.el( "header" , { class: "column-header" } );
@@ -236,10 +286,13 @@ const CalendarView = {
     column.appendChild( header );
 
     const container = Dom.el( "div" , { class: "kanban-cards" , attrs: { "data-day": day , "data-stage": stage } } );
-    shown.forEach( function ( card ) { container.appendChild( KanbanView.face( card , ctx ) ); } );
+    shown.forEach( function ( card ) { container.appendChild( KanbanView.face( card , ctx , shown ) ); } );
     if ( !shown.length ) container.appendChild( Dom.el( "p" , { class: "muted small-print calendar-empty" , text: T( "calendar.empty" ) } ) );
+    // The add box above the cards or under them, as the board says.
+    const add = ctx.canEdit ? this.quickAdd( ctx , day , stage , shown ) : null;
+    if ( add && ctx.addOnTop() ) column.appendChild( add );
     column.appendChild( container );
-    if ( ctx.canEdit ) column.appendChild( this.quickAdd( ctx , day , stage ) );
+    if ( add && !ctx.addOnTop() ) column.appendChild( add );
     return column;
   },
 
@@ -252,16 +305,20 @@ const CalendarView = {
     return list.id;
   },
 
-  quickAdd( ctx , day , stage ) {
-    return QuickAdd.build( "day-" + day , "board.add_card" , "board.card_title_placeholder" , ( title , image ) => {
-      return ctx.mutate( async () => {
+  // A day's add box, with the board's arrow to add at the top or the
+  // bottom. A locked direction is one for all the board's days, since the
+  // days on show keep changing.
+  quickAdd( ctx , day , stage , shown ) {
+    return QuickAdd.forCards( null , ctx , "board.add_card" , stage , {
+      key: "day-" + day,
+      lockId: "calendar",
+      cards: function () { return shown; },
+      create: async ( title , position ) => {
         const listId = await this.homeList( ctx );
         const fields = Object.assign( { day: day } , stage !== "todo" ? Stages.fields( stage ) : {} );
-        const card = await ctx.client.createCard( listId , title || T( "board.image_card_title" ) , undefined , fields );
-        if ( image ) await ctx.client.uploadImage( card.id , await CardBits.shrinkImage( image ) );
-        return card;
-      } );
-    } , undefined , true );
+        return ctx.client.createCard( listId , title , position , fields );
+      },
+    } );
   },
 
   // A month of day cells, Monday first, with the days either side that

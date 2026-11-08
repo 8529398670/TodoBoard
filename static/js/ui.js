@@ -824,7 +824,7 @@ const CardBits = {
   toggleDone( card , ctx ) {
     const fields = { done: !card.done };
     if ( fields.done && ctx.canEdit && ctx.doneOnTop() ) {
-      fields.position = this.edgePosition( ctx.cardsIn( card.list_id ).filter( function ( other ) { return other.id !== card.id; } ) , true );
+      fields.position = this.edgePosition( ctx.siblings( card ).filter( function ( other ) { return other.id !== card.id; } ) , true );
     }
     ctx.mutate( function () { return ctx.client.patchCard( card.id , fields ); } );
   },
@@ -835,7 +835,7 @@ const CardBits = {
   setStage( card , stage , ctx ) {
     const fields = Stages.fields( stage );
     if ( ctx.canEdit ) {
-      const others = ctx.cardsIn( card.list_id ).filter( function ( other ) { return other.id !== card.id; } );
+      const others = ctx.siblings( card ).filter( function ( other ) { return other.id !== card.id; } );
       fields.position = this.edgePosition( others , stage === "done" && ctx.doneOnTop() );
     }
     ctx.mutate( function () { return ctx.client.patchCard( card.id , fields ); } );
