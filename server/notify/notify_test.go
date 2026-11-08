@@ -146,7 +146,7 @@ func TestAssignAndChangeNotifications( t *testing.T ) {
 	if mock.count() != 1 || mock.last()[ "title" ] != "Assigned to you: Titrate" {
 		t.Fatalf( "expected one assignment push, got %d: %v" , mock.count() , mock.last() )
 	}
-	if mock.last()[ "url" ] != "https://boards.example.com/b/lab?card=1" {
+	if want := "https://boards.example.com/b/lab/to-do/" + card.UID; mock.last()[ "url" ] != want {
 		t.Errorf( "deep link wrong: %v" , mock.last()[ "url" ] )
 	}
 

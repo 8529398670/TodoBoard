@@ -93,6 +93,7 @@ func ( handlers *Handlers ) Register( app *fiber.App ) {
 	account.Get( "/me" , handlers.GetMe )
 	account.Post( "/account/rename" , handlers.RenameAccount )
 	account.Post( "/account/display" , handlers.SaveDisplay )
+	account.Post( "/account/label-colors" , handlers.SaveLabelColors )
 	// A session only: a PIN lets its holder sign in through an invite link,
 	// so a key that could set one could turn itself into a session.
 	account.Post( "/account/pin" , handlers.Guard.RequireSession , handlers.SetPin )
@@ -242,6 +243,7 @@ func ( handlers *Handlers ) registerBoardContent( group fiber.Router ) {
 	group.Get( "/:board_id/stamp" , handlers.GetBoardStamp )
 	group.Get( "/:board_id/export" , handlers.ExportBoard )
 	group.Post( "/:board_id" , handlers.UpdateBoard )
+	group.Post( "/:board_id/carry-over" , handlers.CarryOver )
 	group.Post( "/:board_id/lists" , handlers.CreateList )
 	group.Post( "/:board_id/lists/:list_id" , handlers.UpdateList )
 	group.Post( "/:board_id/lists/:list_id/delete" , handlers.DeleteList )
@@ -267,6 +269,10 @@ func ( handlers *Handlers ) registerBoardContent( group fiber.Router ) {
 	group.Post( "/:board_id/cards/:card_id/checklist" , handlers.AddChecklistItem )
 	group.Post( "/:board_id/cards/:card_id/checklist/:item_id" , handlers.UpdateChecklistItem )
 	group.Post( "/:board_id/cards/:card_id/checklist/:item_id/delete" , handlers.DeleteChecklistItem )
+	group.Get( "/:board_id/cards/:card_id/comments" , handlers.ListComments )
+	group.Post( "/:board_id/cards/:card_id/comments" , handlers.AddComment )
+	group.Post( "/:board_id/cards/:card_id/comments/:comment_id" , handlers.EditComment )
+	group.Post( "/:board_id/cards/:card_id/comments/:comment_id/remove" , handlers.RemoveComment )
 }
 
 // badRequest / notFound keep error bodies uniform, so the frontend has one

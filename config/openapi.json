@@ -40,6 +40,9 @@
       "name": "Checklists"
     },
     {
+      "name": "Comments"
+    },
+    {
       "name": "Trash"
     },
     {
@@ -163,6 +166,74 @@
           },
           "404": {
             "$ref": "#/components/responses/E404"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          }
+        }
+      }
+    },
+    "/api/account/label-colors": {
+      "post": {
+        "summary": "Save your own label colours",
+        "operationId": "post_api_account_label_colors",
+        "tags": [
+          "Account"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "description": "Replaces the whole list, in order. Labels already using a colour you remove keep it.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "colors": {
+                    "type": "array",
+                    "maxItems": 30,
+                    "items": {
+                      "$ref": "#/components/schemas/SavedColor"
+                    }
+                  },
+                  "csrf_token": {
+                    "type": "string",
+                    "description": "From GET /api/me. Browser sessions only."
+                  }
+                },
+                "required": [
+                  "colors"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Display"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
           },
           "429": {
             "$ref": "#/components/responses/E429"
@@ -1773,7 +1844,8 @@
                     "enum": [
                       "",
                       "three",
-                      "staged"
+                      "staged",
+                      "calendar"
                     ]
                   },
                   "numbering": {
@@ -1867,6 +1939,14 @@
                   "allow_quick_share": {
                     "type": "boolean",
                     "description": "Whether the owner and editors can copy a public link from a card's menu. Only the owner can change it, in a session. Not shown to share-link guests."
+                  },
+                  "allow_anon_comments": {
+                    "type": "boolean",
+                    "description": "Whether a guest on a comment or edit link may comment without giving a name. Only the owner can change it, in a session."
+                  },
+                  "carry_over": {
+                    "type": "boolean",
+                    "description": "On a calendar board, whether unfinished cards from past days move to today when the board is opened. On by default."
                   }
                 }
               }
@@ -1924,6 +2004,101 @@
         }
       }
     },
+    "/api/boards/{board_id}/carry-over": {
+      "post": {
+        "summary": "Carry unfinished cards over to today",
+        "operationId": "post_api_boards_board_id_carry_over",
+        "tags": [
+          "Boards"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "description": "On a calendar board with carry_over on, moves every unfinished, unarchived card filed under a day before today to today. Anything else moves nothing. Needs edit rights on the board.",
+        "parameters": [
+          {
+            "name": "board_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "The board's number or URL slug."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "today": {
+                    "type": "string",
+                    "description": "Your today, \"2026-11-07\". Must be within a day of the server's date."
+                  },
+                  "csrf_token": {
+                    "type": "string",
+                    "description": "From GET /api/me. Browser sessions only."
+                  }
+                },
+                "required": [
+                  "today"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "moved": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "moved"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "404": {
+            "$ref": "#/components/responses/E404"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          }
+        }
+      }
+    },
     "/api/boards/{board_id}/cards": {
       "post": {
         "summary": "Add a card",
@@ -1966,6 +2141,10 @@
               "schema": {
                 "type": "object",
                 "properties": {
+                  "day": {
+                    "type": "string",
+                    "description": "On a calendar board, the day the card is filed under: \"2026-11-07\", or \"\" for none."
+                  },
                   "list_id": {
                     "type": "integer"
                   },
@@ -2075,6 +2254,10 @@
               "schema": {
                 "type": "object",
                 "properties": {
+                  "day": {
+                    "type": "string",
+                    "description": "On a calendar board, the day the card is filed under: \"2026-11-07\", or \"\" for none."
+                  },
                   "rev": {
                     "type": "integer",
                     "description": "Refuse with 409 if the card has moved on."
@@ -2184,6 +2367,382 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          }
+        }
+      }
+    },
+    "/api/boards/{board_id}/cards/{card_id}/comments": {
+      "get": {
+        "summary": "A card's comments",
+        "operationId": "get_api_boards_board_id_cards_card_id_comments",
+        "tags": [
+          "Comments"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "description": "Oldest first. Anyone who can read the card, except on a card's public link. can_comment says whether you may post.",
+        "parameters": [
+          {
+            "name": "board_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "The board's number or URL slug."
+          },
+          {
+            "name": "card_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "comments": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Comment"
+                      }
+                    },
+                    "can_comment": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "comments",
+                    "can_comment"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "404": {
+            "$ref": "#/components/responses/E404"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          }
+        }
+      },
+      "post": {
+        "summary": "Comment on a card",
+        "operationId": "post_api_boards_board_id_cards_card_id_comments",
+        "tags": [
+          "Comments"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "description": "Needs edit rights on the card, or a comment link or card share. 403 comment_name_required for a guest with no name on a board that does not allow anonymous comments.",
+        "parameters": [
+          {
+            "name": "board_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "The board's number or URL slug."
+          },
+          {
+            "name": "card_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "maxLength": 4000,
+                    "description": "Markdown."
+                  },
+                  "csrf_token": {
+                    "type": "string",
+                    "description": "From GET /api/me. Browser sessions only."
+                  }
+                },
+                "required": [
+                  "text"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Comment"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "404": {
+            "$ref": "#/components/responses/E404"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          }
+        }
+      }
+    },
+    "/api/boards/{board_id}/cards/{card_id}/comments/{comment_id}": {
+      "post": {
+        "summary": "Edit a comment",
+        "operationId": "post_api_boards_board_id_cards_card_id_comments_comment_id",
+        "tags": [
+          "Comments"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "description": "Your own comment only; a guest's comment cannot be edited.",
+        "parameters": [
+          {
+            "name": "board_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "The board's number or URL slug."
+          },
+          {
+            "name": "card_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "comment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "maxLength": 4000,
+                    "description": "Markdown."
+                  },
+                  "csrf_token": {
+                    "type": "string",
+                    "description": "From GET /api/me. Browser sessions only."
+                  }
+                },
+                "required": [
+                  "text"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Comment"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "404": {
+            "$ref": "#/components/responses/E404"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          }
+        }
+      }
+    },
+    "/api/boards/{board_id}/cards/{card_id}/comments/{comment_id}/remove": {
+      "post": {
+        "summary": "Remove a comment",
+        "operationId": "post_api_boards_board_id_cards_card_id_comments_comment_id_remove",
+        "tags": [
+          "Comments"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "description": "Your own comment, or any on a board you own.",
+        "parameters": [
+          {
+            "name": "board_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "The board's number or URL slug."
+          },
+          {
+            "name": "card_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "comment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "404": {
+            "$ref": "#/components/responses/E404"
           },
           "429": {
             "$ref": "#/components/responses/E429"
@@ -3693,18 +4252,8 @@
                   },
                   "color": {
                     "type": "string",
-                    "enum": [
-                      "",
-                      "blue",
-                      "green",
-                      "orange",
-                      "red",
-                      "purple",
-                      "pink",
-                      "teal",
-                      "gray",
-                      "yellow"
-                    ]
+                    "pattern": "^(blue|green|orange|red|purple|pink|teal|gray|yellow|#[0-9a-fA-F]{6})$",
+                    "description": "A palette name or a #rrggbb colour of your own."
                   },
                   "csrf_token": {
                     "type": "string",
@@ -3804,18 +4353,8 @@
                   },
                   "color": {
                     "type": "string",
-                    "enum": [
-                      "",
-                      "blue",
-                      "green",
-                      "orange",
-                      "red",
-                      "purple",
-                      "pink",
-                      "teal",
-                      "gray",
-                      "yellow"
-                    ]
+                    "pattern": "^(blue|green|orange|red|purple|pink|teal|gray|yellow|#[0-9a-fA-F]{6})$",
+                    "description": "A palette name or a #rrggbb colour of your own."
                   },
                   "csrf_token": {
                     "type": "string",
@@ -5023,6 +5562,7 @@
                     "type": "string",
                     "enum": [
                       "view",
+                      "comment",
                       "edit"
                     ]
                   },
@@ -7464,7 +8004,8 @@
                     "enum": [
                       "",
                       "three",
-                      "staged"
+                      "staged",
+                      "calendar"
                     ]
                   },
                   "numbering": {
@@ -7534,6 +8075,14 @@
                   "allow_quick_share": {
                     "type": "boolean",
                     "description": "Whether the owner and editors can copy a public link from a card's menu. Only the owner can change it, in a session. Not shown to share-link guests."
+                  },
+                  "allow_anon_comments": {
+                    "type": "boolean",
+                    "description": "Whether a guest on a comment or edit link may comment without giving a name. Only the owner can change it, in a session."
+                  },
+                  "carry_over": {
+                    "type": "boolean",
+                    "description": "On a calendar board, whether unfinished cards from past days move to today when the board is opened. On by default."
                   }
                 }
               }
@@ -7588,6 +8137,95 @@
         }
       }
     },
+    "/api/shared/{board_id}/carry-over": {
+      "post": {
+        "summary": "Carry unfinished cards over to today",
+        "operationId": "post_api_shared_board_id_carry_over",
+        "tags": [
+          "Share-link guests",
+          "Boards"
+        ],
+        "security": [
+          {
+            "shareToken": []
+          }
+        ],
+        "description": "On a calendar board with carry_over on, moves every unfinished, unarchived card filed under a day before today to today. Anything else moves nothing. Needs edit rights on the board.",
+        "parameters": [
+          {
+            "name": "board_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "The board's number or URL slug."
+          },
+          {
+            "$ref": "#/components/parameters/GuestName"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "today": {
+                    "type": "string",
+                    "description": "Your today, \"2026-11-07\". Must be within a day of the server's date."
+                  }
+                },
+                "required": [
+                  "today"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "moved": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "moved"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "404": {
+            "$ref": "#/components/responses/E404"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          }
+        }
+      }
+    },
     "/api/shared/{board_id}/cards": {
       "post": {
         "summary": "Add a card",
@@ -7631,6 +8269,10 @@
               "schema": {
                 "type": "object",
                 "properties": {
+                  "day": {
+                    "type": "string",
+                    "description": "On a calendar board, the day the card is filed under: \"2026-11-07\", or \"\" for none."
+                  },
                   "list_id": {
                     "type": "integer"
                   },
@@ -7734,6 +8376,10 @@
               "schema": {
                 "type": "object",
                 "properties": {
+                  "day": {
+                    "type": "string",
+                    "description": "On a calendar board, the day the card is filed under: \"2026-11-07\", or \"\" for none."
+                  },
                   "rev": {
                     "type": "integer",
                     "description": "Refuse with 409 if the card has moved on."
@@ -7836,6 +8482,366 @@
                 }
               }
             }
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          }
+        }
+      }
+    },
+    "/api/shared/{board_id}/cards/{card_id}/comments": {
+      "get": {
+        "summary": "A card's comments",
+        "operationId": "get_api_shared_board_id_cards_card_id_comments",
+        "tags": [
+          "Share-link guests",
+          "Comments"
+        ],
+        "security": [
+          {
+            "shareToken": []
+          }
+        ],
+        "description": "Oldest first. Anyone who can read the card, except on a card's public link. can_comment says whether you may post.",
+        "parameters": [
+          {
+            "name": "board_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "The board's number or URL slug."
+          },
+          {
+            "name": "card_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "$ref": "#/components/parameters/GuestName"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "comments": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Comment"
+                      }
+                    },
+                    "can_comment": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "comments",
+                    "can_comment"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "404": {
+            "$ref": "#/components/responses/E404"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          }
+        }
+      },
+      "post": {
+        "summary": "Comment on a card",
+        "operationId": "post_api_shared_board_id_cards_card_id_comments",
+        "tags": [
+          "Share-link guests",
+          "Comments"
+        ],
+        "security": [
+          {
+            "shareToken": []
+          }
+        ],
+        "description": "Needs edit rights on the card, or a comment link or card share. 403 comment_name_required for a guest with no name on a board that does not allow anonymous comments.",
+        "parameters": [
+          {
+            "name": "board_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "The board's number or URL slug."
+          },
+          {
+            "name": "card_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "$ref": "#/components/parameters/GuestName"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "maxLength": 4000,
+                    "description": "Markdown."
+                  }
+                },
+                "required": [
+                  "text"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Comment"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "404": {
+            "$ref": "#/components/responses/E404"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          }
+        }
+      }
+    },
+    "/api/shared/{board_id}/cards/{card_id}/comments/{comment_id}": {
+      "post": {
+        "summary": "Edit a comment",
+        "operationId": "post_api_shared_board_id_cards_card_id_comments_comment_id",
+        "tags": [
+          "Share-link guests",
+          "Comments"
+        ],
+        "security": [
+          {
+            "shareToken": []
+          }
+        ],
+        "description": "Your own comment only; a guest's comment cannot be edited.",
+        "parameters": [
+          {
+            "name": "board_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "The board's number or URL slug."
+          },
+          {
+            "name": "card_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "comment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "$ref": "#/components/parameters/GuestName"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "maxLength": 4000,
+                    "description": "Markdown."
+                  }
+                },
+                "required": [
+                  "text"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Comment"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "404": {
+            "$ref": "#/components/responses/E404"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          }
+        }
+      }
+    },
+    "/api/shared/{board_id}/cards/{card_id}/comments/{comment_id}/remove": {
+      "post": {
+        "summary": "Remove a comment",
+        "operationId": "post_api_shared_board_id_cards_card_id_comments_comment_id_remove",
+        "tags": [
+          "Share-link guests",
+          "Comments"
+        ],
+        "security": [
+          {
+            "shareToken": []
+          }
+        ],
+        "description": "Your own comment, or any on a board you own.",
+        "parameters": [
+          {
+            "name": "board_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "The board's number or URL slug."
+          },
+          {
+            "name": "card_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "comment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "$ref": "#/components/parameters/GuestName"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "404": {
+            "$ref": "#/components/responses/E404"
           },
           "429": {
             "$ref": "#/components/responses/E429"
@@ -8806,18 +9812,8 @@
                   },
                   "color": {
                     "type": "string",
-                    "enum": [
-                      "",
-                      "blue",
-                      "green",
-                      "orange",
-                      "red",
-                      "purple",
-                      "pink",
-                      "teal",
-                      "gray",
-                      "yellow"
-                    ]
+                    "pattern": "^(blue|green|orange|red|purple|pink|teal|gray|yellow|#[0-9a-fA-F]{6})$",
+                    "description": "A palette name or a #rrggbb colour of your own."
                   }
                 },
                 "required": [
@@ -8911,18 +9907,8 @@
                   },
                   "color": {
                     "type": "string",
-                    "enum": [
-                      "",
-                      "blue",
-                      "green",
-                      "orange",
-                      "red",
-                      "purple",
-                      "pink",
-                      "teal",
-                      "gray",
-                      "yellow"
-                    ]
+                    "pattern": "^(blue|green|orange|red|purple|pink|teal|gray|yellow|#[0-9a-fA-F]{6})$",
+                    "description": "A palette name or a #rrggbb colour of your own."
                   }
                 }
               }
@@ -10555,6 +11541,78 @@
           "changes"
         ]
       },
+      "Comment": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "card_id": {
+            "type": "integer"
+          },
+          "author_id": {
+            "type": "integer",
+            "description": "The member who wrote it; 0 for a guest."
+          },
+          "by": {
+            "type": "string",
+            "description": "A member's name, \"guest:Name\" for a guest, \"guest:\" for an anonymous one."
+          },
+          "text": {
+            "type": "string",
+            "description": "Markdown."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "edited_at": {
+            "oneOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "can_edit": {
+            "type": "boolean"
+          },
+          "can_remove": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "card_id",
+          "author_id",
+          "by",
+          "text",
+          "created_at",
+          "edited_at",
+          "can_edit",
+          "can_remove"
+        ]
+      },
+      "SavedColor": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "color": {
+            "type": "string",
+            "pattern": "^#[0-9a-fA-F]{6}$"
+          }
+        },
+        "required": [
+          "name",
+          "color"
+        ]
+      },
       "Display": {
         "type": "object",
         "properties": {
@@ -10601,6 +11659,12 @@
           "swipe_columns": {
             "type": "boolean"
           },
+          "label_colors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SavedColor"
+            }
+          },
           "folder_sort": {
             "type": "string",
             "enum": [
@@ -10620,6 +11684,7 @@
           "theme",
           "own_theme_on_boards",
           "swipe_columns",
+          "label_colors",
           "folder_sort"
         ]
       },
@@ -11026,10 +12091,15 @@
           "card_title": {
             "type": "string"
           },
+          "card_path": {
+            "type": "string",
+            "description": "Where the card opens: /b/<board>/<column>/<ULID>."
+          },
           "mode": {
             "type": "string",
             "enum": [
               "view",
+              "comment",
               "edit"
             ]
           }
@@ -11121,18 +12191,8 @@
           },
           "color": {
             "type": "string",
-            "enum": [
-              "",
-              "blue",
-              "green",
-              "orange",
-              "red",
-              "purple",
-              "pink",
-              "teal",
-              "gray",
-              "yellow"
-            ]
+            "pattern": "^(blue|green|orange|red|purple|pink|teal|gray|yellow|#[0-9a-fA-F]{6})$",
+            "description": "A palette name or a #rrggbb colour of your own."
           }
         },
         "required": [
@@ -11208,16 +12268,28 @@
       "Card": {
         "type": "object",
         "properties": {
+          "day": {
+            "type": "string",
+            "description": "On a calendar board, the day the card is filed under: \"2026-11-07\", or \"\" for none."
+          },
+          "comment_count": {
+            "type": "integer",
+            "description": "How many comments the card has. In the board payload only."
+          },
+          "can_comment": {
+            "type": "boolean",
+            "description": "Whether you may post comments on it. In the board payload only."
+          },
           "id": {
             "type": "integer"
           },
           "serial": {
             "type": "integer",
-            "description": "The card's lasting number on its board."
+            "description": "The card's lasting number on its board. Kept, but no longer shown; the uid is the card's public ID."
           },
           "uid": {
             "type": "string",
-            "description": "A ULID."
+            "description": "A ULID: the card's public ID, and the last part of its link /b/<board>/<column>/<uid>."
           },
           "board_id": {
             "type": "integer"
@@ -11387,6 +12459,7 @@
                   "type": "string",
                   "enum": [
                     "view",
+                    "comment",
                     "edit"
                   ]
                 }
@@ -11503,7 +12576,8 @@
                 "enum": [
                   "",
                   "three",
-                  "staged"
+                  "staged",
+                  "calendar"
                 ],
                 "description": "Empty is free lists."
               },
@@ -11639,6 +12713,14 @@
               "allow_quick_share": {
                 "type": "boolean",
                 "description": "Whether the owner and editors can copy a public link from a card's menu. Only the owner can change it, in a session. Not shown to share-link guests."
+              },
+              "allow_anon_comments": {
+                "type": "boolean",
+                "description": "Whether a guest may comment without giving a name."
+              },
+              "carry_over": {
+                "type": "boolean",
+                "description": "On a calendar board, whether unfinished cards from past days move to today."
               }
             },
             "required": [
@@ -11792,6 +12874,7 @@
             "type": "string",
             "enum": [
               "view",
+              "comment",
               "edit"
             ]
           },
@@ -11887,6 +12970,10 @@
       "SharedInfo": {
         "type": "object",
         "properties": {
+          "anon_comments": {
+            "type": "boolean",
+            "description": "Whether this board lets a guest comment without giving a name."
+          },
           "board_id": {
             "type": "integer"
           },
@@ -11906,6 +12993,7 @@
             "type": "string",
             "enum": [
               "view",
+              "comment",
               "edit"
             ]
           },
@@ -12032,18 +13120,8 @@
           },
           "color": {
             "type": "string",
-            "enum": [
-              "",
-              "blue",
-              "green",
-              "orange",
-              "red",
-              "purple",
-              "pink",
-              "teal",
-              "gray",
-              "yellow"
-            ]
+            "pattern": "^(blue|green|orange|red|purple|pink|teal|gray|yellow|#[0-9a-fA-F]{6})$",
+            "description": "A palette name or a #rrggbb colour of your own."
           }
         },
         "required": [
@@ -12070,6 +13148,10 @@
       "CardSnapshot": {
         "type": "object",
         "properties": {
+          "day": {
+            "type": "string",
+            "description": "On a calendar board, the day the card is filed under: \"2026-11-07\", or \"\" for none."
+          },
           "title": {
             "type": "string"
           },
@@ -12205,6 +13287,9 @@
       "BoardSnapshot": {
         "type": "object",
         "properties": {
+          "carry_over": {
+            "type": "boolean"
+          },
           "title": {
             "type": "string"
           },

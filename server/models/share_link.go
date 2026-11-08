@@ -73,7 +73,7 @@ func ( link *ShareLink ) Live() ( result bool ) {
 // expire.
 func IssueShareLink( store *db.Store , board_id uint64 , card_id uint64 , list_id uint64 , visible_list_ids []uint64 , mode string , label string , days int , created_by uint64 ) ( credential string , link *ShareLink , err error ) {
 	label = strings.TrimSpace( label )
-	if ( mode != ModeView && mode != ModeEdit ) || utf8.RuneCountInString( label ) > 80 || days < 0 || days > 3650 || ( card_id != 0 && list_id != 0 ) {
+	if ValidShareMode( mode ) == false || utf8.RuneCountInString( label ) > 80 || days < 0 || days > 3650 || ( card_id != 0 && list_id != 0 ) {
 		err = ErrBadInput
 		return
 	}

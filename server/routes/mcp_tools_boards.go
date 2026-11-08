@@ -55,8 +55,12 @@ var listIDSchema = fiber.Map{ "type": "integer" , "minimum": 1 , "description": 
 var positionSchema = fiber.Map{ "type": "number" , "description": "Sort position within the column; lower comes first. Leave out to put it at the end." }
 var doingSchema = fiber.Map{ "type": "boolean" , "description": "On a staged board, the Doing stage. true starts the card (reopening it if done); done: true moves it on to Done." }
 var rankPlaceSchema = fiber.Map{ "type": "integer" , "minimum": 0 , "description": "Importance across the whole board: 1 is the most important, and other cards shift to make room. 0 takes the card out of the ranking. Needs edit rights on the board." }
+var daySchema = fiber.Map{ "type": "string" , "description": `On a calendar board (layout "calendar"), the day the card is filed under: "2026-11-07", or "" for none.` }
 var dateSchema = fiber.Map{ "type": "string" , "description": `"2026-10-30" for an all-day date, an RFC 3339 timestamp for a time, "" to clear.` }
 var labelColors = []string{ "blue" , "green" , "orange" , "red" , "purple" , "pink" , "teal" , "gray" , "yellow" }
+
+// labelColorSchema is a palette name or a colour of one's own.
+var labelColorSchema = fiber.Map{ "type": "string" , "pattern": "^(" + strings.Join( labelColors , "|" ) + "|#[0-9a-fA-F]{6})$" , "description": "A palette name (" + strings.Join( labelColors , ", " ) + ") or a #rrggbb colour." }
 
 // mcpPrincipal is MemberPrincipal for a key: the same account, the same name
 // on its edits. No CSRF check -- a bearer key is not an ambient credential.
@@ -229,6 +233,56 @@ func ( handlers *Handlers ) registerBoardTools( server *mcp.Server ) {
 	} )
 
 	server.Register( &mcp.Tool{
+		Name:        "list_comments",
+		Title:       "Read a card's comments",
+		Description: "A card's comments, oldest first: who wrote each (by: a member's name, \"guest:Name\" for a guest, \"guest:\" for an anonymous one) and when.",
+		ReadOnly:    true,
+		InputSchema: objectSchema( fiber.Map{ "board": boardRefSchema , "card_id": cardIDSchema } , "board" , "card_id" ),
+		Call: func( call *mcp.Call ) ( result any , err error ) {
+			var args struct {
+				Board  boardRef `json:"board"`
+				CardID uint64   `json:"card_id"`
+			}
+			if err = call.Bind( &args ); err != nil { return }
+			principal , board , card , err := handlers.mcpCard( call , args.Board , args.CardID , access.View )
+			if err != nil { return }
+			comments , list_err := models.ListComments( handlers.Store , board.ID , card.ID )
+			if list_err != nil {
+				err = list_err
+				return
+			}
+			rows := []fiber.Map{}
+			for _ , comment := range comments { rows = append( rows , commentPayload( principal , board , comment ) ) }
+			result = fiber.Map{ "comments": rows }
+			return
+		},
+	} )
+
+	server.Register( &mcp.Tool{
+		Name:        "add_comment",
+		Title:       "Comment on a card",
+		Description: "Post a comment on a card, signed with your name. Markdown, up to 4000 characters. Needs edit rights on the card, or a card shared with you to comment on.",
+		InputSchema: objectSchema( fiber.Map{ "board": boardRefSchema , "card_id": cardIDSchema , "text": fiber.Map{ "type": "string" , "maxLength": models.MaxCommentLength , "description": "Markdown." } } , "board" , "card_id" , "text" ),
+		Call: func( call *mcp.Call ) ( result any , err error ) {
+			var args struct {
+				Board  boardRef `json:"board"`
+				CardID uint64   `json:"card_id"`
+				Text   string   `json:"text"`
+			}
+			if err = call.Bind( &args ); err != nil { return }
+			principal , board , card , err := handlers.mcpCard( call , args.Board , args.CardID , access.View )
+			if err != nil { return }
+			comment , refused := handlers.addComment( principal , board , card , args.Text )
+			if refused != nil {
+				err = refusalError( refused )
+				return
+			}
+			result = commentPayload( principal , board , comment )
+			return
+		},
+	} )
+
+	server.Register( &mcp.Tool{
 		Name:        "find_cards",
 		Title:       "Find cards",
 		Description: "Search the cards you can see, across all your boards or one. query matches title and description (case-insensitive). Done and archived cards are left out unless asked for. Returns compact rows, soonest due first; use get_card for the full card.",
@@ -344,7 +398,7 @@ func ( handlers *Handlers ) registerBoardTools( server *mcp.Server ) {
 		InputSchema: objectSchema( fiber.Map{
 			"board": boardRefSchema,
 			"name":  fiber.Map{ "type": "string" , "maxLength": 40 },
-			"color": fiber.Map{ "type": "string" , "enum": labelColors },
+			"color": labelColorSchema,
 		} , "board" , "color" ),
 		Call: func( call *mcp.Call ) ( result any , err error ) {
 			var args struct {
@@ -378,6 +432,7 @@ func ( handlers *Handlers ) registerBoardTools( server *mcp.Server ) {
 			"due_at":      dateSchema,
 			"doing":       doingSchema,
 			"rank_place":  rankPlaceSchema,
+			"day":         daySchema,
 		} , "board" , "list_id" , "title" ),
 		Call: func( call *mcp.Call ) ( result any , err error ) {
 			var args struct {
@@ -392,6 +447,7 @@ func ( handlers *Handlers ) registerBoardTools( server *mcp.Server ) {
 				DueAt       *string   `json:"due_at"`
 				Doing       *bool     `json:"doing"`
 				RankPlace   *int      `json:"rank_place"`
+				Day         *string   `json:"day"`
 			}
 			if err = call.Bind( &args ); err != nil { return }
 			principal := mcpPrincipal( call )
@@ -405,7 +461,7 @@ func ( handlers *Handlers ) registerBoardTools( server *mcp.Server ) {
 				err = refusalError( refused )
 				return
 			}
-			patch := models.CardPatch{ Description: args.Description , LabelIDs: args.LabelIDs , Assignees: args.Assignees , StartAt: args.StartAt , DueAt: args.DueAt , Doing: args.Doing , RankPlace: args.RankPlace }
+			patch := models.CardPatch{ Description: args.Description , LabelIDs: args.LabelIDs , Assignees: args.Assignees , StartAt: args.StartAt , DueAt: args.DueAt , Doing: args.Doing , RankPlace: args.RankPlace , Day: args.Day }
 			if patch != ( models.CardPatch{} ) {
 				updated , _ , patch_refused := handlers.patchCard( principal , board , card , &patch )
 				if patch_refused != nil {
@@ -440,6 +496,7 @@ func ( handlers *Handlers ) registerBoardTools( server *mcp.Server ) {
 			"doing":       doingSchema,
 			"rank_place":  rankPlaceSchema,
 			"archived":    fiber.Map{ "type": "boolean" },
+			"day":         daySchema,
 		} , "board" , "card_id" ),
 		Call: func( call *mcp.Call ) ( result any , err error ) {
 			var args struct {

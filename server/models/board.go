@@ -37,6 +37,9 @@ const (
 	LayoutFree   = ""
 	LayoutThree  = "three"
 	LayoutStaged = "staged"
+	// LayoutCalendar files cards by Card.Day: each day has its own To do,
+	// Doing and Done, seen a month, a week or a day at a time.
+	LayoutCalendar = "calendar"
 )
 
 // Card numbering. Default leaves it to each viewer's account setting; On and
@@ -122,6 +125,14 @@ type Board struct {
 	// to one card from its menu. Off pauses those links without revoking
 	// them. Backups leave it out, so a restored board starts closed.
 	AllowQuickShare bool          `json:"allow_quick_share"`
+	// AllowAnonComments lets a guest on a comment (or edit) link post
+	// without giving a name, shown as Anonymous. Off, they are asked for a
+	// name first. Like AllowQuickShare, the owner's to set, and left out of
+	// backups.
+	AllowAnonComments bool `json:"allow_anon_comments"`
+	// CarryOver, on a calendar board, moves unfinished cards from past days
+	// to today. nil, never chosen, is on.
+	CarryOver *bool `json:"carry_over"`
 	// Notes is the board's reference shelf: links, documents, an index.
 	// Purpose says what the board is for and how to work on it; it is what an
 	// agent reads before touching the board. Both are markdown.
@@ -248,6 +259,14 @@ var boardColors = map[string]bool{
 
 func ValidColor( color string ) ( result bool ) {
 	result = boardColors[ color ]
+	return
+}
+
+// ValidLabelColor is a palette name, or a "#rrggbb" anyone picked: a label
+// is the one place a colour of one's own is allowed, and the pattern keeps
+// it to exactly that shape, so it is still safe inside a style.
+func ValidLabelColor( color string ) ( result bool ) {
+	result = ( color != "" && boardColors[ color ] ) || themeColorPattern.MatchString( color )
 	return
 }
 
@@ -380,6 +399,8 @@ type BoardSettings struct {
 	StageDoing  *string  `json:"stage_doing"`
 	StageDone   *string  `json:"stage_done"`
 	AllowQuickShare *bool `json:"allow_quick_share"`
+	AllowAnonComments *bool `json:"allow_anon_comments"`
+	CarryOver *bool `json:"carry_over"`
 	DonePlacement *string `json:"done_placement"`
 	AddPlacement  *string `json:"add_placement"`
 	// PurposeRev and NotesRev, when sent, are the revs the text was read at:
@@ -447,8 +468,13 @@ func ( settings *BoardSettings ) Apply( board *Board ) ( err error ) {
 		*stage.field = clean
 	}
 	if settings.AllowQuickShare != nil { board.AllowQuickShare = *settings.AllowQuickShare }
+	if settings.AllowAnonComments != nil { board.AllowAnonComments = *settings.AllowAnonComments }
+	if settings.CarryOver != nil {
+		value := *settings.CarryOver
+		board.CarryOver = &value
+	}
 	if settings.Layout != nil {
-		if *settings.Layout != LayoutFree && *settings.Layout != LayoutThree && *settings.Layout != LayoutStaged { return ErrBadInput }
+		if *settings.Layout != LayoutFree && *settings.Layout != LayoutThree && *settings.Layout != LayoutStaged && *settings.Layout != LayoutCalendar { return ErrBadInput }
 		board.Layout = *settings.Layout
 		if board.Layout == LayoutThree { err = ensureThreeLists( board , settings.ListTitles ) }
 	}
@@ -588,7 +614,8 @@ func renormalizeLists( board *Board ) {
 
 func AddLabel( board *Board , name string , color string ) ( label *Label , err error ) {
 	clean := strings.TrimSpace( name )
-	if utf8.RuneCountInString( clean ) > 40 || ValidColor( color ) == false || color == "" || len( board.Labels ) >= 50 {
+	color = strings.ToLower( color )
+	if utf8.RuneCountInString( clean ) > 40 || ValidLabelColor( color ) == false || len( board.Labels ) >= 50 {
 		err = ErrBadInput
 		return
 	}
@@ -606,8 +633,9 @@ func UpdateLabel( board *Board , label_id uint64 , name *string , color *string 
 		label.Name = clean
 	}
 	if color != nil {
-		if ValidColor( *color ) == false || *color == "" { return ErrBadInput }
-		label.Color = *color
+		clean := strings.ToLower( *color )
+		if ValidLabelColor( clean ) == false { return ErrBadInput }
+		label.Color = clean
 	}
 	return
 }
@@ -793,6 +821,7 @@ type SharedCardSummary struct {
 	BoardSlug  string `json:"board_slug"`
 	CardID     uint64 `json:"card_id"`
 	CardTitle  string `json:"card_title"`
+	CardPath   string `json:"card_path"`
 	Mode       string `json:"mode"`
 }
 
@@ -831,7 +860,7 @@ func ListBoardsForUser( store *db.Store , user_id uint64 ) ( boards []*BoardSumm
 		if board_err != nil { continue }
 		card , card_err := GetCard( store , ref.board_id , ref.card_id )
 		if card_err != nil { continue }
-		cards = append( cards , &SharedCardSummary{ BoardID: board.ID , BoardTitle: board.Title , BoardSlug: board.Slug , CardID: card.ID , CardTitle: card.Title , Mode: ref.mode } )
+		cards = append( cards , &SharedCardSummary{ BoardID: board.ID , BoardTitle: board.Title , BoardSlug: board.Slug , CardID: card.ID , CardTitle: card.Title , CardPath: CardPath( board , card ) , Mode: ref.mode } )
 	}
 	return
 }
@@ -863,6 +892,7 @@ func deleteBoardTx( tx *db.Tx , board_id uint64 ) ( err error ) {
 	if _ , err = tx.DeletePrefix( db.BucketTrash , db.Key( board_id ) ); err != nil { return }
 	if _ , err = tx.DeletePrefix( db.BucketProductImages , db.Key( board_id ) ); err != nil { return }
 	if _ , err = tx.DeletePrefix( db.BucketCardImages , db.Key( board_id ) ); err != nil { return }
+	if _ , err = tx.DeletePrefix( db.BucketComments , db.Key( board_id ) ); err != nil { return }
 
 	if err = tx.Delete( db.BucketUserBoards , db.Key( board.OwnerID , board_id ) ); err != nil { return }
 	for user_id := range board.Members {

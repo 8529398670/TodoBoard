@@ -230,10 +230,16 @@ func ( service *Service ) text( key string , values map[string]string ) ( result
 // cardPath is where a board, or a card on it, opens on this site.
 func ( service *Service ) cardPath( board_id uint64 , card_id uint64 ) ( result string ) {
 	result = fmt.Sprintf( "/b/%d" , board_id )
-	if board , get_err := models.GetBoard( service.store , board_id ); get_err == nil && board.Slug != "" {
-		result = "/b/" + board.Slug
+	board , get_err := models.GetBoard( service.store , board_id )
+	if get_err != nil { return }
+	if board.Slug != "" { result = "/b/" + board.Slug }
+	if card_id == 0 { return }
+	card , card_err := models.GetCard( service.store , board_id , card_id )
+	if card_err != nil {
+		result += fmt.Sprintf( "?card=%d" , card_id )
+		return
 	}
-	if card_id != 0 { result += fmt.Sprintf( "?card=%d" , card_id ) }
+	result = models.CardPath( board , card )
 	return
 }
 
@@ -248,6 +254,10 @@ func ( service *Service ) linked( notice Notice , board_id uint64 , card_id uint
 // actorLabel turns a stored "guest:Name" into the worded guest form.
 func ( service *Service ) actorLabel( name string ) ( result string ) {
 	if guest , ok := strings.CutPrefix( name , "guest:" ); ok {
+		if guest == "" {
+			result = service.text( "push.anonymous" , nil )
+			return
+		}
 		result = service.text( "push.guest_name" , map[string]string{ "name": guest } )
 		return
 	}
@@ -356,6 +366,7 @@ func ( service *Service ) changeLines( board *models.Board , change models.CardC
 	if change.Reopened { lines = append( lines , service.text( "push.change_reopened" , nil ) ) }
 	if change.DueChanged { lines = append( lines , service.text( "push.change_due" , nil ) ) }
 	if change.Edited { lines = append( lines , service.text( "push.change_edited" , nil ) ) }
+	if change.Commented { lines = append( lines , service.text( "push.change_commented" , map[string]string{ "comment": change.Comment } ) ) }
 	return
 }
 

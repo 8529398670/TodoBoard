@@ -9,11 +9,12 @@ import (
 )
 
 // Every card has three identities, each for a different reader. Card.ID is
-// the key: global, in every URL and share link, never shown. Card.Serial is
-// the number people use: 1, 2, 3 per board, kept for life and never reused,
-// whatever moves. Card.UID is a ULID, unique across servers, for anything
-// outside this one. The number a card shows on the board is none of these:
-// that is its place in the column (see Numbering).
+// the key: global, in share links and API paths, never shown. Card.UID is a
+// ULID, unique across servers: the card's public ID, the last part of its
+// link /b/<board>/<column>/<ULID> (see CardPath), and its "Card ID" in an
+// export. Card.Serial is 1, 2, 3 per board, kept for life and never reused,
+// but no longer shown anywhere. The number a card shows on the board is
+// none of these: that is its place in the column (see Numbering).
 
 // crockford is the ULID alphabet: no I, L, O or U.
 const crockford = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"

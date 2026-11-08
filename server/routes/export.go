@@ -92,8 +92,8 @@ func ( handlers *Handlers ) exportTable( principal *access.Principal , board *mo
 		},
 		Numeric: map[int]bool{ 1: true },
 	}
-	// The card's lasting number, unlike the # column, which is its place.
-	table.Numeric[ len( table.Header ) ] = true
+	// The card's lasting ID (its ULID, as in its link), unlike the #
+	// column, which is its place.
 	table.Header = append( table.Header , text( "col_serial" ) )
 
 	// What the caller is shown on the board is what they can export: a column
@@ -163,7 +163,7 @@ func ( handlers *Handlers ) exportTable( principal *access.Principal , board *mo
 				exportDate( card.StartAt , card.StartAt != nil && card.StartTimed == false , location ) ,
 				exportDate( card.DueAt , card.DueAllDay , location ) ,
 				strings.Join( assignees , ", " ) , checklist , strings.TrimSpace( card.Description ) ,
-				strconv.FormatUint( card.Serial , 10 ) ,
+				card.UID ,
 			}
 			if priced { row = append( row , card.PriceText() ) }
 			if staged {

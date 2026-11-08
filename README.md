@@ -21,9 +21,24 @@ image or as one self-contained binary.
   To do, Doing and Done the same way, sorted by a board-wide rank: set a
   card's rank in its details or drag it in All, and the others shift to make
   room.
+- **Calendar boards** (a layout in Board settings): every card is filed
+  under a day, and each day has its own To do / Doing / Done. Look at a
+  month of day cells, a week of day columns, or one day; drag cards between
+  days, or onto one from the tray of undated cards. Cards still in To do or
+  Doing on a past day carry over to today when the board is opened (a board
+  setting, on by default). Switching a board of date-titled columns
+  (`06NOV2026`, `2026-11-06`) to Calendar files their cards under those days.
 - **Card numbers**: each column numbered 1..n; type a new number and press
   Enter to move the card there. On or off per board, or left to each
   person's account default.
+- **Label colors**: the palette, or any color of your own. A custom color
+  you give a label is saved to your account and offered on every board; name
+  or remove them on the Account page.
+- **Card links**: every card has its own address,
+  `/b/<board>/<column>/<ULID>`, from *Copy link* in its right-click menu or
+  details. The ULID finds the card, so a link still opens it after the card
+  moves column; the address bar then shows its current column. Older
+  `?card=<id>` links still work.
 - **Copy a column** as a Markdown bullet or numbered list of its card titles.
 - **Notes** on every board, from the journal icon in the navbar or Board
   settings: markdown for links, documents and an index.
@@ -48,11 +63,17 @@ image or as one self-contained binary.
   ```
   as a block (KaTeX + mhchem, so `\ce{}` and `\pu{}` work). `$5 and $10`
   stays plain text; math inside code stays code.
+- **Comments** on every card, in Markdown: board editors and the owner
+  comment, and so does anyone holding a *comment* link or a card shared with
+  them to comment on. Authors edit and remove their own; the owner removes
+  any. A board can let link holders comment without giving a name (off by
+  default; they show as *Anonymous*). People following a card hear about new
+  comments with its other changes.
 - **Sharing**
   - add existing accounts to a board as *editor* or *viewer*;
-  - share a single card with an account (*view* or *edit*);
-  - share links for a whole board, a single column, or a single card, *view*
-    or *edit*,
+  - share a single card with an account (*view*, *comment* or *edit*);
+  - share links for a whole board, a single column, or a single card, *view*,
+    *comment* or *edit*,
     optional expiry, revocable -- no account needed. Guests with an edit link
     are asked for a name, and their changes show as "Name (guest)";
   - a public link to one card, from its right-click menu, for the owner and

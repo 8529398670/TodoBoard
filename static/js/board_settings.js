@@ -63,7 +63,8 @@ const BoardSettings = {
     const section = Dom.el( "section" , { class: "panel-section" } );
     section.appendChild( Dom.el( "h3" , { text: T( "settings.view_heading" ) } ) );
     const group = Dom.el( "div" , { class: "btn-group view-picker" , attrs: { role: "group" , "aria-label": T( "views.label" ) } } );
-    [ [ "kanban" , "kanban" ] , [ "todo" , "list-check" ] , [ "timeline" , "calendar-range" ] ].forEach( function ( view ) {
+    const calendar = ctx.isCalendar && ctx.isCalendar();
+    [ [ "kanban" , calendar ? "calendar3" : "kanban" ] , [ "todo" , "list-check" ] , [ "timeline" , "calendar-range" ] ].forEach( function ( view ) {
       const active = BoardPage.view === view[ 0 ];
       group.appendChild( Dom.el( "button" , {
         class: Ui.buttonClass( "secondary" + ( active ? " active" : "" ) ),
@@ -74,7 +75,7 @@ const BoardSettings = {
         } },
         children: [
           Dom.el( "i" , { class: "bi bi-" + view[ 1 ] , attrs: { "aria-hidden": "true" } } ),
-          Dom.el( "span" , { text: T( "views." + view[ 0 ] ) } ),
+          Dom.el( "span" , { text: T( view[ 0 ] === "kanban" && calendar ? "views.calendar" : "views." + view[ 0 ] ) } ),
         ],
       } ) );
     } );
@@ -113,7 +114,7 @@ const BoardSettings = {
     slugWrap.appendChild( slug );
 
     const view = Ui.select( [
-      { value: "kanban" , text: T( "views.kanban" ) },
+      { value: "kanban" , text: T( ctx.board.layout === "calendar" ? "views.calendar" : "views.kanban" ) },
       { value: "todo" , text: T( "views.todo" ) },
       { value: "timeline" , text: T( "views.timeline" ) },
     ] , ctx.board.default_view );
@@ -126,6 +127,7 @@ const BoardSettings = {
       { value: "" , text: T( "settings.layout_free" ) },
       { value: "three" , text: T( "settings.layout_three" ) },
       { value: "staged" , text: T( "settings.layout_staged" ) },
+      { value: "calendar" , text: T( "settings.layout_calendar" ) },
     ] , ctx.board.layout || "" );
     const numbering = Ui.select( [
       { value: "" , text: T( "settings.numbering_default" ) },
@@ -181,8 +183,15 @@ const BoardSettings = {
     } );
     stageNames.appendChild( stageFields );
     stageNames.appendChild( Dom.el( "p" , { class: "muted small-print" , text: T( "settings.stage_names_hint" ) } ) );
-    Dom.show( stageNames , layout.value === "staged" );
+    Dom.show( stageNames , layout.value === "staged" || layout.value === "calendar" );
     form.appendChild( stageNames );
+    // A calendar board's one setting of its own.
+    const carryOver = Dom.el( "div" , { children: [
+      Ui.checkbox( "settings.carry_over_label" , ctx.board.carry_over !== false , function ( checked ) { save( { carry_over: checked } ); } ),
+      Dom.el( "p" , { class: "muted small-print" , text: T( "settings.carry_over_hint" ) } ),
+    ] } );
+    Dom.show( carryOver , layout.value === "calendar" );
+    form.appendChild( carryOver );
     // A three-column board already fills the page.
     const centerColumns = Dom.el( "div" , { children: [
       Ui.checkbox( "settings.center_columns_label" , ctx.board.center_columns , function ( checked ) { save( { center_columns: checked } ); } ),
@@ -235,7 +244,8 @@ const BoardSettings = {
     addPlacement.addEventListener( "change" , function () { save( { add_placement: addPlacement.value } ); } );
     layout.addEventListener( "change" , function () {
       Dom.show( showRank , layout.value === "staged" );
-      Dom.show( stageNames , layout.value === "staged" );
+      Dom.show( stageNames , layout.value === "staged" || layout.value === "calendar" );
+      Dom.show( carryOver , layout.value === "calendar" );
       Dom.show( centerColumns , layout.value !== "three" );
       const changes = { layout: layout.value };
       // Lists to add if the three-column layout finds fewer than three.
@@ -308,7 +318,7 @@ const BoardSettings = {
         await ctx.mutate( function () { return ctx.client.updateLabel( label.id , { name: name.value , color: labelColor } ); } );
         redraw();
       };
-      const color = ColorPicker.named( labelColor , function ( value ) {
+      const color = ColorPicker.label( labelColor , function ( value ) {
         labelColor = value;
         save();
       } , { labelKey: "settings.label_color" } );
@@ -327,7 +337,7 @@ const BoardSettings = {
     const form = Dom.el( "form" , { attrs: { autocomplete: "off" } } );
     const name = Dom.el( "input" , { class: "form-control" , attrs: { maxlength: "40" , placeholder: T( "settings.label_name_placeholder" ) } } );
     let newColor = Colors[ ctx.board.labels.length % Colors.length ];
-    const color = ColorPicker.named( newColor , function ( value ) { newColor = value; } , { labelKey: "settings.label_color" } );
+    const color = ColorPicker.label( newColor , function ( value ) { newColor = value; } , { labelKey: "settings.label_color" } );
     form.appendChild( Ui.field( "settings.label_name" , name ) );
     form.appendChild( BoardSettings.swatchField( "settings.label_color" , color ) );
     form.appendChild( Dom.el( "button" , { class: "btn btn-primary" , text: T( "settings.add_label" ) , attrs: { type: "submit" } } ) );

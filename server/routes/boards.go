@@ -206,6 +206,7 @@ func ( handlers *Handlers ) boardPayload( principal *access.Principal , board *m
 	// and nothing else about them.
 	hidden_lists := map[uint64]int{}
 	places := models.RankPlaces( board , all_cards )
+	comment_counts , _ := models.CommentCounts( handlers.Store , board.ID )
 	for _ , card := range all_cards {
 		if access.HiddenList( principal , board , card.ListID ) {
 			if card.Archived == false { hidden_lists[ card.ListID ] += 1 }
@@ -217,6 +218,8 @@ func ( handlers *Handlers ) boardPayload( principal *access.Principal , board *m
 		for _ , id := range card.Assignees { people_ids[ id ] = true }
 		row := cardPayload( card , level , board_level )
 		row[ "rank_place" ] = places[ card.ID ]
+		row[ "comment_count" ] = comment_counts[ card.ID ]
+		row[ "can_comment" ] = access.CanComment( principal , board , card )
 		visible = append( visible , row )
 	}
 
@@ -284,6 +287,10 @@ func ( handlers *Handlers ) boardPayload( principal *access.Principal , board *m
 	// The people working on the board decide what to share; a guest has no
 	// use for it.
 	if principal.IsGuest() == false { board_payload[ "allow_quick_share" ] = board.AllowQuickShare }
+	// Everyone needs this one: a guest without a name is asked for one
+	// before commenting unless it is on.
+	board_payload[ "allow_anon_comments" ] = board.AllowAnonComments
+	board_payload[ "carry_over" ] = board.CarriesOver()
 	// Left out for a link showing only part of the board: the notes are about
 	// all of it, and may point at things those columns were kept apart from.
 	if whole_board && columns_only == false {
@@ -338,6 +345,7 @@ func cardPayload( card *models.Card , level access.Level , board_level access.Le
 		"start_all_day": card.StartAt != nil && card.StartTimed == false,
 		"due_at":      card.DueAt,
 		"due_all_day": card.DueAllDay,
+		"day":         card.Day,
 		"done":        card.Done,
 		"done_at":     card.DoneAt,
 		"doing":       card.Doing,
@@ -372,7 +380,7 @@ func ( handlers *Handlers ) UpdateBoard( c fiber.Ctx ) ( err error ) {
 	}
 	// Opening a board's cards to the public is the owner's call, made in a
 	// browser: a leaked key cannot switch paused links back on.
-	if body.AllowQuickShare != nil && ( access.Board( principal , board ) != access.Manage || principal.Key != nil ) {
+	if ( body.AllowQuickShare != nil || body.AllowAnonComments != nil ) && ( access.Board( principal , board ) != access.Manage || principal.Key != nil ) {
 		err = c.Status( fiber.StatusForbidden ).JSON( fiber.Map{ "error": "forbidden" } )
 		return
 	}
@@ -385,6 +393,13 @@ func ( handlers *Handlers ) UpdateBoard( c fiber.Ctx ) ( err error ) {
 	if update_err != nil {
 		err = modelError( c , update_err )
 		return
+	}
+	// A board becoming a calendar files the cards in date-titled columns
+	// (06NOV2026, 2026-11-06) under those days.
+	if before.Layout != models.LayoutCalendar && updated.Layout == models.LayoutCalendar {
+		if dated , _ := models.DaysFromListTitles( handlers.Store , board.ID ); dated > 0 {
+			if again , get_err := models.GetBoard( handlers.Store , board.ID ); get_err == nil { updated = again }
+		}
 	}
 	handlers.boardTextActivity( principal , &before , updated )
 	err = c.JSON( fiber.Map{ "rev": updated.Rev , "slug": updated.Slug , "purpose_rev": updated.PurposeRev , "notes_rev": updated.NotesRev } )
@@ -624,5 +639,27 @@ func ( handlers *Handlers ) DeleteLabel( c fiber.Ctx ) ( err error ) {
 		return
 	}
 	err = c.JSON( fiber.Map{ "ok": true } )
+	return
+}
+
+type carryOverRequest struct {
+	Today string `json:"today"`
+}
+
+// CarryOver moves a calendar board's unfinished cards from past days to
+// today, the caller's today. The page asks on opening the board, so
+// whoever opens it first that day does it for everyone; asking again moves
+// nothing. A board with carry-over off, or not a calendar, moves nothing.
+func ( handlers *Handlers ) CarryOver( c fiber.Ctx ) ( err error ) {
+	principal , board , err := handlers.requireBoard( c , access.Edit )
+	if board == nil { return }
+	var body carryOverRequest
+	if ok , bind_err := bindBody( c , &body ); ok == false { return bind_err }
+	moved , carry_err := models.CarryOverCards( handlers.Store , board.ID , body.Today , principal.Name )
+	if carry_err != nil {
+		err = modelError( c , carry_err )
+		return
+	}
+	err = c.JSON( fiber.Map{ "moved": moved } )
 	return
 }

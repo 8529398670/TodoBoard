@@ -75,6 +75,7 @@ func ( service *Service ) cardActivity( board *models.Board , change models.Card
 	if len( change.NewAssignees ) > 0 { parts = append( parts , service.text( "push.change_assigned" , nil ) ) }
 	if change.AssigneesRemoved { parts = append( parts , service.text( "push.change_unassigned" , nil ) ) }
 	if change.Edited && change.Archived == false && change.Unarchived == false { parts = append( parts , service.text( "push.change_edited" , nil ) ) }
+	if change.Commented { parts = append( parts , service.text( "push.change_commented" , map[string]string{ "comment": change.Comment } ) ) }
 	if len( parts ) == 0 { return }
 	result = service.text( "push.activity_card" , map[string]string{ "card": change.Title , "changes": strings.Join( parts , ", " ) } )
 	return

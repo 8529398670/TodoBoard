@@ -4,6 +4,7 @@ import (
 	errors "errors"
 	fmt "fmt"
 	regexp "regexp"
+	strconv "strconv"
 	strings "strings"
 	unicode "unicode"
 
@@ -37,6 +38,40 @@ func ValidSlug( slug string ) ( result bool ) {
 // a letter or digit collapsed to single dashes. A title with nothing usable
 // in it ("✓✓✓") becomes "board".
 func Slugify( title string ) ( slug string ) {
+	slug = slugWords( title )
+	if slug == "" || digitsPattern.MatchString( slug ) { slug = "board-" + slug }
+	slug = strings.Trim( slug , "-" )
+	return
+}
+
+// ColumnSlug is the column's part of a card link: its title as a slug, or
+// "card" when nothing in the title is usable. It is only for reading; the
+// card is found by its ULID, so a column renamed since still opens it.
+func ColumnSlug( title string ) ( slug string ) {
+	slug = slugWords( title )
+	if slug == "" { slug = "card" }
+	return
+}
+
+// CardPath is where a card opens on this site: /b/<board>/<column>/<ULID>.
+// A card from before ULIDs, or on a list the board no longer has, falls back
+// to the ?card=<id> form, which still works.
+func CardPath( board *Board , card *Card ) ( path string ) {
+	path = "/b/" + board.Slug
+	if board.Slug == "" { path = "/b/" + strconv.FormatUint( board.ID , 10 ) }
+	list := board.List( card.ListID )
+	if card.UID == "" || list == nil {
+		path += "?card=" + strconv.FormatUint( card.ID , 10 )
+		return
+	}
+	path += "/" + ColumnSlug( list.Title ) + "/" + card.UID
+	return
+}
+
+// slugWords is a title lower-cased, accents dropped, and every run of
+// anything that is not a letter or digit made one dash, at most
+// maxSlugLength long.
+func slugWords( title string ) ( slug string ) {
 	var builder strings.Builder
 	dash := false
 	for _ , r := range norm.NFKD.String( strings.ToLower( title ) ) {
@@ -53,8 +88,6 @@ func Slugify( title string ) ( slug string ) {
 	}
 	slug = builder.String()
 	if len( slug ) > maxSlugLength { slug = strings.Trim( slug[ :maxSlugLength ] , "-" ) }
-	if slug == "" || digitsPattern.MatchString( slug ) { slug = "board-" + slug }
-	slug = strings.Trim( slug , "-" )
 	return
 }
 

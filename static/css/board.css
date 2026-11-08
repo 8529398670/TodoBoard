@@ -60,6 +60,13 @@
 .color-purple { --tone: var(--c-purple); --tone-bg: var(--c-purple-bg); }
 .color-gray   { --tone: var(--c-gray);   --tone-bg: var(--c-gray-bg); }
 .color-none   { --tone: var(--accent);   --tone-bg: var(--bg); }
+/* A label colour of someone's own (#rrggbb in --label-hex): the text is the
+   colour pulled toward the page's text colour and the fill toward the card,
+   so one pick reads in light and dark alike. */
+.color-own {
+  --tone: color-mix(in srgb, var(--label-hex) 62%, var(--fg));
+  --tone-bg: color-mix(in srgb, var(--label-hex) 24%, var(--card-bg));
+}
 
 /* ------------------------------------------------------------------ */
 /* shared bits                                                         */
@@ -718,7 +725,6 @@ p.due-chip { margin: 0.5rem 0; }
 }
 .title-input:hover, .title-input:focus { border-color: var(--border); background: var(--bg); }
 .card-dialog-title-wrap { flex: 1 1 auto; min-width: 0; }
-.card-serial { flex: none; margin-top: 0.75rem; white-space: nowrap; }
 .card-dialog-title-wrap .title-input { display: block; width: 100%; padding: 0.35rem 0.5rem; border-color: var(--border); background: var(--bg); line-height: 1.35; }
 .card-dialog-title-wrap .row-actions { margin-top: 0.5rem; }
 .card-dialog-title { flex: 1 1 auto; margin: 0.4rem 0; font-size: 1.15rem; overflow-wrap: anywhere; }
@@ -1070,3 +1076,86 @@ input.card-number:focus { color: var(--fg); background: var(--bg); border-color:
 .quick-add-image { position: relative; display: inline-block; margin-bottom: 0.35rem; }
 .quick-add-image img { display: block; max-width: 8rem; max-height: 5rem; object-fit: contain; border-radius: 0.35rem; background: #fff; }
 .quick-add-image .btn-close { position: absolute; top: 0.15rem; right: 0.15rem; background-color: #fff; border-radius: 50%; }
+
+/* ------------------------------------------------------------------ */
+/* comments                                                            */
+.comment-chip { display: inline-flex; align-items: center; gap: 0.25rem; }
+.comment-list { list-style: none; margin: 0 0 0.75rem; padding: 0; display: flex; flex-direction: column; gap: 0.6rem; }
+.comment { padding: 0.5rem 0.65rem; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); }
+.comment-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; margin-bottom: 0.2rem; }
+.comment-text { overflow-wrap: anywhere; }
+.comment-text > :last-child { margin-bottom: 0; }
+.comment-actions { display: flex; gap: 0.4rem; margin-top: 0.4rem; }
+.comment-edit { margin: 0.2rem 0; }
+.comment-form { display: flex; flex-direction: column; gap: 0.4rem; }
+.comment-form-row { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap; }
+
+/* ------------------------------------------------------------------ */
+/* calendar (a board with the calendar layout)                         */
+.calendar-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; padding: 0.25rem 1rem 0.75rem; }
+.calendar-nav { display: flex; align-items: center; gap: 0.25rem; }
+.calendar-title { flex: 1 1 auto; margin: 0; font-size: 1.15rem; font-weight: 600; }
+.calendar-modes .btn.active { background: var(--accent); border-color: var(--accent); color: var(--accent-fg, #fff); }
+
+.calendar-days .kanban-column.calendar-day { flex: 1 0 15.5rem; max-width: 22rem; }
+.calendar-one-day .kanban-column.calendar-day { flex: 0 1 32rem; max-width: 32rem; }
+.calendar-day.is-today { box-shadow: inset 0 3px 0 var(--accent); }
+.calendar-day.is-past .column-title { color: var(--fg-muted); }
+.calendar-day-link { padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
+.calendar-day-link:hover, .calendar-day-link:focus-visible { text-decoration: underline; }
+.calendar-today-badge { font-size: 0.7rem; font-weight: 600; padding: 0.05rem 0.45rem; border-radius: 999px; background: var(--accent); color: var(--accent-fg, #fff); }
+.calendar-day .stage-tabs { margin: 0 0.5rem 0.5rem; }
+.calendar-empty { margin: 0.25rem 0.5rem; }
+
+.calendar-month {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 1px;
+  margin: 0 1rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--border);
+}
+.calendar-weekday { padding: 0.35rem 0.5rem; font-size: 0.75rem; font-weight: 600; color: var(--fg-muted); background: var(--column-bg, var(--bg)); text-align: center; }
+.calendar-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.2rem;
+  min-height: 6.5rem;
+  padding: 0.35rem 0.45rem;
+  border: 0;
+  background: var(--card-bg);
+  color: inherit;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  min-width: 0;
+}
+.calendar-cell:hover { background: color-mix(in srgb, var(--accent) 6%, var(--card-bg)); }
+.calendar-cell:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.calendar-cell.other-month { background: var(--bg); color: var(--fg-muted); }
+.calendar-cell.is-today .calendar-date { background: var(--accent); color: var(--accent-fg, #fff); }
+.calendar-date { align-self: flex-start; min-width: 1.6rem; padding: 0 0.35rem; border-radius: 999px; font-weight: 600; font-size: 0.85rem; text-align: center; }
+.calendar-counts { display: flex; gap: 0.2rem; flex-wrap: wrap; }
+.calendar-count { font-size: 0.7rem; font-weight: 600; padding: 0 0.4rem; border-radius: 999px; background: var(--bg); border: 1px solid var(--border); }
+.calendar-count.stage-doing { border-color: var(--accent); color: var(--accent); }
+.calendar-count.stage-done { opacity: 0.6; }
+.calendar-titles { display: flex; flex-direction: column; gap: 0.1rem; font-size: 0.75rem; min-width: 0; }
+.calendar-card-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.calendar-card-title.is-doing { font-weight: 600; }
+
+.calendar-tray { margin: 0.5rem 1rem 1.5rem; padding: 0.75rem; border: 1px dashed var(--border); border-radius: 8px; }
+.calendar-tray-title { margin: 0 0 0.25rem; font-size: 0.95rem; font-weight: 600; }
+.calendar-tray-cards { display: flex; flex-wrap: wrap; gap: 0.5rem; min-height: 2.5rem; }
+.calendar-tray-cards .card-face { flex: 0 1 16rem; }
+
+@media (max-width: 39.99rem) {
+  .calendar-toolbar { padding: 0.25rem 0.75rem 0.5rem; }
+  .calendar-title { order: -1; flex-basis: 100%; }
+  .calendar-month { margin: 0 0.5rem 1rem; }
+  .calendar-cell { min-height: 4rem; padding: 0.25rem; }
+  .calendar-titles { display: none; }
+  .calendar-days .kanban-column.calendar-day { flex: 0 0 calc(100vw - 2rem); max-width: none; }
+}

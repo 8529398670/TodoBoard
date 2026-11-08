@@ -79,6 +79,8 @@ class BoardClient {
   board()                          { return this.get( "/" + this.boardId ); }
   stamp()                          { return this.get( "/" + this.boardId + "/stamp" ); }
   updateBoard( fields )            { return this.post( "/" + this.boardId , fields ); }
+  // A calendar board: unfinished cards from past days move to today (yours).
+  carryOver( today )               { return this.post( "/" + this.boardId + "/carry-over" , { today: today } ); }
   // format "xlsx" or "csv"; timed dates are written in zone.
   exportSheet( format , archived , zone ) {
     return this.file( "/" + this.boardId + "/export?format=" + format + "&archived=" + ( archived ? "1" : "0" ) + "&tz=" + encodeURIComponent( zone || "" ) );
@@ -123,6 +125,14 @@ class BoardClient {
     return this.post( "/" + this.boardId + "/cards/" + cardId + "/checklist/" + itemId , fields );
   }
   deleteItem( cardId , itemId )    { return this.post( "/" + this.boardId + "/cards/" + cardId + "/checklist/" + itemId + "/delete" ); }
+
+  // A card's comments (see server/routes/comments.go).
+  comments( cardId )               { return this.get( "/" + this.boardId + "/cards/" + cardId + "/comments" ); }
+  addComment( cardId , text )      { return this.post( "/" + this.boardId + "/cards/" + cardId + "/comments" , { text: text } ); }
+  editComment( cardId , commentId , text ) {
+    return this.post( "/" + this.boardId + "/cards/" + cardId + "/comments/" + commentId , { text: text } );
+  }
+  removeComment( cardId , commentId ) { return this.post( "/" + this.boardId + "/cards/" + cardId + "/comments/" + commentId + "/remove" ); }
 
   // Members only -- the server answers a guest 401/404 for all of these.
   setMember( userId , role )       { return this.post( "/" + this.boardId + "/members" , { user_id: userId , role: role } ); }

@@ -10,6 +10,7 @@ const UserSettings = {
     root.appendChild( this.appearance( me ) );
     root.appendChild( this.time( me ) );
     root.appendChild( this.cards( me ) );
+    root.appendChild( this.labelColors( me ) );
     this.summarize( me );
   },
 
@@ -140,6 +141,44 @@ const UserSettings = {
       UserSettings.save( me , { swipe_columns: checked } );
     } ) );
     section.appendChild( Dom.el( "p" , { class: "muted small-print" , text: T( "user_settings.swipe_columns_hint" ) } ) );
+    return section;
+  },
+
+  // The person's own label colours: each with a name to tell it apart and
+  // a remove button. New ones come from picking a colour for a label.
+  labelColors( me ) {
+    const section = Dom.el( "section" , { class: "panel-section label-colors" } );
+    section.appendChild( Dom.el( "h3" , { text: T( "user_settings.label_colors_heading" ) } ) );
+    section.appendChild( Dom.el( "p" , { class: "muted small-print" , text: T( "user_settings.label_colors_hint" ) } ) );
+    const redraw = () => { section.replaceWith( this.labelColors( me ) ); };
+    LabelColors.onChange = function ( display ) { me.display = display; };
+    const colors = LabelColors.list();
+    if ( !colors.length ) {
+      section.appendChild( Dom.el( "p" , { class: "muted" , text: T( "user_settings.label_colors_none" ) } ) );
+      return section;
+    }
+    const list = Dom.el( "ul" , { class: "label-editor" } );
+    colors.forEach( function ( saved , index ) {
+      const name = Dom.el( "input" , { class: "form-control" , attrs: { maxlength: "40" , placeholder: saved.color , "aria-label": T( "user_settings.label_color_name" ) } } );
+      name.value = saved.name;
+      name.addEventListener( "change" , async function () {
+        const next = LabelColors.list().map( function ( item , at ) { return at === index ? { name: name.value.trim() , color: item.color } : item; } );
+        await LabelColors.save( next , true );
+      } );
+      // Set through the style object: the CSP refuses style attributes.
+      const swatch = Dom.el( "span" , { class: "swatch swatch-hex" , attrs: { "aria-hidden": "true" } } );
+      swatch.style.setProperty( "--swatch" , saved.color );
+      const chip = Tone.paint( Dom.el( "span" , { class: "label-chip color-own" , text: saved.color } ) , saved.color );
+      list.appendChild( Dom.el( "li" , { class: "label-row" , children: [
+        swatch ,
+        name , chip ,
+        Ui.button( "user_settings.label_color_remove" , async function () {
+          await LabelColors.save( LabelColors.list().filter( function ( item , at ) { return at !== index; } ) , true );
+          redraw();
+        } , "secondary small danger" ),
+      ] } ) );
+    } );
+    section.appendChild( list );
     return section;
   },
 

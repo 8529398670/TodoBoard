@@ -48,6 +48,10 @@ const CardModal = {
       this.editingTitle = false;
       this.conflict = null;
       this.titleConflict = null;
+      if ( this.ctx && this.ctx.showPath && !this.ctx.isGuest ) {
+        this.ctx.showPath();
+        return;
+      }
       const url = new URL( window.location.href );
       url.searchParams.delete( "card" );
       window.history.replaceState( null , "" , url.pathname + url.search );
@@ -100,11 +104,17 @@ const CardModal = {
     this.editingTitle = false;
     this.conflict = null;
     this.titleConflict = null;
-    const url = new URL( window.location.href );
-    url.searchParams.set( "card" , String( cardId ) );
-    window.history.replaceState( null , "" , url.pathname + url.search );
+    // A member's address bar becomes the card's own path; a guest's share
+    // link has no room for one, so it carries ?card= as before.
+    if ( ctx.showPath && !ctx.isGuest ) ctx.showPath();
+    else {
+      const url = new URL( window.location.href );
+      url.searchParams.set( "card" , String( cardId ) );
+      window.history.replaceState( null , "" , url.pathname + url.search );
+    }
     this.render();
     if ( !this.dialog().open ) this.dialog().showModal();
+    this.loadComments( cardId );
   },
 
   close() {
@@ -128,11 +138,171 @@ const CardModal = {
       Ui.toast( T( "card.removed_notice" ) );
       return;
     }
+    // Someone else may have commented: the board moved, so ask again.
+    this.loadComments( this.cardId );
     if ( this.typing() ) {
       this.pendingRefresh = true;
       return;
     }
     this.render();
+  },
+
+  // ---------------------------------------------------------------------
+  // Comments. The thread is fetched when the card opens and whenever the
+  // board moves, kept in commentState, and drawn in its own section, which
+  // is swapped on its own so an answer arriving never wipes what someone
+  // is typing elsewhere in the card. The box being typed in keeps its
+  // words in commentDraft across redraws.
+
+  async loadComments( cardId ) {
+    const ctx = this.ctx;
+    if ( !ctx || ctx.quick ) return;
+    let answer;
+    try {
+      answer = await ctx.client.comments( cardId );
+    } catch ( error ) {
+      return;
+    }
+    if ( this.cardId !== cardId ) return;
+    this.commentState = { cardId: cardId , list: answer.comments || [] , canComment: !!answer.can_comment };
+    this.redrawComments();
+  },
+
+  redrawComments() {
+    const old = Dom.get( "card-dialog-body" ).querySelector( ".card-comments" );
+    const card = this.card();
+    if ( !old || !card ) return;
+    const focused = old.contains( document.activeElement ) && document.activeElement.classList.contains( "comment-input" );
+    const fresh = this.commentsSection( card );
+    old.replaceWith( fresh );
+    if ( focused ) {
+      const input = fresh.querySelector( ".comment-input" );
+      if ( input ) {
+        input.focus();
+        input.setSelectionRange( input.value.length , input.value.length );
+      }
+    }
+  },
+
+  commentAuthor( by ) {
+    return by === "guest:" ? T( "comments.anonymous" ) : CardBits.actorName( by );
+  },
+
+  commentsSection( card ) {
+    const ctx = this.ctx;
+    if ( ctx.quick ) return null;
+    const state = this.commentState && this.commentState.cardId === card.id ? this.commentState : null;
+    const section = Dom.el( "section" , { class: "card-section card-comments" } );
+    section.appendChild( Dom.el( "h3" , { text: T( "comments.heading" ) } ) );
+    if ( !state ) {
+      section.appendChild( Dom.el( "p" , { class: "muted" , text: T( "comments.loading" ) } ) );
+      return section;
+    }
+    const list = Dom.el( "ol" , { class: "comment-list" } );
+    state.list.forEach( ( comment ) => list.appendChild( this.commentItem( card , comment ) ) );
+    if ( state.list.length ) section.appendChild( list );
+    else if ( !state.canComment ) section.appendChild( Dom.el( "p" , { class: "muted" , text: T( "comments.none" ) } ) );
+    if ( state.canComment ) section.appendChild( this.commentForm( card ) );
+    return section;
+  },
+
+  commentItem( card , comment ) {
+    const ctx = this.ctx;
+    const item = Dom.el( "li" , { class: "comment" } );
+    const when = Dates.format( comment.created_at , false , true ) + ( comment.edited_at ? " · " + T( "comments.edited" ) : "" );
+    item.appendChild( Dom.el( "div" , { class: "comment-head" , children: [
+      Dom.el( "strong" , { text: this.commentAuthor( comment.by ) } ),
+      Dom.el( "span" , { class: "muted small-print" , text: when } ),
+    ] } ) );
+    const text = Dom.el( "div" , { class: "comment-text markdown-body" } );
+    Markdown.render( comment.text , text );
+    item.appendChild( text );
+    if ( !comment.can_edit && !comment.can_remove ) return item;
+    const actions = Dom.el( "div" , { class: "comment-actions" } );
+    if ( comment.can_edit ) actions.appendChild( Ui.button( "comments.edit" , () => {
+      const area = Dom.el( "textarea" , { class: "form-control comment-input comment-edit" , attrs: { rows: "3" , maxlength: "4000" , "aria-label": T( "comments.edit" ) } } );
+      area.value = comment.text;
+      Ui.autoGrow( area );
+      const save = Ui.button( "comments.save" , async () => {
+        try {
+          await ctx.client.editComment( card.id , comment.id , area.value );
+          await this.loadComments( card.id );
+        } catch ( error ) {
+          Ui.error( error );
+        }
+      } , "small" );
+      const cancel = Ui.button( "comments.cancel" , () => this.redrawComments() , "secondary small" );
+      text.replaceWith( area );
+      actions.replaceWith( Dom.el( "div" , { class: "comment-actions" , children: [ save , cancel ] } ) );
+      area.focus();
+    } , "secondary small" ) );
+    if ( comment.can_remove ) actions.appendChild( Ui.button( "comments.remove" , async () => {
+      if ( !window.confirm( T( "comments.remove_confirm" ) ) ) return;
+      try {
+        await ctx.client.removeComment( card.id , comment.id );
+        await this.loadComments( card.id );
+        ctx.reload();
+      } catch ( error ) {
+        Ui.error( error );
+      }
+    } , "secondary small danger" ) );
+    item.appendChild( actions );
+    return item;
+  },
+
+  // The box to post in. A guest with no name, on a board that does not take
+  // anonymous comments, gives one here first; it is kept like the name an
+  // edit link asks for.
+  commentForm( card ) {
+    const ctx = this.ctx;
+    const form = Dom.el( "form" , { class: "comment-form" , attrs: { autocomplete: "off" } } );
+    const needsName = ctx.isGuest && !ctx.client.guestName && !ctx.board.allow_anon_comments;
+    let name = null;
+    if ( needsName ) {
+      name = Dom.el( "input" , { class: "form-control" , attrs: { maxlength: "40" , required: "required" , placeholder: T( "share.guest_name_placeholder" ) } } );
+      form.appendChild( Ui.field( "comments.name_label" , name ) );
+    }
+    const area = Dom.el( "textarea" , { class: "form-control comment-input" , attrs: { rows: "2" , maxlength: "4000" , placeholder: T( "comments.placeholder" ) , "aria-label": T( "comments.placeholder" ) } } );
+    area.value = this.commentDraft && this.commentDraft.cardId === card.id ? this.commentDraft.text : "";
+    area.addEventListener( "input" , () => { this.commentDraft = { cardId: card.id , text: area.value }; } );
+    Ui.autoGrow( area );
+    // Enter with Ctrl or ⌘ posts, as in most chat boxes; Enter alone is a new line.
+    area.addEventListener( "keydown" , function ( event ) {
+      if ( event.key === "Enter" && ( event.ctrlKey || event.metaKey ) ) {
+        event.preventDefault();
+        form.requestSubmit();
+      }
+    } );
+    form.appendChild( area );
+    const post = Dom.el( "button" , { class: "btn btn-primary btn-sm" , text: T( "comments.post" ) , attrs: { type: "submit" } } );
+    form.appendChild( Dom.el( "div" , { class: "comment-form-row" , children: [
+      Dom.el( "span" , { class: "muted small-print" , text: T( "card.markdown_hint" ) } ),
+      post,
+    ] } ) );
+    form.addEventListener( "submit" , async ( event ) => {
+      event.preventDefault();
+      const text = area.value.trim();
+      if ( !text ) return;
+      if ( name ) {
+        const given = name.value.trim().slice( 0 , 40 );
+        if ( !given ) return;
+        ctx.client.guestName = given;
+        try { window.localStorage.setItem( "guest_name" , given ); } catch ( error ) { /* not remembered */ }
+      }
+      post.disabled = true;
+      try {
+        await ctx.client.addComment( card.id , text );
+        this.commentDraft = null;
+        area.value = "";
+        area.blur();
+        await this.loadComments( card.id );
+        ctx.reload();
+      } catch ( error ) {
+        post.disabled = false;
+        Ui.error( error );
+      }
+    } );
+    return form;
   },
 
   card() {
@@ -168,6 +338,8 @@ const CardModal = {
     body.appendChild( this.description( card , canEdit ) );
     body.appendChild( this.checklist( card , canEdit ) );
     if ( picture && !card.image_at ) body.appendChild( picture );
+    const day = this.daySection( card , canEdit );
+    if ( day ) body.appendChild( day );
     body.appendChild( this.dates( card , canEdit ) );
     const people = this.assignees( card , canEdit );
     if ( people ) body.appendChild( people );
@@ -176,6 +348,8 @@ const CardModal = {
     body.appendChild( this.placement( card , canEdit , canMove ) );
     const labels = this.labels( card , canEdit );
     if ( labels ) body.appendChild( labels );
+    const comments = this.commentsSection( card );
+    if ( comments ) body.appendChild( comments );
     body.appendChild( this.actions( card , canEdit , canMove ) );
     // A public link is not told who has been working on the card.
     if ( card.updated_by !== undefined ) body.appendChild( Dom.el( "p" , { class: "muted card-updated" , text: I18n.fill( "card.updated_by" , {
@@ -194,7 +368,6 @@ const CardModal = {
       Markdown.renderInline( card.title , title );
       header.appendChild( title );
     }
-    if ( card.serial ) header.appendChild( Dom.el( "span" , { class: "muted small-print card-serial" , text: I18n.fill( "card.serial" , { n: card.serial } ) } ) );
     header.appendChild( Ui.closeButton( T( "ui.close" ) , () => this.close() , "mt-2" ) );
     return header;
   },
@@ -234,11 +407,11 @@ const CardModal = {
     board.labels.forEach( ( label ) => {
       const on = card.label_ids.indexOf( label.id ) >= 0;
       if ( !canEdit && !on ) return;
-      const chip = Dom.el( "button" , {
-        class: "label-chip color-" + label.color + ( on ? " selected" : " unselected" ),
+      const chip = Tone.paint( Dom.el( "button" , {
+        class: "label-chip " + Tone.className( label.color ) + ( on ? " selected" : " unselected" ),
         text: label.name || T( "card.unnamed_label" ),
         attrs: { type: "button" , "aria-pressed": on ? "true" : "false" },
-      } );
+      } ) , label.color );
       chip.disabled = !canEdit;
       chip.addEventListener( "click" , () => {
         const next = on ? card.label_ids.filter( function ( id ) { return id !== label.id; } ) : card.label_ids.concat( [ label.id ] );
@@ -250,6 +423,26 @@ const CardModal = {
     if ( this.ctx.canEdit ) {
       section.appendChild( Ui.button( "card.manage_labels" , () => BoardSettings.openLabels( this.ctx ) ) );
     }
+    return section;
+  },
+
+  // On a calendar board, the day the card is filed under.
+  daySection( card , canEdit ) {
+    if ( !this.ctx.isCalendar || !this.ctx.isCalendar() ) return null;
+    const section = Dom.el( "section" , { class: "card-section card-day" } );
+    section.appendChild( Dom.el( "h3" , { text: T( "calendar.day_heading" ) } ) );
+    if ( !canEdit ) {
+      section.appendChild( Dom.el( "p" , { class: card.day ? "" : "muted" , text: card.day ? CalendarView.format( CalendarView.parse( card.day ) , { weekday: "long" , month: "long" , day: "numeric" , year: "numeric" } ) : T( "calendar.no_day" ) } ) );
+      return section;
+    }
+    const input = Dom.el( "input" , { class: "form-control" , attrs: { type: "date" , "aria-label": T( "calendar.day_heading" ) } } );
+    input.value = card.day || "";
+    input.addEventListener( "change" , () => this.save( { day: input.value } ) );
+    const row = Dom.el( "div" , { class: "row-actions" , children: [ input ] } );
+    const today = CalendarView.today();
+    if ( card.day !== today ) row.appendChild( Ui.button( "calendar.move_today" , () => this.save( { day: today } ) , "secondary small" ) );
+    if ( card.day ) row.appendChild( Ui.button( "calendar.clear_day" , () => this.save( { day: "" } ) , "secondary small" ) );
+    section.appendChild( row );
     return section;
   },
 
@@ -886,6 +1079,8 @@ const CardModal = {
     const ctx = this.ctx;
     const section = Dom.el( "section" , { class: "card-section card-actions" } );
     const row = Dom.el( "div" , { class: "row-actions" } );
+    const link = ctx.cardLink ? ctx.cardLink( card ) : "";
+    if ( link ) row.appendChild( Ui.button( "card.copy_link" , () => Ui.copyText( link ) ) );
     row.appendChild( Ui.button( "export.copy_card_markdown" , () => Ui.copyText( CardExport.markdown( ctx , card ) ) ) );
     row.appendChild( Ui.button( "export.card_button" , () => CardExport.open( ctx , card ) ) );
     if ( !ctx.isGuest ) row.appendChild( Ui.button( "card.notifications_button" , () => Subscribe.openCard( ctx , card ) ) );

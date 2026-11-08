@@ -54,7 +54,7 @@ const Home = {
     const shared = Dom.get( "shared-cards" );
     Dom.clear( shared );
     result.shared_cards.forEach( function ( item ) {
-      const link = Dom.el( "a" , { attrs: { href: "/b/" + ( item.board_slug || item.board_id ) + "?card=" + item.card_id } } );
+      const link = Dom.el( "a" , { attrs: { href: item.card_path || ( "/b/" + ( item.board_slug || item.board_id ) + "?card=" + item.card_id ) } } );
       Markdown.renderInline( item.card_title , link );
       shared.appendChild( Dom.el( "li" , { class: "link-row list-group-item" , children: [
         link,

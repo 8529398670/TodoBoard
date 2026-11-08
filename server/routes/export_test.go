@@ -83,9 +83,9 @@ func TestExportNoPriceColumnWithoutPrices( t *testing.T ) {
 	fixture.card( t , board , "Plain" , "" )
 	table := fixture.table( t , board )
 	if column( table , "Price" ) != -1 { t.Errorf( "a board with no prices needs no column: %q" , table.Header ) }
-	serial := column( table , "Card no." )
-	if serial == -1 || table.Rows[ 0 ][ serial ] != "1" || table.Numeric[ serial ] == false {
-		t.Errorf( "card number column: %q %q %v" , table.Header , table.Rows , table.Numeric )
+	id := column( table , "Card ID" )
+	if id == -1 || len( table.Rows[ 0 ][ id ] ) != 26 || table.Numeric[ id ] {
+		t.Errorf( "card ID column should hold the ULID as text: %q %q %v" , table.Header , table.Rows , table.Numeric )
 	}
 }
 

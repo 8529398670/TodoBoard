@@ -35,6 +35,12 @@ const Sharing = {
       this.renderLinks( links , BoardPage.context() , {} );
     } ) );
     section.appendChild( Dom.el( "p" , { class: "muted small-print" , text: T( "share.quick_allow_hint" ) } ) );
+    section.appendChild( Dom.el( "h3" , { text: T( "share.anon_heading" ) } ) );
+    section.appendChild( Ui.checkbox( "share.anon_allow" , ctx.board.allow_anon_comments , async ( checked ) => {
+      await ctx.mutate( function () { return ctx.client.updateBoard( { allow_anon_comments: checked } ); } );
+      this.renderLinks( links , BoardPage.context() , {} );
+    } ) );
+    section.appendChild( Dom.el( "p" , { class: "muted small-print" , text: T( "share.anon_allow_hint" ) } ) );
   },
 
   // From a card's menu: its public link, on the clipboard. Where the browser
@@ -167,7 +173,7 @@ const Sharing = {
     if ( !candidates.length ) return;
     const form = Dom.el( "form" , { attrs: { autocomplete: "off" } } );
     const person = Ui.select( candidates.map( function ( item ) { return { value: item.id , text: item.display_name }; } ) , "" );
-    const mode = Ui.select( [ { value: "edit" , text: T( "share.mode_edit" ) } , { value: "view" , text: T( "share.mode_view" ) } ] , "edit" );
+    const mode = Ui.select( [ { value: "edit" , text: T( "share.mode_edit" ) } , { value: "comment" , text: T( "share.mode_comment" ) } , { value: "view" , text: T( "share.mode_view" ) } ] , "edit" );
     form.appendChild( Ui.field( "share.person_label" , person ) );
     form.appendChild( Ui.field( "share.mode_label" , mode ) );
     form.appendChild( Dom.el( "button" , { class: "btn btn-primary" , text: T( "share.share_card_with" ) , attrs: { type: "submit" } } ) );
@@ -189,7 +195,7 @@ const Sharing = {
     section.appendChild( Dom.el( "p" , { class: "muted" , text: T( "share.links_intro" ) } ) );
 
     const form = Dom.el( "form" , { attrs: { autocomplete: "off" } } );
-    const mode = Ui.select( [ { value: "view" , text: T( "share.mode_view" ) } , { value: "edit" , text: T( "share.mode_edit" ) } ] , "view" );
+    const mode = Ui.select( [ { value: "view" , text: T( "share.mode_view" ) } , { value: "comment" , text: T( "share.mode_comment" ) } , { value: "edit" , text: T( "share.mode_edit" ) } ] , "view" );
     const label = Dom.el( "input" , { class: "form-control" , attrs: { maxlength: "80" , placeholder: T( "share.link_label_placeholder" ) } } );
     const days = Dom.el( "input" , { class: "form-control" , attrs: { type: "number" , min: "0" , max: "3650" , value: "0" , inputmode: "numeric" } } );
     form.appendChild( Ui.field( "share.mode_label" , mode ) );

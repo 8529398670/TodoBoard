@@ -28,7 +28,7 @@ const BoardPage = {
   collapseSaving: Promise.resolve(),
 
   views() {
-    return { kanban: KanbanView , todo: TodoView , timeline: TimelineView };
+    return { kanban: KanbanView , todo: TodoView , timeline: TimelineView , calendar: CalendarView };
   },
 
   async init() {
@@ -64,9 +64,20 @@ const BoardPage = {
     Dom.get( "redo-button" ).addEventListener( "click" , () => History.redo() );
 
     await this.load();
+    // /b/<board>/<column>/<ULID> opens that card: the ULID finds it, and
+    // the column is only for reading. ?card=<id> is the older form, still
+    // in notifications already sent. Either way, opening it rewrites the
+    // address to the card's current path.
     const params = new URLSearchParams( window.location.search );
     const cardId = Number( params.get( "card" ) );
-    if ( cardId ) this.openCard( cardId );
+    if ( this.openUid && this.data ) {
+      const card = this.data.cards.find( ( item ) => item.uid === this.openUid );
+      if ( card ) this.openCard( card.id );
+      else {
+        Ui.toast( T( "errors.card_not_found" ) );
+        this.showSlug();
+      }
+    } else if ( cardId ) this.openCard( cardId );
     this.startPolling();
   },
 
@@ -77,10 +88,13 @@ const BoardPage = {
       this.client = await BoardApi.guest( token );
       this.me = { authenticated: false };
       Dom.show( Dom.get( "home-link" ) , false );
-      if ( this.client.info.mode === "edit" ) await this.askGuestName();
+      // An edit link changes things, and a comment link signs what it
+      // posts, so both are asked for a name -- a comment link only where
+      // the board does not take anonymous comments.
+      if ( this.client.info.mode === "edit" || ( this.client.info.mode === "comment" && !this.client.info.anon_comments ) ) await this.askGuestName();
       const info = this.client.info;
       const banner = Dom.get( "guest-banner" );
-      Dom.text( banner , info.quick ? T( "share.banner_quick" ) : I18n.fill( info.mode === "edit" ? "share.banner_edit" : "share.banner_view" , {
+      Dom.text( banner , info.quick ? T( "share.banner_quick" ) : I18n.fill( info.mode === "edit" ? "share.banner_edit" : info.mode === "comment" ? "share.banner_comment" : "share.banner_view" , {
         label: info.label || ( info.list_title ? info.board_title + " › " + info.list_title : info.board_title ),
       } ) );
       Dom.show( banner , true );
@@ -89,14 +103,17 @@ const BoardPage = {
     // /b/<id> or /b/<slug>; the server takes either. Once the board is
     // loaded the client switches to the numeric ID, so renaming the slug
     // mid-session cannot strand it.
-    const match = /^\/b\/([a-z0-9-]+)\/?$/.exec( window.location.pathname );
+    const match = /^\/b\/([a-z0-9-]+)(?:\/[^/]+\/([0-9A-HJKMNP-TV-Z]{26}))?\/?$/.exec( window.location.pathname );
     if ( !match ) throw new Error( "board_not_found" );
+    this.openUid = match[ 2 ] || "";
     this.me = await Api.me();
     if ( !this.me.authenticated ) {
       window.location.replace( "/" );
       throw new Error( "not authenticated" );
     }
     Dates.configure( this.me.display );
+    LabelColors.set( this.me.display.label_colors );
+    LabelColors.onChange = ( display ) => { this.me.display = display; };
     Theme.setUser( this.me.display.theme , this.me.display.own_theme_on_boards );
     this.client = BoardApi.member( /^\d+$/.test( match[ 1 ] ) ? Number( match[ 1 ] ) : match[ 1 ] );
   },
@@ -162,12 +179,29 @@ const BoardPage = {
   },
 
   // Keep the address bar on the board's slug (/b/1 becomes /b/lab-work),
-  // query string and all.
+  // query string and all, and on the open card's path while one is open, so
+  // a card that moved column shows its new one.
   showSlug() {
-    const slug = this.data.board.slug;
-    if ( !slug ) return;
-    const path = "/b/" + slug;
-    if ( window.location.pathname !== path ) window.history.replaceState( null , "" , path + window.location.search );
+    if ( !this.data || this.client.isGuest ) return;
+    const card = CardModal.cardId ? this.data.cards.find( ( item ) => item.id === CardModal.cardId ) : null;
+    const path = ( card && this.cardPath( card ) ) || this.boardPath();
+    const params = new URLSearchParams( window.location.search );
+    params.delete( "card" );
+    const search = params.toString() ? "?" + params.toString() : "";
+    if ( window.location.pathname + window.location.search !== path + search ) window.history.replaceState( null , "" , path + search );
+  },
+
+  boardPath() {
+    const board = this.data.board;
+    return "/b/" + ( board.slug || board.id );
+  },
+
+  // Where a card opens: /b/<board>/<column>/<ULID>. Guests have no such
+  // path (theirs is the share link), so for them it is "".
+  cardPath( card ) {
+    if ( !this.data || this.client.isGuest || !card.uid ) return "";
+    const list = this.data.board.lists.find( ( item ) => item.id === card.list_id );
+    return this.boardPath() + "/" + Ui.columnSlug( list ? list.title : "" ) + "/" + card.uid;
   },
 
   // What every view, panel, and the card editor is handed.
@@ -204,6 +238,12 @@ const BoardPage = {
       },
       view: this.view,
       openCard( cardId ) { page.openCard( cardId ); },
+      // The card's own link, absolute, or "" for a guest.
+      cardLink( card ) {
+        const path = page.cardPath( card );
+        return path ? window.location.origin + path : "";
+      },
+      showPath() { page.showSlug(); },
       reload() { return page.load(); },
       setDragging( flag ) { page.dragging = flag; },
       // A three-column board shows its first three open lists and nothing
@@ -216,6 +256,10 @@ const BoardPage = {
       // but the All list, being every list, is only for the whole board.
       isStaged() {
         return !!data && data.board.layout === "staged";
+      },
+      // A calendar board files its cards by day (CalendarView).
+      isCalendar() {
+        return !!data && data.board.layout === "calendar" && !data.list_only;
       },
       // Whether a card is on a shopping board or in a shopping column: the
       // same rule the server looks products up by (routes/products.go).
@@ -355,11 +399,14 @@ const BoardPage = {
     const scrollTop = window.scrollY;
     Dom.clear( root );
     Dom.clear( Dom.get( "stage-slot" ) );
-    root.className = "board-root view-" + ( ctx.cardOnly ? "cards" : this.view );
+    // On a calendar board the calendar is the board view: Todo and
+    // Timeline stay as they are.
+    const view = this.view === "kanban" && ctx.isCalendar() ? "calendar" : this.view;
+    root.className = "board-root view-" + ( ctx.cardOnly ? "cards" : view );
     if ( ctx.cardOnly ) {
       CardOnlyView.render( root , ctx );
     } else {
-      this.views()[ this.view ].render( root , ctx );
+      this.views()[ view ].render( root , ctx );
     }
     const restored = root.querySelector( ".scroll-x" );
     if ( restored && this.scrollLeft ) restored.scrollLeft = this.scrollLeft;

@@ -398,6 +398,7 @@ const KanbanView = {
       CardBits.price( card ),
       CardBits.due( card ),
       CardBits.checklist( card ),
+      CardBits.comments( card ),
       CardBits.assignees( card , ctx.people ),
     ].filter( Boolean ).forEach( function ( node ) { meta.appendChild( node ); } );
     if ( meta.childNodes.length ) face.appendChild( meta );
@@ -591,6 +592,8 @@ const CardMenu = {
       } } );
     }
     this.sendItems( card , ctx ).forEach( function ( item ) { items.push( item ); } );
+    const link = ctx.cardLink ? ctx.cardLink( card ) : "";
+    if ( link ) items.push( { key: "card.copy_link" , action: function () { Ui.copyText( link ); } } );
     items.push( { key: "export.copy_card_markdown" , action: function () { Ui.copyText( CardExport.markdown( ctx , card ) ); } } );
     items.push( { key: "export.card_button" , action: function () { CardExport.open( ctx , card ); } } );
     if ( ctx.board.allow_quick_share && ctx.canEdit && !ctx.isGuest && !card.archived ) {

@@ -92,9 +92,34 @@ func modeLevel( mode string ) ( level Level ) {
 	switch mode {
 	case models.ModeEdit:
 		level = Edit
-	case models.ModeView:
+	case models.ModeView , models.ModeComment:
 		level = View
 	}
+	return
+}
+
+// CanComment reports whether the principal may post comments on this card:
+// anyone who can edit it, and anyone who reads it through a comment link or
+// a card shared with them to comment on. A member who is a viewer, a view
+// link and a card's public link read comments but post none.
+func CanComment( principal *Principal , board *models.Board , card *models.Card ) ( result bool ) {
+	level := Card( principal , board , card )
+	if level >= Edit { return true }
+	if level < View || QuickLink( principal ) { return false }
+	if link := principal.Share; link != nil {
+		result = link.Mode == models.ModeComment
+		return
+	}
+	result = card.SharedWith[ principal.UserID ] == models.ModeComment
+	return
+}
+
+// CommentName is what a comment from this principal is signed with, and
+// whether they may post at all: a guest who gave no name only on a board
+// that allows anonymous comments.
+func CommentName( principal *Principal , board *models.Board ) ( name string , ok bool ) {
+	name = principal.Name
+	ok = principal.IsGuest() == false || name != "guest:" || board.AllowAnonComments
 	return
 }
 

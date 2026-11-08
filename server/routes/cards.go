@@ -16,6 +16,8 @@ type createCardRequest struct {
 	// The stage it starts in, on a staged board.
 	Doing    *bool    `json:"doing"`
 	Done     *bool    `json:"done"`
+	// The day it is filed under, on a calendar board.
+	Day      *string  `json:"day"`
 }
 
 type checklistAddRequest struct {
@@ -30,8 +32,8 @@ func ( handlers *Handlers ) CreateCard( c fiber.Ctx ) ( err error ) {
 	var body createCardRequest
 	if ok , bind_err := bindBody( c , &body ); ok == false { return bind_err }
 	card , refused := handlers.createCard( principal , board , body.ListID , body.Title , body.Position )
-	if refused == nil && ( body.Doing != nil || body.Done != nil ) {
-		card , _ , refused = handlers.patchCard( principal , board , card , &models.CardPatch{ Doing: body.Doing , Done: body.Done } )
+	if refused == nil && ( body.Doing != nil || body.Done != nil || body.Day != nil ) {
+		card , _ , refused = handlers.patchCard( principal , board , card , &models.CardPatch{ Doing: body.Doing , Done: body.Done , Day: body.Day } )
 	}
 	err = handlers.cardReply( c , principal , board , card , refused )
 	if refused == nil { handlers.lookUpProductLater( board , card ) }

@@ -22,6 +22,24 @@ func TestSlugify( t *testing.T ) {
 	}
 }
 
+func TestCardPath( t *testing.T ) {
+	cases := map[string]string{ "To do": "to-do" , "06NOV2026": "06nov2026" , "2026": "2026" , "✓✓✓": "card" }
+	for title , want := range cases {
+		if got := ColumnSlug( title ); got != want { t.Errorf( "ColumnSlug(%q) = %q, want %q" , title , got , want ) }
+	}
+	store := testStore( t )
+	owner , _ := CreateUser( store , "Owner" , RoleAdmin )
+	board , _ := CreateBoard( store , owner.ID , "Lab Plans" , []string{ "To do" , "Done" } )
+	card , _ := CreateCard( store , board.ID , board.Lists[ 0 ].ID , "Titrate" , nil , owner.ID , "Owner" )
+	if len( card.UID ) != 26 { t.Fatalf( "card has no ULID: %q" , card.UID ) }
+	if got , want := CardPath( board , card ) , "/b/lab-plans/to-do/" + card.UID; got != want {
+		t.Errorf( "CardPath = %q, want %q" , got , want )
+	}
+	// A card with no ULID, or on a list that is gone, keeps the old form.
+	card.UID = ""
+	if got := CardPath( board , card ); got != "/b/lab-plans?card=1" { t.Errorf( "fallback path = %q" , got ) }
+}
+
 func TestBoardSlugs( t *testing.T ) {
 	store := testStore( t )
 	owner , _ := CreateUser( store , "Owner" , RoleAdmin )

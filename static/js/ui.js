@@ -106,6 +106,14 @@ const Ui = {
     window.setTimeout( function () { URL.revokeObjectURL( url ); } , 5000 );
   },
 
+  // A column's part of a card link, as models.ColumnSlug makes it: accents
+  // dropped, anything not a-z or 0-9 one dash, "card" when nothing is left.
+  columnSlug( title ) {
+    const slug = String( title || "" ).toLowerCase().normalize( "NFKD" ).replace( /\p{Mn}/gu , "" )
+      .replace( /[^a-z0-9]+/g , "-" ).replace( /^-+|-+$/g , "" ).slice( 0 , 60 ).replace( /-+$/ , "" );
+    return slug || "card";
+  },
+
   slug( text ) {
     const slug = String( text || "" ).toLowerCase().replace( /[^a-z0-9]+/g , "-" ).replace( /^-+|-+$/g , "" ).slice( 0 , 60 );
     return slug || "card";
@@ -580,6 +588,17 @@ const Dates = {
   },
 };
 
+// A label's colour: a palette name, drawn by its .color-<name> class, or a
+// person's own #rrggbb, drawn by .color-own from --label-hex (see board.css).
+const Tone = {
+  isHex( color ) { return /^#[0-9a-f]{6}$/i.test( color || "" ); },
+  className( color ) { return this.isHex( color ) ? "color-own" : "color-" + ( color || "none" ); },
+  paint( element , color ) {
+    if ( this.isHex( color ) ) element.style.setProperty( "--label-hex" , color );
+    return element;
+  },
+};
+
 // Pieces of a card face, shared by the kanban, todo and timeline views.
 const CardBits = {
   labels( card , board ) {
@@ -587,7 +606,7 @@ const CardBits = {
     card.label_ids.forEach( function ( id ) {
       const label = board.labels.find( function ( item ) { return item.id === id; } );
       if ( !label ) return;
-      wrap.appendChild( Dom.el( "span" , { class: "label-chip color-" + label.color , text: label.name , attrs: { title: label.name } } ) );
+      wrap.appendChild( Tone.paint( Dom.el( "span" , { class: "label-chip " + Tone.className( label.color ) , text: label.name , attrs: { title: label.name } } ) , label.color ) );
     } );
     return wrap.childNodes.length ? wrap : null;
   },
@@ -599,6 +618,16 @@ const CardBits = {
       text: Dates.format( card.due_at , card.due_all_day ),
       attrs: { title: T( "card.due_label" ) },
     } );
+  },
+
+  // How many comments a card has, on its face; nothing at none.
+  comments( card ) {
+    if ( !card.comment_count ) return null;
+    const label = I18n.fill( "comments.count" , { n: card.comment_count } );
+    return Dom.el( "span" , { class: "comment-chip" , attrs: { title: label , "aria-label": label } , children: [
+      Dom.el( "i" , { class: "bi bi-chat-left-text" , attrs: { "aria-hidden": "true" } } ),
+      Dom.el( "span" , { text: String( card.comment_count ) } ),
+    ] } );
   },
 
   checklist( card ) {
@@ -936,7 +965,7 @@ const CardBits = {
           ctx.mutate( function () { return ctx.client.patchCard( card.id , { list_id: target.id , position: position } ); } );
         } );
       } );
-    } else if ( ctx.isStaged() ) {
+    } else if ( ctx.isStaged() || ( ctx.isCalendar && ctx.isCalendar() ) ) {
       [ "doing" , "done" ].forEach( function ( stage ) {
         const here = Stages.of( card ) === stage;
         icon( stage , Stages.label( ctx , stage ) , here , card.access === "edit" , function () { CardBits.setStage( card , here ? "todo" : stage , ctx ); } );

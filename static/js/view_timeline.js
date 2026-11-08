@@ -280,10 +280,10 @@ const TimelineView = {
       milestone = span.milestone;
     }
     const label = card.label_ids.length ? ctx.board.labels.find( function ( item ) { return item.id === card.label_ids[ 0 ]; } ) : null;
-    const bar = Dom.el( "div" , {
-      class: "timeline-bar color-" + ( label ? label.color : "none" ) + ( milestone ? " milestone" : "" ) + ( card.done ? " is-done" : "" ) + " due-" + Dates.dueState( card ),
+    const bar = Tone.paint( Dom.el( "div" , {
+      class: "timeline-bar " + Tone.className( label ? label.color : "" ) + ( milestone ? " milestone" : "" ) + ( card.done ? " is-done" : "" ) + " due-" + Dates.dueState( card ),
       attrs: { tabindex: "0" , role: "button" , title: card.title + " · " + Dates.formatSpan( card ) },
-    } );
+    } ) , label ? label.color : "" );
     bar.style.left = left + "px";
     bar.style.width = Math.max( width , geo.zoom === "hour" ? geo.px / 4 : geo.px ) + "px";
     if ( width < 72 ) bar.classList.add( "narrow" );

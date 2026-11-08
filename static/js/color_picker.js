@@ -3,6 +3,10 @@
 //   ColorPicker.named( value , onChange , { none } )
 //       the board palette (Colors) -- board colour, label colour. The value
 //       is a name; "none" adds a "Default" swatch whose value is "".
+//   ColorPicker.label( value , onChange , { labelKey } )
+//       a label's colour: the palette, then the person's own saved colours
+//       (LabelColors), then "Custom" and a #rrggbb field. The value is a
+//       palette name or a hex; a new hex is saved to the account.
 //   ColorPicker.custom( value , onChange , { presets , against } )
 //       any colour, for themes: "Default" (""), preset swatches, a "Custom"
 //       swatch that opens the system picker, and a #rrggbb field, all kept
@@ -22,6 +26,83 @@ const ColorPicker = {
     } );
     this.wire( group , value || "" , onChange );
     return group;
+  },
+
+  label( value , onChange , options ) {
+    const settings = options || {};
+    const wrap = Dom.el( "div" , { class: "color-custom color-label" } );
+    const group = this.group( settings.labelKey );
+    Colors.forEach( ( name ) => {
+      const swatch = this.swatch( T( "colors." + name ) , "swatch-named color-" + name );
+      swatch.dataset.value = name;
+      group.appendChild( swatch );
+    } );
+    LabelColors.list().forEach( ( saved ) => {
+      const swatch = this.swatch( saved.name || saved.color , "swatch-hex swatch-saved" );
+      swatch.dataset.value = saved.color;
+      swatch.style.setProperty( "--swatch" , saved.color );
+      group.appendChild( swatch );
+    } );
+    const native = Dom.el( "input" , { class: "swatch-native" , attrs: { type: "color" , tabindex: "-1" , "aria-hidden": "true" } } );
+    const customSwatch = this.swatch( T( "color_picker.custom" ) , "swatch-hex swatch-custom" );
+    customSwatch.dataset.value = "custom";
+    group.appendChild( customSwatch );
+    const hexField = Dom.el( "input" , { class: "color-hex form-control" , attrs: {
+      maxlength: "7" , spellcheck: "false" , autocapitalize: "off" , placeholder: "#rrggbb" , "aria-label": T( "color_picker.hex_label" ) ,
+    } } );
+
+    let current = Tone.isHex( value ) ? value.toLowerCase() : ( value || "" );
+    const listed = function () {
+      return Array.from( group.children ).some( function ( swatch ) { return swatch !== customSwatch && swatch.dataset.value === current; } );
+    };
+    const show = function () {
+      const onList = listed();
+      Array.from( group.children ).forEach( function ( swatch ) {
+        const chosen = onList ? swatch.dataset.value === current : swatch === customSwatch;
+        swatch.setAttribute( "aria-checked" , chosen ? "true" : "false" );
+        swatch.tabIndex = chosen ? 0 : -1;
+      } );
+      if ( Tone.isHex( current ) ) {
+        native.value = current;
+        if ( !onList ) customSwatch.style.setProperty( "--swatch" , current );
+      } else {
+        customSwatch.style.removeProperty( "--swatch" );
+      }
+      if ( document.activeElement !== hexField ) hexField.value = Tone.isHex( current ) ? current : "";
+    };
+    const choose = function ( next ) {
+      if ( !next || next === current ) return;
+      current = next;
+      show();
+      onChange( current );
+    };
+    // A hex is remembered once it is settled on (the system picker's
+    // change, or leaving the field), not on every step of a drag.
+    const remember = function () {
+      if ( Tone.isHex( current ) ) LabelColors.remember( current );
+    };
+    this.keys( group , function ( swatch ) {
+      if ( swatch === customSwatch ) native.click();
+      else choose( swatch.dataset.value );
+    } );
+    native.addEventListener( "input" , function () { choose( native.value.toLowerCase() ); } );
+    native.addEventListener( "change" , remember );
+    hexField.addEventListener( "input" , function () {
+      let typed = hexField.value.trim().toLowerCase();
+      if ( typed && typed[ 0 ] !== "#" ) typed = "#" + typed;
+      hexField.classList.toggle( "invalid" , typed !== "" && !Tone.isHex( typed ) );
+      if ( Tone.isHex( typed ) ) choose( typed );
+    } );
+    hexField.addEventListener( "change" , remember );
+    hexField.addEventListener( "blur" , function () {
+      hexField.classList.remove( "invalid" );
+      hexField.value = Tone.isHex( current ) ? current : "";
+    } );
+    show();
+    wrap.appendChild( group );
+    wrap.appendChild( native );
+    wrap.appendChild( hexField );
+    return wrap;
   },
 
   custom( value , onChange , options ) {
@@ -147,5 +228,34 @@ const ColorPicker = {
       // Enter or Space.
       if ( !next.classList.contains( "swatch-custom" ) ) pick( next );
     } );
+  },
+};
+
+// A person's own label colours, kept on their account (UserPrefs.
+// LabelColors) so every board offers them. set() is handed the list from
+// /api/me; remember() adds a colour the first time a label uses it.
+const LabelColors = {
+  colors: [],
+
+  set( colors ) { this.colors = Array.isArray( colors ) ? colors.slice() : []; },
+  list() { return this.colors; },
+
+  remember( hex ) {
+    const color = String( hex || "" ).toLowerCase();
+    if ( !Tone.isHex( color ) || this.colors.some( function ( saved ) { return saved.color === color; } ) ) return;
+    if ( this.colors.length >= 30 ) return;
+    this.save( this.colors.concat( [ { name: "" , color: color } ] ) , false );
+  },
+
+  // Replaces the whole list; the server answers with the display settings.
+  async save( colors , announce ) {
+    try {
+      const display = await Api.post( "/api/account/label-colors" , { colors: colors } );
+      this.set( display.label_colors );
+      if ( this.onChange ) this.onChange( display );
+      if ( announce ) Ui.toast( T( "user_settings.saved" ) , "ok" );
+    } catch ( error ) {
+      Ui.error( error );
+    }
   },
 };

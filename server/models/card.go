@@ -12,11 +12,18 @@ import (
 	encryption "todoboard/server/encryption"
 )
 
-// Card modes for sharing one card with someone who is not on the board.
+// Modes for sharing a card, a column or a board. Comment reads like view
+// and may also post comments (see access.CanComment).
 const (
-	ModeView = "view"
-	ModeEdit = "edit"
+	ModeView    = "view"
+	ModeComment = "comment"
+	ModeEdit    = "edit"
 )
+
+func ValidShareMode( mode string ) ( result bool ) {
+	result = mode == ModeView || mode == ModeComment || mode == ModeEdit
+	return
+}
 
 const (
 	// positionStep is the gap between neighbours after a renormalize. Moving
@@ -68,6 +75,11 @@ type Card struct {
 	StartTimed  bool              `json:"start_timed"`
 	DueAt       *time.Time        `json:"due_at"`
 	DueAllDay   bool              `json:"due_all_day"`
+	// Day is the day a calendar board files the card under, "2026-11-07",
+	// or "" for none (see calendar.go). A plain date with no zone: it is
+	// the day as the people on the board read it. Not a deadline, so it
+	// sends no reminders.
+	Day         string            `json:"day"`
 	Done        bool              `json:"done"`
 	DoneAt      *time.Time        `json:"done_at"`
 	// Doing is the middle stage on a staged board: neither flag is To do,
@@ -277,6 +289,8 @@ type CardPatch struct {
 	Doing    *bool   `json:"doing"`
 	Archived *bool   `json:"archived"`
 	Price    *string `json:"price"`
+	// Day: "2026-11-07", or "" for none. See Card.Day.
+	Day *string `json:"day"`
 	// RankPlace puts the card at that place in the board's ranking, 1 being
 	// the most important, and 0 takes it out. Rank is the stored value
 	// itself, for putting a card back exactly as it was.
@@ -315,12 +329,16 @@ type CardChange struct {
 	AssigneesRemoved bool
 	Archived         bool
 	Unarchived       bool
+	// Commented is a new comment, not a patch; Comment is its opening
+	// words, for the notice.
+	Commented bool
+	Comment   string
 	// Title is the card's, once patched.
 	Title string
 }
 
 func ( change *CardChange ) Any() ( result bool ) {
-	result = change.Moved || change.Completed || change.Reopened || change.Edited || len( change.NewAssignees ) > 0 || change.DueChanged
+	result = change.Moved || change.Completed || change.Reopened || change.Edited || len( change.NewAssignees ) > 0 || change.DueChanged || change.Commented
 	return
 }
 
@@ -460,6 +478,10 @@ func ( patch *CardPatch ) apply( board *Board , card *Card ) ( change CardChange
 		if ok == false { return change , ErrBadInput }
 		change.Edited = change.Edited || clean != card.Price
 		card.Price = clean
+	}
+	if patch.Day != nil {
+		if ValidDay( *patch.Day ) == false { return change , ErrBadInput }
+		card.Day = *patch.Day
 	}
 	return
 }
@@ -729,6 +751,7 @@ func deleteCardTx( tx *db.Tx , card *Card ) ( err error ) {
 	if err = detachCardTx( tx , card ); err != nil { return }
 	if err = tx.Delete( db.BucketProductImages , cardKey( card.BoardID , card.ID ) ); err != nil { return }
 	if err = tx.Delete( db.BucketCardImages , cardKey( card.BoardID , card.ID ) ); err != nil { return }
+	if err = deleteCommentsTx( tx , card.BoardID , card.ID ); err != nil { return }
 	err = tx.Delete( db.BucketCards , cardKey( card.BoardID , card.ID ) )
 	return
 }
@@ -756,7 +779,7 @@ func detachCardTx( tx *db.Tx , card *Card ) ( err error ) {
 // ShareCardWithUser grants (or with mode "" removes) one person's access to
 // one card, keeping the card and the per-user index in step.
 func ShareCardWithUser( store *db.Store , board_id uint64 , card_id uint64 , user_id uint64 , mode string , actor_name string ) ( card *Card , err error ) {
-	if mode != "" && mode != ModeView && mode != ModeEdit {
+	if mode != "" && ValidShareMode( mode ) == false {
 		err = ErrBadInput
 		return
 	}

@@ -35,6 +35,7 @@ const App = {
     this.currentUser = me.authenticated ? me : null;
     if ( me.authenticated ) {
       Dates.configure( me.display );
+      LabelColors.set( me.display.label_colors );
       Theme.setUser( me.display.theme , me.display.own_theme_on_boards );
     }
     Dom.show( Dom.get( "main" ) , true );

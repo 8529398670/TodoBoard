@@ -234,6 +234,7 @@ func ( handlers *Handlers ) SharedInfo( c fiber.Ctx ) ( err error ) {
 		"list_title":  list_title,
 		"mode":        link.Mode,
 		"label":       link.Label,
+		"anon_comments": board.AllowAnonComments,
 	} )
 	return
 }

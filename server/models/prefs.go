@@ -6,6 +6,7 @@ import (
 	sort "sort"
 	strings "strings"
 	time "time"
+	utf8 "unicode/utf8"
 
 	db "todoboard/server/db"
 	encryption "todoboard/server/encryption"
@@ -84,6 +85,38 @@ type UserPrefs struct {
 	// OwnThemeOnBoards keeps it on boards that have a theme of their own.
 	Theme            *Theme `json:"theme"`
 	OwnThemeOnBoards bool   `json:"own_theme_on_boards"`
+
+	// LabelColors are the person's own label colours, offered next to the
+	// palette on every board they edit labels on. A colour picked for a
+	// label is added here; the account page names and removes them.
+	LabelColors []SavedColor `json:"label_colors"`
+}
+
+// SavedColor is one of a person's own label colours: "#rrggbb", and an
+// optional name to tell them apart.
+type SavedColor struct {
+	Name  string `json:"name"`
+	Color string `json:"color"`
+}
+
+const MaxSavedColors = 30
+
+// cleanSavedColors lower-cases and trims, drops repeats (the first name
+// wins), and refuses a colour that is not #rrggbb, a name over 40
+// characters, or more than MaxSavedColors.
+func cleanSavedColors( colors []SavedColor ) ( result []SavedColor , err error ) {
+	result = []SavedColor{}
+	seen := map[string]bool{}
+	for _ , saved := range colors {
+		color := strings.ToLower( strings.TrimSpace( saved.Color ) )
+		name := strings.TrimSpace( saved.Name )
+		if themeColorPattern.MatchString( color ) == false || utf8.RuneCountInString( name ) > 40 { return nil , ErrBadInput }
+		if seen[ color ] { continue }
+		seen[ color ] = true
+		result = append( result , SavedColor{ Name: name , Color: color } )
+	}
+	if len( result ) > MaxSavedColors { return nil , ErrBadInput }
+	return
 }
 
 const FolderSortManual = "manual"
@@ -143,6 +176,7 @@ func ( prefs *UserPrefs ) Validate() ( err error ) {
 		if err = prefs.Theme.Validate(); err != nil { return }
 	}
 	if prefs.FolderSort != "" && prefs.FolderSort != FolderSortManual { return ErrBadInput }
+	if prefs.LabelColors , err = cleanSavedColors( prefs.LabelColors ); err != nil { return }
 	if prefs.AllDayReminderHour < 0 || prefs.AllDayReminderHour > 23 { return ErrBadInput }
 	leads := []int{}
 	for _ , lead := range prefs.ReminderLeadMinutes {

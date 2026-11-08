@@ -49,7 +49,7 @@ func ( handlers *Handlers ) meRow( actor *security.Actor ) ( payload fiber.Map ,
 	owner_id , err := models.OwnerID( handlers.Store )
 	if err != nil { return }
 
-	display := fiber.Map{ "timezone": "" , "hour12": nil , "number_cards": false , "plain_icons": false , "done_on_top": false , "add_on_top": false , "theme": nil , "own_theme_on_boards": false , "swipe_columns": true , "folder_sort": "" }
+	display := fiber.Map{ "timezone": "" , "hour12": nil , "number_cards": false , "plain_icons": false , "done_on_top": false , "add_on_top": false , "theme": nil , "own_theme_on_boards": false , "swipe_columns": true , "folder_sort": "" , "label_colors": []models.SavedColor{} }
 	if prefs , prefs_err := models.GetUserPrefs( handlers.Store , user.ID ); prefs_err == nil {
 		display = displayPayload( prefs )
 	}
@@ -119,7 +119,38 @@ type displayRequest struct {
 }
 
 func displayPayload( prefs *models.UserPrefs ) ( payload fiber.Map ) {
-	payload = fiber.Map{ "timezone": prefs.DisplayTimezone , "hour12": prefs.Hour12 , "number_cards": prefs.NumberCards , "plain_icons": prefs.PlainIcons , "done_on_top": prefs.DoneOnTop , "add_on_top": prefs.AddOnTop , "theme": prefs.Theme , "own_theme_on_boards": prefs.OwnThemeOnBoards , "swipe_columns": prefs.SwipeColumns == nil || *prefs.SwipeColumns , "folder_sort": prefs.FolderSort }
+	payload = fiber.Map{ "timezone": prefs.DisplayTimezone , "hour12": prefs.Hour12 , "number_cards": prefs.NumberCards , "plain_icons": prefs.PlainIcons , "done_on_top": prefs.DoneOnTop , "add_on_top": prefs.AddOnTop , "theme": prefs.Theme , "own_theme_on_boards": prefs.OwnThemeOnBoards , "swipe_columns": prefs.SwipeColumns == nil || *prefs.SwipeColumns , "folder_sort": prefs.FolderSort , "label_colors": prefs.LabelColors }
+	if prefs.LabelColors == nil { payload[ "label_colors" ] = []models.SavedColor{} }
+	return
+}
+
+type labelColorsRequest struct {
+	Colors    []models.SavedColor `json:"colors"`
+	CSRFToken string              `json:"csrf_token"`
+}
+
+// SaveLabelColors replaces the person's own label colours with the list
+// sent, in its order: the board's label editor adds to it, the account page
+// renames and removes. Labels already using a removed colour keep it.
+func ( handlers *Handlers ) SaveLabelColors( c fiber.Ctx ) ( err error ) {
+	var body labelColorsRequest
+	if ok , bind_err := bindBody( c , &body ); ok == false { return bind_err }
+	if handlers.Guard.CheckCSRF( c , body.CSRFToken ) == false {
+		err = forbidden( c , "invalid csrf token" )
+		return
+	}
+	user := security.UserFrom( c )
+	prefs , get_err := models.GetUserPrefs( handlers.Store , user.ID )
+	if get_err != nil {
+		err = serverError( c )
+		return
+	}
+	prefs.LabelColors = body.Colors
+	if save_err := models.SaveUserPrefs( handlers.Store , user.ID , prefs ); save_err != nil {
+		err = badRequest( c , "invalid_label_colors" )
+		return
+	}
+	err = c.JSON( displayPayload( prefs ) )
 	return
 }
 
