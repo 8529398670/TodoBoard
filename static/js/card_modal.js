@@ -321,26 +321,29 @@ const CardModal = {
     if ( !card ) return;
     const ctx = this.ctx;
     const canEdit = card.access === "edit";
+    // A one-way copy follows its original in what a mirror syncs; the rest
+    // (column, day, labels, people) is its own.
+    const synced = canEdit && card.mirror !== "copy";
     const canMove = ctx.canEdit;
     const body = Dom.get( "card-dialog-body" );
     const scrollTop = body.scrollTop;
     Dom.clear( body );
 
-    body.appendChild( this.header( card , canEdit ) );
-    const product = this.productSection( card , canEdit );
+    body.appendChild( this.header( card , synced ) );
+    const product = this.productSection( card , synced );
     if ( product ) body.appendChild( product );
     // A card's picture sits at the top; with none, the offer to add one
     // waits below the checklist.
-    const picture = this.imageSection( card , canEdit );
+    const picture = this.imageSection( card , synced );
     if ( picture && card.image_at ) body.appendChild( picture );
-    const price = this.priceSection( card , canEdit );
+    const price = this.priceSection( card , synced );
     if ( price ) body.appendChild( price );
-    body.appendChild( this.description( card , canEdit ) );
-    body.appendChild( this.checklist( card , canEdit ) );
+    body.appendChild( this.description( card , synced ) );
+    body.appendChild( this.checklist( card , synced ) );
     if ( picture && !card.image_at ) body.appendChild( picture );
     const day = this.daySection( card , canEdit );
     if ( day ) body.appendChild( day );
-    body.appendChild( this.dates( card , canEdit ) );
+    body.appendChild( this.dates( card , synced ) );
     const people = this.assignees( card , canEdit );
     if ( people ) body.appendChild( people );
     const rank = this.rankSection( card );
@@ -350,6 +353,8 @@ const CardModal = {
     if ( labels ) body.appendChild( labels );
     const comments = this.commentsSection( card );
     if ( comments ) body.appendChild( comments );
+    const mirrors = CardTransfer.section( ctx , card , canEdit );
+    if ( mirrors ) body.appendChild( mirrors );
     body.appendChild( this.actions( card , canEdit , canMove ) );
     // A public link is not told who has been working on the card.
     if ( card.updated_by !== undefined ) body.appendChild( Dom.el( "p" , { class: "muted card-updated" , text: I18n.fill( "card.updated_by" , {
@@ -1085,6 +1090,10 @@ const CardModal = {
     row.appendChild( Ui.button( "export.card_button" , () => CardExport.open( ctx , card ) ) );
     if ( !ctx.isGuest ) row.appendChild( Ui.button( "card.notifications_button" , () => Subscribe.openCard( ctx , card ) ) );
     if ( ctx.canManage ) row.appendChild( Ui.button( "share.card_button" , () => Sharing.openCard( ctx , card ) ) );
+    if ( !ctx.isGuest && !card.archived ) {
+      if ( canMove ) row.appendChild( Ui.button( "transfer.send_menu" , () => CardTransfer.open( ctx , card , true ) ) );
+      row.appendChild( Ui.button( "transfer.copy_menu" , () => CardTransfer.open( ctx , card , false ) ) );
+    }
     if ( canMove ) {
       row.appendChild( Ui.button( card.archived ? "card.unarchive" : "card.archive" , () => {
         this.save( { archived: !card.archived } );

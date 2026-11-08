@@ -60,6 +60,7 @@ const BoardPage = {
     History.onChange = () => this.showHistory();
     History.bindKeys();
     Stages.bind();
+    CalendarView.bindKeys();
     Dom.get( "undo-button" ).addEventListener( "click" , () => History.undo() );
     Dom.get( "redo-button" ).addEventListener( "click" , () => History.redo() );
 

@@ -61,7 +61,8 @@ func SetCardProduct( store *db.Store , board_id uint64 , card_id uint64 , from s
 		if tx_err != nil { return }
 		card.Product = product
 		if tx_err = tx.Put( db.BucketCards , key , card ); tx_err != nil { return }
-		tx_err = touchBoardTx( tx , board_id )
+		if tx_err = touchBoardTx( tx , board_id ); tx_err != nil { return }
+		tx_err = syncMirrorsTx( tx , card , card.UpdatedBy )
 		return
 	} )
 	if err != nil { card = nil }

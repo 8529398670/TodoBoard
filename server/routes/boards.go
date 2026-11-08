@@ -360,6 +360,7 @@ func cardPayload( card *models.Card , level access.Level , board_level access.Le
 		"product":     card.Product,
 		"price":       card.Price,
 		"image_at":    card.ImageAt,
+		"mirror":      card.Mirror,
 	}
 	if board_level == access.Manage {
 		payload[ "shared_with" ] = card.SharedWith

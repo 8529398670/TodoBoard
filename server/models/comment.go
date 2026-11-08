@@ -35,6 +35,9 @@ type Comment struct {
 	Text      string     `json:"text"`
 	CreatedAt time.Time  `json:"created_at"`
 	EditedAt  *time.Time `json:"edited_at"`
+	// Thread is shared by a comment's copies on mirrored cards, so an edit
+	// or removal finds them (see card_link.go). "" on older comments.
+	Thread    string     `json:"thread,omitempty"`
 }
 
 func commentKey( board_id uint64 , card_id uint64 , comment_id uint64 ) ( key []byte ) {
@@ -89,9 +92,11 @@ func AddComment( store *db.Store , board_id uint64 , card_id uint64 , author_id 
 		if tx.Get( db.BucketCards , cardKey( board_id , card_id ) , card ) != nil { return ErrCardNotFound }
 		id , tx_err := tx.NextSequence( db.BucketComments )
 		if tx_err != nil { return }
-		comment = &Comment{ ID: id , BoardID: board_id , CardID: card_id , AuthorID: author_id , By: by , Text: clean , CreatedAt: time.Now().UTC() }
+		now := time.Now().UTC()
+		comment = &Comment{ ID: id , BoardID: board_id , CardID: card_id , AuthorID: author_id , By: by , Text: clean , CreatedAt: now , Thread: newULID( now ) }
 		if tx_err = tx.Put( db.BucketComments , commentKey( board_id , card_id , id ) , comment ); tx_err != nil { return }
-		tx_err = touchBoardTx( tx , board_id )
+		if tx_err = touchBoardTx( tx , board_id ); tx_err != nil { return }
+		tx_err = mirrorCommentTx( tx , board_id , card_id , comment , false )
 		return
 	} )
 	if err != nil { comment = nil }
@@ -109,7 +114,8 @@ func EditComment( store *db.Store , board_id uint64 , card_id uint64 , comment_i
 		now := time.Now().UTC()
 		comment.Text , comment.EditedAt = clean , &now
 		if tx_err = tx.Put( db.BucketComments , key , comment ); tx_err != nil { return }
-		tx_err = touchBoardTx( tx , board_id )
+		if tx_err = touchBoardTx( tx , board_id ); tx_err != nil { return }
+		tx_err = mirrorCommentTx( tx , board_id , card_id , comment , false )
 		return
 	} )
 	if err != nil { comment = nil }
@@ -119,9 +125,11 @@ func EditComment( store *db.Store , board_id uint64 , card_id uint64 , comment_i
 func RemoveComment( store *db.Store , board_id uint64 , card_id uint64 , comment_id uint64 ) ( err error ) {
 	err = store.Write( func( tx *db.Tx ) ( tx_err error ) {
 		key := commentKey( board_id , card_id , comment_id )
-		if tx.Get( db.BucketComments , key , &Comment{} ) != nil { return ErrCommentNotFound }
+		comment := &Comment{}
+		if tx.Get( db.BucketComments , key , comment ) != nil { return ErrCommentNotFound }
 		if tx_err = tx.Delete( db.BucketComments , key ); tx_err != nil { return }
-		tx_err = touchBoardTx( tx , board_id )
+		if tx_err = touchBoardTx( tx , board_id ); tx_err != nil { return }
+		tx_err = mirrorCommentTx( tx , board_id , card_id , comment , true )
 		return
 	} )
 	return

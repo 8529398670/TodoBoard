@@ -254,6 +254,10 @@ func modelRefusal( model_err error ) ( refused *refusal ) {
 		refused = &refusal{ fiber.StatusNotFound , "list_not_found" }
 	case errors.Is( model_err , models.ErrLabelNotFound ):
 		refused = &refusal{ fiber.StatusNotFound , "label_not_found" }
+	case errors.Is( model_err , models.ErrMirrored ):
+		refused = &refusal{ fiber.StatusConflict , "card_mirrored" }
+	case errors.Is( model_err , models.ErrLinkNotFound ):
+		refused = &refusal{ fiber.StatusNotFound , "link_not_found" }
 	case errors.Is( model_err , models.ErrItemNotFound ):
 		refused = &refusal{ fiber.StatusNotFound , "item_not_found" }
 	case errors.Is( model_err , models.ErrQuickShareOff ):

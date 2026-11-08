@@ -159,6 +159,11 @@ func ( handlers *Handlers ) Register( app *fiber.App ) {
 	boards.Post( "/:board_id/delete" , handlers.Guard.RequireSession , handlers.DeleteBoard )
 	boards.Post( "/:board_id/members" , handlers.SetBoardMember )
 	boards.Post( "/:board_id/cards/:card_id/share-user" , handlers.ShareCardWithUser )
+	// Between boards, so for people on boards rather than share links.
+	boards.Post( "/:board_id/cards/:card_id/send" , handlers.SendCard )
+	boards.Post( "/:board_id/cards/:card_id/copy" , handlers.CopyCard )
+	boards.Get( "/:board_id/cards/:card_id/links" , handlers.ListCardLinks )
+	boards.Post( "/:board_id/cards/:card_id/links/:link_id/delete" , handlers.UnlinkCard )
 	boards.Post( "/:board_id/cards/:card_id/quick-share" , handlers.Guard.RequireSession , handlers.QuickShareCard )
 	boards.Get( "/:board_id/shares" , handlers.ListShareLinks )
 	boards.Post( "/:board_id/shares" , handlers.Guard.RequireSession , handlers.CreateShareLink )

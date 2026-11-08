@@ -450,12 +450,12 @@ p.due-chip { margin: 0.5rem 0; }
    stretch the row and the page with it. */
 .stage-slot { order: 3; flex: 0 0 100%; min-width: 0; }
 .stage-slot:empty { display: none; }
-.board-navbar:has(.stage-bar) { height: auto; }
+.board-navbar:has(.stage-bar), .board-navbar:has(.calendar-navbar) { height: auto; }
 @media (min-width: 48rem) {
-  .board-navbar:has(.stage-bar) { height: var(--navbar-height); }
+  .board-navbar:has(.stage-bar), .board-navbar:has(.calendar-navbar) { height: var(--navbar-height); }
   .board-navbar .container-fluid { flex-wrap: nowrap; }
   .stage-slot { order: 0; flex: 0 0 auto; }
-  .board-navbar:has(.stage-bar) .board-navbar-end { flex: 1 0 0; }
+  .board-navbar:has(.stage-bar) .board-navbar-end, .board-navbar:has(.calendar-navbar) .board-navbar-end { flex: 1 0 0; }
 }
 .stage-bar { display: flex; justify-content: center; gap: 0.25rem; }
 .stage-tabs { display: flex; gap: 0.25rem; margin-bottom: 0.5rem; }
@@ -1080,6 +1080,7 @@ input.card-number:focus { color: var(--fg); background: var(--bg); border-color:
 /* ------------------------------------------------------------------ */
 /* comments                                                            */
 .comment-chip { display: inline-flex; align-items: center; gap: 0.25rem; }
+.mirror-chip { display: inline-flex; align-items: center; color: var(--accent); }
 .comment-list { list-style: none; margin: 0 0 0.75rem; padding: 0; display: flex; flex-direction: column; gap: 0.6rem; }
 .comment { padding: 0.5rem 0.65rem; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); }
 .comment-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; margin-bottom: 0.2rem; }
@@ -1095,6 +1096,22 @@ input.card-number:focus { color: var(--fg); background: var(--bg); border-color:
 .calendar-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; padding: 0.25rem 1rem 0.75rem; }
 .calendar-nav { display: flex; align-items: center; gap: 0.25rem; }
 .calendar-title { flex: 1 1 auto; margin: 0; font-size: 1.15rem; font-weight: 600; }
+/* The range buttons and the stage bar side by side in the navbar's middle; on
+   a phone they share the row under it. */
+.calendar-navbar { display: flex; align-items: center; justify-content: center; gap: 0.5rem; padding-bottom: 0.25rem; }
+.calendar-navbar .stage-bar { flex: 1 1 auto; min-width: 0; }
+/* Beside the range buttons a phone has room for the names or the counts,
+   not both; each day still shows its own. */
+@media (max-width: 29.99rem) {
+  .calendar-navbar .stage-count { display: none; }
+  .calendar-navbar .stage-bar .stage-button { padding: 0.3rem 0.35rem; }
+}
+@media (min-width: 48rem) {
+  .calendar-navbar { padding-bottom: 0; }
+  .calendar-navbar .stage-bar { flex: 0 1 auto; }
+}
+.calendar-keys { flex: 0 0 auto; }
+@media (hover: none) { .calendar-keys { display: none; } }
 .calendar-modes .btn.active { background: var(--accent); border-color: var(--accent); color: var(--accent-fg, #fff); }
 
 .calendar-days .kanban-column.calendar-day { flex: 1 0 15.5rem; max-width: 22rem; }
@@ -1104,7 +1121,6 @@ input.card-number:focus { color: var(--fg); background: var(--bg); border-color:
 .calendar-day-link { padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
 .calendar-day-link:hover, .calendar-day-link:focus-visible { text-decoration: underline; }
 .calendar-today-badge { font-size: 0.7rem; font-weight: 600; padding: 0.05rem 0.45rem; border-radius: 999px; background: var(--accent); color: var(--accent-fg, #fff); }
-.calendar-day .stage-tabs { margin: 0 0.5rem 0.5rem; }
 .calendar-empty { margin: 0.25rem 0.5rem; }
 
 .calendar-month {

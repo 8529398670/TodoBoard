@@ -30,7 +30,7 @@ const History = {
   onChange: null,
 
   methods: [
-    "patchCard" , "createCard" , "deleteCard" ,
+    "patchCard" , "createCard" , "deleteCard" , "sendCard" , "copyCard" ,
     "addItem" , "updateItem" , "deleteItem" ,
     "createList" , "updateList" , "deleteList" , "archiveCards" ,
     "createLabel" , "updateLabel" , "deleteLabel" ,
@@ -260,6 +260,32 @@ const History = {
         redo: async () => {
           const created = await this.raw.createCard( this.id( "list" , listId ) , args[ 1 ] , args[ 2 ] , args[ 3 ] );
           this.remap( "card" , cardId , created.id );
+        },
+      };
+    },
+
+    // A sent card keeps its id, so undo sends it back from where it went,
+    // to its old column and place.
+    sendCard( before , args , result ) {
+      const card = this.findCard( before , args[ 0 ] );
+      if ( !card ) return null;
+      const home = { board: String( before.board.id ) , list_id: card.list_id , position: card.position };
+      const away = result.board_id;
+      return {
+        undo: () => BoardApi.member( away ).sendCard( card.id , Object.assign( {} , home , { list_id: this.id( "list" , home.list_id ) } ) ),
+        redo: () => this.raw.sendCard( card.id , args[ 1 ] ),
+      };
+    },
+
+    // A copy is undone by putting it in its board's trash, which unlinks it.
+    copyCard( before , args , result ) {
+      let copyId = result.id;
+      const away = result.board_id;
+      return {
+        undo: () => BoardApi.member( away ).deleteCard( copyId ),
+        redo: async () => {
+          const again = await this.raw.copyCard( this.id( "card" , args[ 0 ] ) , args[ 1 ] );
+          copyId = again.id;
         },
       };
     },

@@ -12787,6 +12787,406 @@
           }
         }
       }
+    },
+    "/api/boards/{board_id}/cards/{card_id}/send": {
+      "post": {
+        "summary": "Send a card to another board",
+        "description": "Moves the card whole: it keeps its id, ULID link, comments and picture. Labels are matched by name on the new board (made there when missing), assignees kept only if they are on it, per-person shares dropped. Needs edit rights on this board and on the column it goes into.",
+        "operationId": "post_api_boards_board_id_cards_card_id_send",
+        "tags": [
+          "Cards"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "x-board-access": "edit",
+        "parameters": [
+          {
+            "name": "board_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "The board's number or URL slug."
+          },
+          {
+            "name": "card_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "board": {
+                    "oneOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ],
+                    "description": "The board it goes to: number or URL slug."
+                  },
+                  "list_id": {
+                    "type": "integer",
+                    "description": "The column on that board."
+                  },
+                  "top": {
+                    "type": "boolean",
+                    "description": "Put it at the top of the column instead of the end."
+                  },
+                  "position": {
+                    "type": "number",
+                    "description": "An exact place in the column, for putting a card back where it was. Wins over top."
+                  },
+                  "csrf_token": {
+                    "type": "string",
+                    "description": "From GET /api/me. Browser sessions only."
+                  }
+                },
+                "required": [
+                  "board",
+                  "list_id"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The card where it now is, with card_path (its link) and board_title.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Card"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "404": {
+            "$ref": "#/components/responses/E404"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          }
+        }
+      }
+    },
+    "/api/boards/{board_id}/cards/{card_id}/copy": {
+      "post": {
+        "summary": "Copy a card to a board",
+        "description": "Copies the card, with its comments and picture, onto any board including its own, optionally mirrored. Needs view rights on the card (edit rights for a mirror) and edit rights on the column it goes into.",
+        "operationId": "post_api_boards_board_id_cards_card_id_copy",
+        "tags": [
+          "Cards"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "x-board-access": "view",
+        "parameters": [
+          {
+            "name": "board_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "The board's number or URL slug."
+          },
+          {
+            "name": "card_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "board": {
+                    "oneOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ],
+                    "description": "The board it goes to: number or URL slug."
+                  },
+                  "list_id": {
+                    "type": "integer",
+                    "description": "The column on that board."
+                  },
+                  "top": {
+                    "type": "boolean",
+                    "description": "Put it at the top of the column instead of the end."
+                  },
+                  "position": {
+                    "type": "number",
+                    "description": "An exact place in the column, for putting a card back where it was. Wins over top."
+                  },
+                  "mirror": {
+                    "type": "string",
+                    "enum": [
+                      "",
+                      "one_way",
+                      "two_way"
+                    ],
+                    "description": "\"\" for a plain copy; one_way keeps the copy following the original (its synced fields become read-only); two_way keeps both in step. Synced: title, description, checklist, dates, price, picture, To do/Doing/Done and comments."
+                  },
+                  "csrf_token": {
+                    "type": "string",
+                    "description": "From GET /api/me. Browser sessions only."
+                  }
+                },
+                "required": [
+                  "board",
+                  "list_id"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The card where it now is, with card_path (its link) and board_title.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Card"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "404": {
+            "$ref": "#/components/responses/E404"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          }
+        }
+      }
+    },
+    "/api/boards/{board_id}/cards/{card_id}/links": {
+      "get": {
+        "summary": "A card's mirror links",
+        "operationId": "get_api_boards_board_id_cards_card_id_links",
+        "tags": [
+          "Cards"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "x-board-access": "view",
+        "parameters": [
+          {
+            "name": "board_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "The board's number or URL slug."
+          },
+          {
+            "name": "card_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "links": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/CardLink"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "404": {
+            "$ref": "#/components/responses/E404"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          }
+        }
+      }
+    },
+    "/api/boards/{board_id}/cards/{card_id}/links/{link_id}/delete": {
+      "post": {
+        "summary": "Stop mirroring a card",
+        "description": "Ends one link; both cards stay as they are.",
+        "operationId": "post_api_boards_board_id_cards_card_id_links_link_id_delete",
+        "tags": [
+          "Cards"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "x-board-access": "edit",
+        "parameters": [
+          {
+            "name": "board_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "The board's number or URL slug."
+          },
+          {
+            "name": "card_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "link_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "404": {
+            "$ref": "#/components/responses/E404"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -13976,6 +14376,15 @@
               }
             ],
             "description": "User id to mode. Only for someone who manages the board."
+          },
+          "mirror": {
+            "type": "string",
+            "enum": [
+              "",
+              "linked",
+              "copy"
+            ],
+            "description": "\"\" when not mirrored; linked in a two-way link or the source of a one-way one; copy for a one-way copy, whose synced fields are read-only."
           }
         },
         "required": [
@@ -15084,6 +15493,49 @@
           "expires_at",
           "last_used_at"
         ]
+      },
+      "CardLink": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "one_way",
+              "two_way"
+            ]
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "out",
+              "in",
+              "both"
+            ],
+            "description": "out: this card's changes flow to the other; in: this card follows the other (read-only where it syncs); both: two-way."
+          },
+          "board_id": {
+            "type": "integer"
+          },
+          "board_title": {
+            "type": "string",
+            "description": "Empty when you cannot open that board."
+          },
+          "card_id": {
+            "type": "integer"
+          },
+          "card_title": {
+            "type": "string"
+          },
+          "list_title": {
+            "type": "string"
+          },
+          "card_path": {
+            "type": "string"
+          }
+        }
       }
     }
   }

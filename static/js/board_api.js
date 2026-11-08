@@ -106,6 +106,12 @@ class BoardClient {
   }
   patchCard( cardId , fields )     { return this.post( "/" + this.boardId + "/cards/" + cardId , fields ); }
   deleteCard( cardId )             { return this.post( "/" + this.boardId + "/cards/" + cardId + "/delete" ); }
+  // To another board (send) or any board (copy); fields: { board , list_id ,
+  // top , position , mirror }. See card_transfer.js.
+  sendCard( cardId , fields )      { return this.post( "/" + this.boardId + "/cards/" + cardId + "/send" , fields ); }
+  copyCard( cardId , fields )      { return this.post( "/" + this.boardId + "/cards/" + cardId + "/copy" , fields ); }
+  cardLinks( cardId )              { return this.get( "/" + this.boardId + "/cards/" + cardId + "/links" ); }
+  unlinkCard( cardId , linkId )    { return this.post( "/" + this.boardId + "/cards/" + cardId + "/links/" + linkId + "/delete" ); }
   // The product a card's link sells (see server/routes/products.go).
   refreshProduct( cardId )         { return this.post( "/" + this.boardId + "/cards/" + cardId + "/product/refresh" ); }
   removeProduct( cardId )          { return this.post( "/" + this.boardId + "/cards/" + cardId + "/product/delete" ); }

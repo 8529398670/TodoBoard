@@ -54,6 +54,8 @@ const (
 	BucketCardImages    = "card_images"    // boardID|cardID: a picture pasted onto a card
 	BucketComments      = "comments"       // boardID|cardID|commentID: a card's conversation
 	BucketPushSubscriptions = "push_subscriptions" // userID|LookupKey(endpoint): one browser that takes notifications
+	BucketCardLinks     = "card_links"     // linkID: two cards on any boards that mirror each other
+	BucketCardLinkRefs  = "card_link_refs" // boardID|cardID|linkID: the links a card is in
 )
 
 var bucketNames = []string{
@@ -61,6 +63,7 @@ var bucketNames = []string{
 	BucketBoards , BucketCards , BucketUserBoards , BucketUserCards , BucketShareLinks ,
 	BucketUserPrefs , BucketSubscriptions , BucketNotifySent , BucketBoardSlugs , BucketFolders ,
 	BucketTrash , BucketProductImages , BucketCardImages , BucketPushSubscriptions , BucketComments ,
+	BucketCardLinks , BucketCardLinkRefs ,
 }
 
 // Key joins big-endian uint64s into one composite key.

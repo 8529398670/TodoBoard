@@ -109,6 +109,8 @@ type Card struct {
 	// Set only while the card is in the board's trash (see trash.go).
 	DeletedAt   *time.Time        `json:"deleted_at,omitempty"`
 	DeletedBy   string            `json:"deleted_by,omitempty"`
+	// Mirror: "" for none, MirrorLinked or MirrorCopy (see card_link.go).
+	Mirror      string            `json:"mirror,omitempty"`
 }
 
 type ChecklistItem struct {
@@ -520,6 +522,9 @@ func PatchCard( store *db.Store , board_id uint64 , card_id uint64 , patch *Card
 		change , tx_err = patch.apply( board , card )
 		if tx_err != nil { return }
 		change.Title = card.Title
+		if change.Archived {
+			if tx_err = unlinkCardTx( tx , card ); tx_err != nil { return }
+		}
 		if patch.RankPlace != nil {
 			tx_err = placeRankTx( tx , board , card , *patch.RankPlace )
 			if tx_err != nil { return }
@@ -631,7 +636,8 @@ func saveCardTx( tx *db.Tx , board *Board , card *Card , actor_name string ) ( e
 	card.UpdatedAt = time.Now().UTC()
 	card.UpdatedBy = actor_name
 	if err = tx.Put( db.BucketCards , cardKey( card.BoardID , card.ID ) , card ); err != nil { return }
-	err = putBoardTx( tx , board )
+	if err = putBoardTx( tx , board ); err != nil { return }
+	err = syncMirrorsTx( tx , card , actor_name )
 	return
 }
 
@@ -728,6 +734,12 @@ func ArchiveListCards( store *db.Store , board_id uint64 , list_id uint64 , card
 			return
 		} )
 		if tx_err != nil { return }
+		// An archived card leaves its mirrors, as one archived alone does.
+		for _ , id := range ids {
+			card , get_err := getCardTx( tx , board_id , id )
+			if get_err != nil || card.Mirror == MirrorNone { continue }
+			if tx_err = unlinkCardTx( tx , card ); tx_err != nil { return }
+		}
 		tx_err = putBoardTx( tx , board )
 		return
 	} )
@@ -748,6 +760,7 @@ func DeleteCard( store *db.Store , board_id uint64 , card_id uint64 ) ( err erro
 
 // deleteCardTx removes a card and every row that points at it.
 func deleteCardTx( tx *db.Tx , card *Card ) ( err error ) {
+	if err = unlinkCardTx( tx , card ); err != nil { return }
 	if err = detachCardTx( tx , card ); err != nil { return }
 	if err = tx.Delete( db.BucketProductImages , cardKey( card.BoardID , card.ID ) ); err != nil { return }
 	if err = tx.Delete( db.BucketCardImages , cardKey( card.BoardID , card.ID ) ); err != nil { return }

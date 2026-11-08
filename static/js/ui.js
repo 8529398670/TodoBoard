@@ -621,6 +621,15 @@ const CardBits = {
   },
 
   // How many comments a card has, on its face; nothing at none.
+  // A card kept in step with others (card_transfer.js).
+  mirror( card ) {
+    if ( !card.mirror ) return null;
+    const label = T( card.mirror === "copy" ? "transfer.face_copy" : "transfer.face_linked" );
+    return Dom.el( "span" , { class: "mirror-chip" , attrs: { title: label , "aria-label": label } , children: [
+      Dom.el( "i" , { class: "bi " + ( card.mirror === "copy" ? "bi-link" : "bi-link-45deg" ) , attrs: { "aria-hidden": "true" } } ),
+    ] } );
+  },
+
   comments( card ) {
     if ( !card.comment_count ) return null;
     const label = I18n.fill( "comments.count" , { n: card.comment_count } );
@@ -968,10 +977,10 @@ const CardBits = {
     } else if ( ctx.isStaged() || ( ctx.isCalendar && ctx.isCalendar() ) ) {
       [ "doing" , "done" ].forEach( function ( stage ) {
         const here = Stages.of( card ) === stage;
-        icon( stage , Stages.label( ctx , stage ) , here , card.access === "edit" , function () { CardBits.setStage( card , here ? "todo" : stage , ctx ); } );
+        icon( stage , Stages.label( ctx , stage ) , here , card.access === "edit" && card.mirror !== "copy" , function () { CardBits.setStage( card , here ? "todo" : stage , ctx ); } );
       } );
     } else {
-      icon( "done" , T( "board.status_done" ) , card.done , card.access === "edit" , function () { CardBits.toggleDone( card , ctx ); } );
+      icon( "done" , T( "board.status_done" ) , card.done , card.access === "edit" && card.mirror !== "copy" , function () { CardBits.toggleDone( card , ctx ); } );
     }
     return wrap;
   },

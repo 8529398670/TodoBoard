@@ -35,6 +35,7 @@ func TrashCard( store *db.Store , board_id uint64 , card_id uint64 , actor_name 
 }
 
 func trashCardTx( tx *db.Tx , card *Card , actor_name string ) ( err error ) {
+	if err = unlinkCardTx( tx , card ); err != nil { return }
 	if err = detachCardTx( tx , card ); err != nil { return }
 	now := time.Now().UTC()
 	card.SharedWith = map[uint64]string{}

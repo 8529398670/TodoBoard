@@ -399,6 +399,7 @@ const KanbanView = {
       CardBits.due( card ),
       CardBits.checklist( card ),
       CardBits.comments( card ),
+      CardBits.mirror( card ),
       CardBits.assignees( card , ctx.people ),
     ].filter( Boolean ).forEach( function ( node ) { meta.appendChild( node ); } );
     if ( meta.childNodes.length ) face.appendChild( meta );
@@ -586,12 +587,17 @@ const QuickAdd = {
 const CardMenu = {
   open( event , card , ctx ) {
     const items = [ { key: "board.card_menu_open" , action: function () { ctx.openCard( card.id ); } } ];
-    if ( card.access === "edit" && !card.archived ) {
+    if ( card.access === "edit" && !card.archived && card.mirror !== "copy" ) {
       items.push( { key: card.done ? "board.card_menu_undone" : "board.card_menu_done" , action: function () {
         CardBits.toggleDone( card , ctx );
       } } );
     }
     this.sendItems( card , ctx ).forEach( function ( item ) { items.push( item ); } );
+    // To other boards: people on boards only, since only they have others.
+    if ( !ctx.isGuest && !card.archived ) {
+      if ( ctx.canEdit ) items.push( { key: "transfer.send_menu" , action: function () { CardTransfer.open( ctx , card , true ); } } );
+      items.push( { key: "transfer.copy_menu" , action: function () { CardTransfer.open( ctx , card , false ); } } );
+    }
     const link = ctx.cardLink ? ctx.cardLink( card ) : "";
     if ( link ) items.push( { key: "card.copy_link" , action: function () { Ui.copyText( link ); } } );
     items.push( { key: "export.copy_card_markdown" , action: function () { Ui.copyText( CardExport.markdown( ctx , card ) ); } } );

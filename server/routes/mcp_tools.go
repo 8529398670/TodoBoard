@@ -172,6 +172,7 @@ func ( handlers *Handlers ) registerMCPTools( server *mcp.Server ) {
 	} )
 
 	handlers.registerBoardTools( server )
+	handlers.registerTransferTools( server )
 }
 
 // refusalError hands a shared rule's refusal to MCP in the same words the
