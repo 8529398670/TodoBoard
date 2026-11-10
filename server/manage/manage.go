@@ -22,6 +22,7 @@
 package manage
 
 import (
+	json "encoding/json"
 	errors "errors"
 	flag "flag"
 	fmt "fmt"
@@ -29,10 +30,12 @@ import (
 	filepath "path/filepath"
 	time "time"
 
+	backup "todoboard/server/backup"
 	bootstrap "todoboard/server/bootstrap"
 	config "todoboard/server/config"
 	control "todoboard/server/control"
 	db "todoboard/server/db"
+	logs "todoboard/server/logs"
 	models "todoboard/server/models"
 )
 
@@ -42,7 +45,7 @@ Usage:
   bootstrap-admin -name "Ada"        create the first admin + login link
   create-login    -name "Grace" -role user [-uses 5|unlimited] [-expires 7d|never]
   reissue-login   -user-id 3 [-uses 5|unlimited] [-expires 7d|never]
-                                     fresh link for an existing user; once, for
+                                     fresh link for an existing user; once and
                                      30 minutes unless -uses/-expires say otherwise
   list-users                         id, name, role, status
   set-disabled    -user-id 3 -disabled=true
@@ -56,7 +59,15 @@ Usage:
   delete-key      -key-id abc123     kill one API key now and remove its record
   create-invite   -user-id 1 -label "Book club" [-uses 10] [-days 30]
                                      one link a group can join through
+  backup          [-out path] [-include-key]
+                                     one file with the database, config.yaml and
+                                     storage, safe while the server runs
+  restore         -from path -yes [-key-file path]
+                                     put a backup back; the server must be stopped
   paths                              where this app keeps its state
+  logs            [-day 2026-11-02] [-q "status:5xx"] [-limit 50]
+                                     the activity log: days, or one day's
+                                     entries newest first, as JSON lines
 
 The owner is the first admin, and the one account that can delete other
 admins from the web UI. Nothing deletes or disables the owner -- move it with
@@ -67,17 +78,21 @@ can do what an admin can and a user-scoped one cannot. A key never outranks
 the account it belongs to. -days 0 means it never expires; omit -days to use
 the server's configured default.
 
+A backup leaves secret.key out unless -include-key says otherwise, so keep a
+copy of the key apart from your backups. Without it a backup cannot be read.
+restore keeps what it replaces beside it, as app.db.before-restore-<time>. A
+backup made under an older key needs -key-file, naming that key.
+
 Reachable two ways, identical either way:
   ./todoboard manage list-users     (the single portable binary)
   ./manage list-users                      (the standalone tool in the image)
 
 These work whether or not the server is running. With the server up the
-command is sent to it over the control socket in the app directory; with the
-server stopped the database is opened directly.
+command is sent to it over the control socket; with the server stopped the database is opened directly.
 
-Every command reads the same config.yaml as the server (see "paths" for
-which one). Its server.secret_key in particular must be the one the data
-was written with, or the stored records cannot be decrypted.
+Every command reads the same config.yaml and secret.key as the server (see
+"paths" for which). secret.key in particular must hold the key the data was
+written with, or the stored records cannot be decrypted.
 `
 
 // Usage prints the command list. Exported so an entry point can show it for
@@ -97,9 +112,9 @@ type backend interface {
 	ListUsers() ( users []control.UserResponse , err error )
 	CreateUser( display_name string , role string , link models.LoginLinkRequest ) ( user control.UserResponse , err error )
 	ReissueLogin( user_id uint64 , link models.LoginLinkRequest ) ( user control.UserResponse , err error )
-	ResetTwoFactor( user_id uint64 ) ( err error )
 	SetDisabled( user_id uint64 , disabled bool ) ( user control.UserResponse , err error )
 	RevokeAccess( user_id uint64 ) ( revoked models.Revoked , err error )
+	ResetTwoFactor( user_id uint64 ) ( err error )
 	DeleteUser( user_id uint64 ) ( removed models.Revoked , err error )
 	TransferOwner( user_id uint64 ) ( user control.UserResponse , err error )
 	ListAPIKeys( user_id uint64 ) ( keys []control.APIKeyResponse , err error )
@@ -107,6 +122,7 @@ type backend interface {
 	RevokeAPIKey( key_id string ) ( key control.APIKeyResponse , err error )
 	DeleteAPIKey( key_id string ) ( key control.APIKeyResponse , err error )
 	CreateInviteLink( user_id uint64 , label string , max_uses int , days int ) ( link control.InviteLinkResponse , err error )
+	Backup( options backup.Options ) ( result backup.Result , err error )
 	AnyAdminExists() ( result bool , err error )
 	Close() ( err error )
 	Route() ( description string )
@@ -125,6 +141,9 @@ func Run( arguments []string ) ( err error ) {
 		err = fmt.Errorf( "config error: %w" , err )
 		return
 	}
+	if cfg.SecretMigrated {
+		fmt.Fprintf( os.Stderr , "MOVED server.secret_key out of %s into %s -- back it up with the database.\n" , cfg.ConfigFile , cfg.SecretFile )
+	}
 
 	// "paths" reports configuration only, so it never needs the database and
 	// stays useful when everything else is failing.
@@ -132,6 +151,27 @@ func Run( arguments []string ) ( err error ) {
 	rest := arguments[ 1: ]
 	if command == "paths" {
 		err = commandPaths( cfg )
+		return
+	}
+	// "logs" reads the log files, never the database, so it works the same
+	// with the server up or down -- the files are only ever appended to.
+	if command == "logs" {
+		err = commandLogs( cfg , rest )
+		return
+	}
+
+	if cfg.RotationFinished {
+		fmt.Fprintf( os.Stderr , "[secret] finished a key rotation that had been cut short; the new key is in %s\n" , cfg.SecretFile )
+	}
+	if cfg.RotationPending {
+		err = config.ErrRotationPending
+		return
+	}
+
+	// "restore" replaces the database, so it must not be holding it open --
+	// and it has to work on a database too damaged for anything else to open.
+	if command == "restore" {
+		err = commandRestore( cfg , rest )
 		return
 	}
 
@@ -173,6 +213,8 @@ func Run( arguments []string ) ( err error ) {
 		err = commandDeleteKey( back , rest )
 	case "create-invite":
 		err = commandCreateInvite( back , cfg , rest )
+	case "backup":
+		err = commandBackup( back , rest )
 	default:
 		Usage()
 		err = fmt.Errorf( "unknown command %q" , command )
@@ -199,11 +241,22 @@ func connect( cfg *config.Config ) ( back backend , err error ) {
 
 	store , open_err := db.Open( cfg )
 	if open_err != nil {
+		// A refused schema or a failed migration has its own message, and
+		// advice about the socket would only send someone the wrong way.
+		if db.IsLocked( open_err ) == false {
+			err = open_err
+			return
+		}
 		if cfg.ControlSocketEnabled {
+			advice := "If the server is running, it was started with server.control_socket: false; restart it with the socket enabled or stop it first."
+			// The socket is on the server container's own tmpfs, so a
+			// `docker run` beside it finds no socket and then a locked file.
+			if config.InContainer() {
+				advice = "If the server is running in another container, this one cannot see its socket: use `docker exec <name> /app/server manage ...` there, or stop it first."
+			}
 			err = fmt.Errorf(
-				"could not reach a running server on %s, and could not open the database directly: %w\n"+
-					"If the server is running, it was started with server.control_socket: false; restart it with the socket enabled or stop it first." ,
-				cfg.ControlSocketPath , open_err )
+				"could not reach a running server on %s, and could not open the database directly: %w\n%s" ,
+				cfg.ControlSocketPath , open_err , advice )
 			return
 		}
 		err = fmt.Errorf( "database error (server.control_socket is false, so the server must be stopped): %w" , open_err )
@@ -251,11 +304,6 @@ func ( b *controlBackend ) ReissueLogin( user_id uint64 , link models.LoginLinkR
 	return
 }
 
-func ( b *controlBackend ) ResetTwoFactor( user_id uint64 ) ( err error ) {
-	err = b.client.ResetTwoFactor( user_id )
-	return
-}
-
 func ( b *controlBackend ) SetDisabled( user_id uint64 , disabled bool ) ( user control.UserResponse , err error ) {
 	user , err = b.client.SetDisabled( user_id , disabled )
 	return
@@ -263,6 +311,11 @@ func ( b *controlBackend ) SetDisabled( user_id uint64 , disabled bool ) ( user 
 
 func ( b *controlBackend ) RevokeAccess( user_id uint64 ) ( revoked models.Revoked , err error ) {
 	revoked , err = b.client.RevokeAccess( user_id )
+	return
+}
+
+func ( b *controlBackend ) ResetTwoFactor( user_id uint64 ) ( err error ) {
+	err = b.client.ResetTwoFactor( user_id )
 	return
 }
 
@@ -298,6 +351,11 @@ func ( b *controlBackend ) RevokeAPIKey( key_id string ) ( key control.APIKeyRes
 
 func ( b *controlBackend ) CreateInviteLink( user_id uint64 , label string , max_uses int , days int ) ( link control.InviteLinkResponse , err error ) {
 	link , err = b.client.CreateInviteLink( user_id , label , max_uses , days )
+	return
+}
+
+func ( b *controlBackend ) Backup( options backup.Options ) ( result backup.Result , err error ) {
+	result , err = b.client.Backup( options )
 	return
 }
 
@@ -393,13 +451,6 @@ func ( b *directBackend ) ReissueLogin( user_id uint64 , link models.LoginLinkRe
 	return
 }
 
-// ResetTwoFactor acts as the operator (actor 0), who may reset anyone.
-func ( b *directBackend ) ResetTwoFactor( user_id uint64 ) ( err error ) {
-	err = models.ResetTwoFactor( b.store , user_id , 0 )
-	if errors.Is( err , db.ErrNotFound ) { err = fmt.Errorf( "no user with id %d" , user_id ) }
-	return
-}
-
 func ( b *directBackend ) SetDisabled( user_id uint64 , disabled bool ) ( user control.UserResponse , err error ) {
 	found , err := models.GetUser( b.store , user_id )
 	if err != nil {
@@ -421,6 +472,15 @@ func ( b *directBackend ) RevokeAccess( user_id uint64 ) ( revoked models.Revoke
 	// The operator may revoke the owner's access too -- see
 	// models.RevokeAllCredentials.
 	revoked , err = models.RevokeAllCredentials( b.store , user_id , true )
+	return
+}
+
+// ResetTwoFactor acts as the operator (actor 0), who may reset anyone.
+func ( b *directBackend ) ResetTwoFactor( user_id uint64 ) ( err error ) {
+	err = models.ResetTwoFactor( b.store , user_id , 0 )
+	if errors.Is( err , db.ErrNotFound ) {
+		err = fmt.Errorf( "no user with id %d" , user_id )
+	}
 	return
 }
 
@@ -515,7 +575,7 @@ func ( b *directBackend ) CreateAPIKey( user_id uint64 , name string , role stri
 		return
 	}
 
-	credential , created , err := models.IssueAPIKey( b.store , owner.ID , name , role , ttl , models.BoardAccessAll , nil )
+	credential , created , err := models.IssueAPIKey( b.store , owner.ID , name , role , ttl )
 	if err != nil { return }
 	key = fromKeyModel( created , owner.DisplayName , credential )
 	return
@@ -545,7 +605,8 @@ func ( b *directBackend ) DeleteAPIKey( key_id string ) ( key control.APIKeyResp
 	}
 	names , err := b.displayNames()
 	if err != nil { return }
-	if err = models.DeleteAPIKey( b.store , found.ID ); err != nil { return }
+	// The CLI has no undo, so its delete is the hard one (see PurgeAPIKey).
+	if err = models.PurgeAPIKey( b.store , found.ID ); err != nil { return }
 	key = fromKeyModel( found , names[ found.UserID ] , "" )
 	return
 }
@@ -562,6 +623,11 @@ func ( b *directBackend ) CreateInviteLink( user_id uint64 , label string , max_
 
 func ( b *directBackend ) AnyAdminExists() ( result bool , err error ) {
 	result , err = models.AnyAdminExists( b.store )
+	return
+}
+
+func ( b *directBackend ) Backup( options backup.Options ) ( result backup.Result , err error ) {
+	result , err = backup.Create( b.store , b.cfg , options )
 	return
 }
 
@@ -606,7 +672,6 @@ func commandCreateLogin( back backend , cfg *config.Config , arguments []string 
 		err = fmt.Errorf( "-role must be admin or user" )
 		return
 	}
-
 	link , err := models.ParseLoginLinkFlags( *uses , *expires )
 	if err != nil { return }
 
@@ -633,6 +698,69 @@ func commandReissueLogin( back backend , cfg *config.Config , arguments []string
 	return
 }
 
+func commandBackup( back backend , arguments []string ) ( err error ) {
+	set := flag.NewFlagSet( "backup" , flag.ExitOnError )
+	out := set.String( "out" , "" , "a file to write, or a folder to write into (default: the backups folder)" )
+	include_key := set.Bool( "include-key" , false , "put secret.key in the backup: anyone with the file can then read everything" )
+	set.Parse( arguments )
+
+	// A running server does the writing, and its working directory is not
+	// this one, so a relative path has to be settled here.
+	target := *out
+	if target != "" {
+		if target , err = filepath.Abs( target ); err != nil { return }
+	}
+	result , err := back.Backup( backup.Options{ Out: target , IncludeKey: *include_key } )
+	if err != nil { return }
+
+	fmt.Printf( "Backup written: %s (%d bytes)\n" , result.Path , result.Bytes )
+	if result.Manifest.ContainsKey {
+		fmt.Println( "WARNING: it includes secret.key. Anyone holding this file can read all the data." )
+	} else {
+		fmt.Printf( "secret.key is NOT in it. It needs the key with fingerprint %s:\n" , result.Manifest.KeyFingerprint )
+		fmt.Println( "keep a copy of secret.key somewhere safe, apart from this file." )
+	}
+	if result.Manifest.EncryptAtRest == false {
+		fmt.Println( "server.encrypt_at_rest is off, so the database in this backup is not encrypted." )
+	}
+	return
+}
+
+func commandRestore( cfg *config.Config , arguments []string ) ( err error ) {
+	set := flag.NewFlagSet( "restore" , flag.ExitOnError )
+	from := set.String( "from" , "" , "the backup file" )
+	key_file := set.String( "key-file" , "" , "the key this backup was made with, if it is not the current one" )
+	yes := set.Bool( "yes" , false , "confirm: the database and storage are replaced" )
+	set.Parse( arguments )
+
+	if *from == "" {
+		err = fmt.Errorf( "-from is required" )
+		return
+	}
+	if *yes == false {
+		err = fmt.Errorf( "restore replaces the database and storage; pass -yes to confirm" )
+		return
+	}
+	result , err := backup.Restore( cfg , backup.RestoreOptions{ From: *from , KeyFile: *key_file } )
+	if err != nil { return }
+
+	fmt.Printf( "Restored the backup from %s.\n" , result.Manifest.CreatedAt.Format( time.RFC3339 ) )
+	if result.Rekeyed {
+		fmt.Println( "It was made under another key and has been moved onto the current one." )
+		fmt.Println( "Everyone has to sign in again, because their cookies were sealed with the other key." )
+	}
+	if result.SavedDatabase != "" {
+		fmt.Printf( "The database it replaced: %s\n" , result.SavedDatabase )
+	}
+	if result.SavedStorage != "" {
+		fmt.Printf( "The storage it replaced:  %s\n" , result.SavedStorage )
+	}
+	if result.SavedConfig != "" {
+		fmt.Printf( "config.yaml was left as it is; the backup's copy is at %s\n" , result.SavedConfig )
+	}
+	return
+}
+
 func existsNote( path string ) ( note string ) {
 	if _ , err := os.Stat( path ); err != nil {
 		note = "  (absent -- the embedded copy is used)"
@@ -640,15 +768,60 @@ func existsNote( path string ) ( note string ) {
 	return
 }
 
+func commandLogs( cfg *config.Config , arguments []string ) ( err error ) {
+	set := flag.NewFlagSet( "logs" , flag.ExitOnError )
+	day := set.String( "day" , "" , "a UTC date, YYYY-MM-DD; without it, list the days" )
+	query := set.String( "q" , "" , "a search, as typed on the Logs screen" )
+	limit := set.Int( "limit" , 50 , "entries to print, newest first (1-1000)" )
+	set.Parse( arguments )
+
+	reader := logs.New( cfg.Logs , cfg.SecretKey , cfg.EncryptAtRest )
+	parsed := logs.ParseQuery( *query )
+	if *day == "" {
+		days , total , list_err := reader.Days( parsed )
+		if list_err != nil {
+			err = list_err
+			return
+		}
+		for _ , row := range days {
+			line := fmt.Sprintf( "%s  %7d entries  %5d errors  %9d bytes" , row.Date , row.Entries , row.Errors , row.Bytes )
+			if row.Matches != nil {
+				line += fmt.Sprintf( "  %d matches" , *row.Matches )
+			}
+			if row.Compressed {
+				line += "  (gzipped)"
+			}
+			fmt.Println( line )
+		}
+		fmt.Printf( "%d bytes in %s\n" , total , cfg.Logs.Dir )
+		return
+	}
+	if *limit < 1 || *limit > 1000 {
+		err = fmt.Errorf( "-limit must be 1-1000" )
+		return
+	}
+	records , _ , err := reader.ReadDay( *day , parsed , -1 , *limit )
+	if err != nil { return }
+	encoder := json.NewEncoder( os.Stdout )
+	encoder.SetEscapeHTML( false )
+	for _ , record := range records {
+		encoder.Encode( record )
+	}
+	return
+}
+
 // commandPaths answers "where did it put my data", which is otherwise a
 // question you can only settle by reading the source or the startup log.
 func commandPaths( cfg *config.Config ) ( err error ) {
-	fmt.Printf( "%-14s %s  (holds the secret key)\n" , "config" , cfg.ConfigFile )
+	fmt.Printf( "%-14s %s\n" , "config" , cfg.ConfigFile )
+	fmt.Printf( "%-14s %s  (the secret key: back it up with the database)\n" , "secret" , cfg.SecretFile )
 	fmt.Printf( "%-14s %s  (relative paths in the config start here)\n" , "project dir" , cfg.ProjectDir )
 	fmt.Printf( "%-14s %s  (from %s)\n" , "url" , cfg.URL , cfg.URLSource )
 	fmt.Printf( "%-14s %s\n" , "app dir" , cfg.AppDir )
 	fmt.Printf( "%-14s %s\n" , "database" , cfg.DatabasePath )
 	fmt.Printf( "%-14s %s\n" , "storage" , cfg.StorageDir )
+	fmt.Printf( "%-14s %s\n" , "logs" , cfg.Logs.Dir )
+	fmt.Printf( "%-14s %s\n" , "backups" , cfg.Backups.Dir )
 	fmt.Printf( "%-14s %s%s\n" , "static" , cfg.StaticDir , existsNote( cfg.StaticDir ) )
 	fmt.Printf( "%-14s %s%s\n" , "language" , cfg.LanguageFile , existsNote( cfg.LanguageFile ) )
 
@@ -672,11 +845,11 @@ func commandPaths( cfg *config.Config ) ( err error ) {
 	// out from the paths above.
 	fmt.Println( "" )
 	fmt.Printf( "Change any of these in %s (server.app_dir moves the app dir).\n" , cfg.ConfigFile )
-	if filepath.Dir( cfg.ConfigFile ) == cfg.AppDir {
-		fmt.Println( "Back up the app dir as a unit -- app.db is unreadable without the key in config.yaml." )
+	if filepath.Dir( cfg.SecretFile ) == cfg.AppDir {
+		fmt.Println( "Back up the app dir as a unit -- app.db is unreadable without secret.key." )
 	} else {
-		fmt.Println( "config.yaml is NOT in the app dir. Back up both; app.db is unreadable without" )
-		fmt.Println( "the key in config.yaml, and either one alone is useless." )
+		fmt.Println( "secret.key is NOT in the app dir. Back up config.yaml, secret.key and the app" )
+		fmt.Println( "dir together; app.db is unreadable without secret.key." )
 	}
 	return
 }
@@ -810,6 +983,9 @@ func commandCreateInvite( back backend , cfg *config.Config , arguments []string
 	link , err := back.CreateInviteLink( *user_id , *label , *uses , *days )
 	if err != nil { return }
 
+	if cfg.InviteLinksEnabled == false {
+		fmt.Println( "note: auth.invite_links is off, so this link answers 404 until it is switched on" )
+	}
 	bootstrap.PrintInviteLink( cfg , fmt.Sprintf( "%q, %d places" , link.Label , link.MaxUses ) ,
 		link.Credential , link.ExpiresAt.Local().Format( "2006-01-02 15:04" ) )
 	return
@@ -864,8 +1040,7 @@ func commandDeleteUser( back backend , arguments []string ) ( err error ) {
 
 	removed , err := back.DeleteUser( *user_id )
 	if err != nil { return }
-	fmt.Printf( "user #%d deleted, with %d sessions, %d login links and %d API keys\n" ,
-		*user_id , removed.Sessions , removed.LoginLinks , removed.APIKeys )
+	fmt.Printf( "user #%d deleted, with %d sessions, %d login links and %d API keys\n" , *user_id , removed.Sessions , removed.LoginLinks , removed.APIKeys )
 	return
 }
 
@@ -892,9 +1067,6 @@ func commandSetDisabled( back backend , arguments []string ) ( err error ) {
 	return
 }
 
-// commandRevokeAccess is the incident-response command: run it when an
-// account's credentials may be in someone else's hands. The account stays
-// enabled; follow it with reissue-login to let its owner back in.
 // commandResetTwoFactor is the way back for someone with neither their phone
 // nor their recovery codes -- the owner included, who no one can reset from
 // the web.
@@ -908,6 +1080,9 @@ func commandResetTwoFactor( back backend , arguments []string ) ( err error ) {
 	return
 }
 
+// commandRevokeAccess is the incident-response command: run it when an
+// account's credentials may be in someone else's hands. The account stays
+// enabled; follow it with reissue-login to let its owner back in.
 func commandRevokeAccess( back backend , arguments []string ) ( err error ) {
 	set := flag.NewFlagSet( "revoke-access" , flag.ExitOnError )
 	user_id := set.Uint64( "user-id" , 0 , "id of an existing user" )
@@ -915,8 +1090,10 @@ func commandRevokeAccess( back backend , arguments []string ) ( err error ) {
 
 	revoked , err := back.RevokeAccess( *user_id )
 	if err != nil { return }
-	fmt.Printf( "user #%d: ended %d sessions, deleted %d live login links, removed %d passwords, revoked %d API keys\n" ,
-		*user_id , revoked.Sessions , revoked.LoginLinks , revoked.Passwords , revoked.APIKeys )
+	report := fmt.Sprintf( "user #%d: ended %d sessions, deleted %d live login links" , *user_id , revoked.Sessions , revoked.LoginLinks )
+	report += fmt.Sprintf( ", removed %d passwords" , revoked.Passwords )
+	report += fmt.Sprintf( ", revoked %d API keys" , revoked.APIKeys )
+	fmt.Println( report )
 	fmt.Printf( "To let them back in: reissue-login -user-id %d\n" , *user_id )
 	return
 }

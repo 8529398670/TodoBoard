@@ -9,6 +9,7 @@ import (
 	fiber "github.com/gofiber/fiber/v3"
 
 	db "todoboard/server/db"
+	logs "todoboard/server/logs"
 	models "todoboard/server/models"
 	security "todoboard/server/security"
 )
@@ -56,10 +57,10 @@ type setDisabledRequest struct {
 func ( handlers *Handlers ) ListUsers( c fiber.Ctx ) ( err error ) {
 	rows , list_err := handlers.userRowsMatching( c.Query( "q" ) )
 	if list_err != nil {
-		err = serverError( c )
+		err = serverError( c , list_err )
 		return
 	}
-	err = c.JSON( rows )
+	err = sendSorted( c , "users" , rows , "display_name" , "role" , "disabled" , "created_at" )
 	return
 }
 
@@ -104,7 +105,7 @@ func ( handlers *Handlers ) userRowsMatching( query string ) ( rows []fiber.Map 
 // loginLinkOptions fills a request's gaps from config and checks it, writing
 // the 400 itself when it is out of range.
 func ( handlers *Handlers ) loginLinkOptions( c fiber.Ctx , request models.LoginLinkRequest ) ( options models.LoginLinkOptions , ok bool ) {
-	options , resolve_err := models.ResolveLoginLink( request , handlers.Config.LoginTokenTTL , handlers.Config.MultiUseLoginTokenTTL )
+	options , resolve_err := models.ResolveLoginLink( request , handlers.cfg().LoginTokenTTL , handlers.cfg().MultiUseLoginTokenTTL )
 	if resolve_err != nil {
 		badRequest( c , resolve_err.Error() )
 		return
@@ -157,15 +158,16 @@ func ( handlers *Handlers ) CreateUser( c fiber.Ctx ) ( err error ) {
 
 	user , create_err := models.CreateUser( handlers.Store , body.DisplayName , body.Role )
 	if create_err != nil {
-		err = serverError( c )
+		err = serverError( c , create_err )
 		return
 	}
 	credential , info , token_err := models.IssueLoginLink( handlers.Store , user.ID , options )
 	if token_err != nil {
-		err = serverError( c )
+		err = serverError( c , token_err )
 		return
 	}
 
+	handlers.audit( c , logs.KindAdmin , "user created" , fiber.Map{ "user_id": user.ID , "name": user.DisplayName , "role": user.Role } )
 	payload := loginLinkResponse( credential , info )
 	payload[ "user_id" ] = user.ID
 	err = c.Status( fiber.StatusCreated ).JSON( payload )
@@ -205,9 +207,10 @@ func ( handlers *Handlers ) ReissueLogin( c fiber.Ctx ) ( err error ) {
 
 	credential , info , token_err := models.IssueLoginLink( handlers.Store , user_id , options )
 	if token_err != nil {
-		err = serverError( c )
+		err = serverError( c , token_err )
 		return
 	}
+	handlers.audit( c , logs.KindAdmin , "login link reissued" , fiber.Map{ "user_id": user_id , "max_uses": info.MaxUses , "expires_at": info.ExpiresAt } )
 	err = c.JSON( loginLinkResponse( credential , info ) )
 	return
 }
@@ -238,9 +241,10 @@ func ( handlers *Handlers ) CancelLoginLink( c fiber.Ctx ) ( err error ) {
 	}
 	removed , cancel_err := models.CancelLoginLink( handlers.Store , user_id )
 	if cancel_err != nil {
-		err = serverError( c )
+		err = serverError( c , cancel_err )
 		return
 	}
+	handlers.audit( c , logs.KindAdmin , "login link cancelled" , fiber.Map{ "user_id": user_id , "removed": removed } )
 	err = c.JSON( fiber.Map{ "ok": true , "removed": removed } )
 	return
 }
@@ -280,10 +284,11 @@ func ( handlers *Handlers ) RenameUser( c fiber.Ctx ) ( err error ) {
 		err = forbidden( c , "only the owner can rename an admin" )
 		return
 	case rename_err != nil:
-		err = serverError( c )
+		err = serverError( c , rename_err )
 		return
 	}
 	name := strings.TrimSpace( body.DisplayName )
+	handlers.audit( c , logs.KindAdmin , "user renamed" , fiber.Map{ "user_id": user_id , "name": name } )
 	err = c.JSON( fiber.Map{ "ok": true , "display_name": name } )
 	return
 }
@@ -310,7 +315,7 @@ func ( handlers *Handlers ) SetUserRole( c fiber.Ctx ) ( err error ) {
 		err = badRequest( c , "role must be admin or user" )
 		return
 	}
-	_ , role_err := models.SetUserRole( handlers.Store , user_id , security.UserFrom( c ).ID , body.Role )
+	changed , role_err := models.SetUserRole( handlers.Store , user_id , security.UserFrom( c ).ID , body.Role )
 	switch {
 	case errors.Is( role_err , db.ErrNotFound ):
 		err = notFound( c , "no such user" )
@@ -325,8 +330,11 @@ func ( handlers *Handlers ) SetUserRole( c fiber.Ctx ) ( err error ) {
 		err = forbidden( c , "only the owner can take away an admin's rights" )
 		return
 	case role_err != nil:
-		err = serverError( c )
+		err = serverError( c , role_err )
 		return
+	}
+	if changed {
+		handlers.audit( c , logs.KindAdmin , "user role changed" , fiber.Map{ "user_id": user_id , "role": body.Role } )
 	}
 	err = c.JSON( fiber.Map{ "ok": true , "role": body.Role } )
 	return
@@ -352,6 +360,7 @@ func ( handlers *Handlers ) SetUserDisabled( c fiber.Ctx ) ( err error ) {
 		err = refused.send( c )
 		return
 	}
+	handlers.audit( c , logs.KindAdmin , "user disabled set" , fiber.Map{ "user_id": user_id , "disabled": body.Disabled } )
 	err = c.JSON( fiber.Map{ "ok": true } )
 	return
 }
@@ -382,6 +391,7 @@ func ( handlers *Handlers ) RevokeAccess( c fiber.Ctx ) ( err error ) {
 		err = refused.send( c )
 		return
 	}
+	handlers.audit( c , logs.KindAdmin , "access revoked" , fiber.Map{ "user_id": user_id } )
 	err = c.JSON( fiber.Map{ "ok": true , "revoked": revoked } )
 	return
 }
@@ -420,9 +430,10 @@ func ( handlers *Handlers ) ResetTwoFactor( c fiber.Ctx ) ( err error ) {
 		err = forbidden( c , "only the owner can reset an admin's two-factor sign-in" )
 		return
 	case reset_err != nil:
-		err = serverError( c )
+		err = serverError( c , reset_err )
 		return
 	}
+	handlers.audit( c , logs.KindAdmin , "two-factor reset" , fiber.Map{ "user_id": user_id } )
 	err = c.JSON( fiber.Map{ "ok": true } )
 	return
 }
@@ -456,6 +467,7 @@ func ( handlers *Handlers ) DeleteUser( c fiber.Ctx ) ( err error ) {
 	removed , delete_err := models.DeleteUser( handlers.Store , user_id , security.UserFrom( c ).ID )
 	switch {
 	case delete_err == nil:
+		handlers.audit( c , logs.KindAdmin , "user deleted" , fiber.Map{ "user_id": user_id } )
 		err = c.JSON( fiber.Map{ "ok": true , "removed": removed } )
 	case errors.Is( delete_err , db.ErrNotFound ):
 		err = notFound( c , "no such user" )
@@ -466,14 +478,53 @@ func ( handlers *Handlers ) DeleteUser( c fiber.Ctx ) ( err error ) {
 	case errors.Is( delete_err , models.ErrOwnerRequired ):
 		err = forbidden( c , "only the owner can delete an admin account" )
 	default:
-		err = serverError( c )
+		err = serverError( c , delete_err )
 	}
 	return
 }
 
+// refusal is a rule saying no, kept apart from how it is delivered: the HTTP
+// handlers send it as a status and an error body, the MCP tools as a tool
+// error with the same words. Writing the rule once is what keeps the two
+// doors from drifting apart.
+type refusal struct {
+	status  int
+	message string
+	// cause is why a 5xx happened. It goes to the log, never to the caller.
+	cause error
+	// extra is more for the caller beside the message, such as the current
+	// value a 409 was about.
+	extra fiber.Map
+}
+
+func ( refused *refusal ) send( c fiber.Ctx ) ( err error ) {
+	if refused.status >= 500 {
+		err = serverError( c , refused.cause )
+		return
+	}
+	body := fiber.Map{ "error": refused.message }
+	for name , value := range refused.extra {
+		body[ name ] = value
+	}
+	err = c.Status( refused.status ).JSON( body )
+	return
+}
+
+// refuse is a refusal with the caller's mistake in it. internalFailure is
+// ours: a 500 whose cause goes to the log.
+func refuse( status int , message string , extra ...fiber.Map ) ( refused *refusal ) {
+	refused = &refusal{ status: status , message: message }
+	if len( extra ) > 0 { refused.extra = extra[ 0 ] }
+	return
+}
+
+func internalFailure( cause error ) ( refused *refusal ) {
+	refused = &refusal{ status: fiber.StatusInternalServerError , message: "internal error" , cause: cause }
+	return
+}
+
 // setUserDisabled carries every rule for switching an account off or on, for
-// SetUserDisabled and the MCP admin_set_user_disabled tool. Its refusal type
-// lives in principal.go, where the board routes share it.
+// SetUserDisabled and the MCP admin_set_user_disabled tool.
 func ( handlers *Handlers ) setUserDisabled( self_id uint64 , user_id uint64 , disabled bool ) ( refused *refusal ) {
 	if _ , get_err := models.GetUser( handlers.Store , user_id ); get_err != nil {
 		refused = &refusal{ status: fiber.StatusNotFound , message: "no such user" }
@@ -495,7 +546,7 @@ func ( handlers *Handlers ) setUserDisabled( self_id uint64 , user_id uint64 , d
 			refused = &refusal{ status: fiber.StatusForbidden , message: "the owner account cannot be disabled" }
 			return
 		}
-		refused = &refusal{ status: fiber.StatusInternalServerError , message: "internal error" }
+		refused = &refusal{ status: fiber.StatusInternalServerError , message: "internal error" , cause: disable_err }
 		return
 	}
 	return
@@ -523,7 +574,7 @@ func ( handlers *Handlers ) revokeAccess( self_id uint64 , user_id uint64 ) ( re
 			refused = &refusal{ status: fiber.StatusForbidden , message: "the owner account's access cannot be revoked" }
 			return
 		}
-		refused = &refusal{ status: fiber.StatusInternalServerError , message: "internal error" }
+		refused = &refusal{ status: fiber.StatusInternalServerError , message: "internal error" , cause: revoke_err }
 	}
 	return
 }

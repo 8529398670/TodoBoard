@@ -90,6 +90,7 @@ func objectSchema( properties fiber.Map , required ...string ) ( schema fiber.Ma
 func ( handlers *Handlers ) registerBoardTools( server *mcp.Server ) {
 	server.Register( &mcp.Tool{
 		Name:        "list_boards",
+		Route:       "GET /api/boards",
 		Title:       "List my boards",
 		Description: "Every board you own or are a member of (id, slug, title, your role, folder), your home-page folders, and single cards shared with you from boards you are not on.",
 		ReadOnly:    true,
@@ -102,6 +103,7 @@ func ( handlers *Handlers ) registerBoardTools( server *mcp.Server ) {
 
 	server.Register( &mcp.Tool{
 		Name:        "get_board",
+		Route:       "GET /api/boards/{board_id}",
 		Title:       "Read a board",
 		Description: "A board as you can see it: its notes, its purpose if the board has that section on (board.purpose says what the board is for and how to work on it, so read it first), columns (lists), labels, members, and the cards you may see, with each card's column, labels, assignees, dates, checklist and rev. people maps user ids to names. Archived cards are left out unless include_archived is true.",
 		ReadOnly:    true,
@@ -137,6 +139,7 @@ func ( handlers *Handlers ) registerBoardTools( server *mcp.Server ) {
 
 	server.Register( &mcp.Tool{
 		Name:        "get_board_notes",
+		Route:       "GET /api/boards/{board_id}",
 		Title:       "Read a board's purpose and notes",
 		Description: "Just the board's notes and purpose, without its cards. notes holds links, documents and reference material. purpose says what the board is for and how to work on it, and is only there when purpose_enabled is true. Both are markdown, and may be empty. Read them before working on a board. The revs go back to update_board_notes.",
 		ReadOnly:    true,
@@ -158,6 +161,7 @@ func ( handlers *Handlers ) registerBoardTools( server *mcp.Server ) {
 
 	server.Register( &mcp.Tool{
 		Name:        "update_board_notes",
+		Route:       "POST /api/boards/{board_id}",
 		Title:       "Change a board's purpose or notes",
 		Description: "Replace a board's notes, its purpose, or both; leave out what should not change. A board's purpose can only be written while its Purpose section is on, which a person does in Board settings. Each is the whole new markdown text, so to add a link, send the old notes with it added. Each needs the rev it was read at, from get_board_notes or get_board: if someone edited the text since, the change is refused rather than written over theirs. Needs edit rights on the board.",
 		InputSchema: objectSchema( fiber.Map{
@@ -215,6 +219,7 @@ func ( handlers *Handlers ) registerBoardTools( server *mcp.Server ) {
 
 	server.Register( &mcp.Tool{
 		Name:        "get_card",
+		Route:       "GET /api/boards/{board_id}",
 		Title:       "Read a card",
 		Description: "One card in full: title, description, column, labels, assignees, dates, checklist, and rev (pass rev back to update_card when changing the title or description).",
 		ReadOnly:    true,
@@ -234,6 +239,7 @@ func ( handlers *Handlers ) registerBoardTools( server *mcp.Server ) {
 
 	server.Register( &mcp.Tool{
 		Name:        "list_comments",
+		Route:       "GET /api/boards/{board_id}/cards/{card_id}/comments",
 		Title:       "Read a card's comments",
 		Description: "A card's comments, oldest first: who wrote each (by: a member's name, \"guest:Name\" for a guest, \"guest:\" for an anonymous one) and when.",
 		ReadOnly:    true,
@@ -260,6 +266,7 @@ func ( handlers *Handlers ) registerBoardTools( server *mcp.Server ) {
 
 	server.Register( &mcp.Tool{
 		Name:        "add_comment",
+		Route:       "POST /api/boards/{board_id}/cards/{card_id}/comments",
 		Title:       "Comment on a card",
 		Description: "Post a comment on a card, signed with your name. Markdown, up to 4000 characters. Needs edit rights on the card, or a card shared with you to comment on.",
 		InputSchema: objectSchema( fiber.Map{ "board": boardRefSchema , "card_id": cardIDSchema , "text": fiber.Map{ "type": "string" , "maxLength": models.MaxCommentLength , "description": "Markdown." } } , "board" , "card_id" , "text" ),
@@ -284,6 +291,7 @@ func ( handlers *Handlers ) registerBoardTools( server *mcp.Server ) {
 
 	server.Register( &mcp.Tool{
 		Name:        "find_cards",
+		Route:       "GET /api/boards",
 		Title:       "Find cards",
 		Description: "Search the cards you can see, across all your boards or one. query matches title and description (case-insensitive). Done and archived cards are left out unless asked for. Returns compact rows, soonest due first; use get_card for the full card.",
 		ReadOnly:    true,
@@ -306,6 +314,7 @@ func ( handlers *Handlers ) registerBoardTools( server *mcp.Server ) {
 
 	server.Register( &mcp.Tool{
 		Name:        "create_board",
+		Route:       "POST /api/boards",
 		Title:       "Create a board",
 		Description: "A new board owned by you, with the given columns in order (for example [\"To do\", \"Doing\", \"Done\"]); a board always gets at least three, so fewer are padded out. Returns its id and slug.",
 		InputSchema: objectSchema( fiber.Map{
@@ -319,7 +328,7 @@ func ( handlers *Handlers ) registerBoardTools( server *mcp.Server ) {
 			}
 			if err = call.Bind( &args ); err != nil { return }
 			if call.Actor.APIKey.OnlyBoards() {
-				err = refusalError( &refusal{ fiber.StatusForbidden , security.KeyBoardsRefusal } )
+				err = refusalError( refuse( fiber.StatusForbidden , security.KeyBoardsRefusal ) )
 				return
 			}
 			board , create_err := models.CreateBoard( handlers.Store , call.Actor.User.ID , args.Title , args.Lists )
@@ -334,6 +343,7 @@ func ( handlers *Handlers ) registerBoardTools( server *mcp.Server ) {
 
 	server.Register( &mcp.Tool{
 		Name:        "create_list",
+		Route:       "POST /api/boards/{board_id}/lists",
 		Title:       "Add a column",
 		Description: "Add a column (list) to a board. Needs edit rights on the whole board.",
 		InputSchema: objectSchema( fiber.Map{
@@ -360,6 +370,7 @@ func ( handlers *Handlers ) registerBoardTools( server *mcp.Server ) {
 
 	server.Register( &mcp.Tool{
 		Name:        "update_list",
+		Route:       "POST /api/boards/{board_id}/lists/{list_id}",
 		Title:       "Rename, move or archive a column",
 		Description: "Change a column's title or position, archive it (archived: true hides it; false brings it back), or on a staged board fix the stage it shows for everyone (stage_view; empty follows the navbar), or give it its own To do/Doing/Done buttons (stage_tabs: on, off, or empty to follow the board's setting). Leave out what should not change.",
 		InputSchema: objectSchema( fiber.Map{
@@ -394,6 +405,7 @@ func ( handlers *Handlers ) registerBoardTools( server *mcp.Server ) {
 
 	server.Register( &mcp.Tool{
 		Name:        "create_label",
+		Route:       "POST /api/boards/{board_id}/labels",
 		Title:       "Add a label",
 		Description: "Add a label to a board, to put on cards with update_card's label_ids. Needs edit rights on the whole board.",
 		InputSchema: objectSchema( fiber.Map{
@@ -419,6 +431,7 @@ func ( handlers *Handlers ) registerBoardTools( server *mcp.Server ) {
 
 	server.Register( &mcp.Tool{
 		Name:        "create_card",
+		Route:       "POST /api/boards/{board_id}/cards",
 		Title:       "Add a card",
 		Description: "Add a card to a column. The other fields are optional and set in the same call. Needs edit rights on that column.",
 		InputSchema: objectSchema( fiber.Map{
@@ -479,6 +492,7 @@ func ( handlers *Handlers ) registerBoardTools( server *mcp.Server ) {
 
 	server.Register( &mcp.Tool{
 		Name:        "update_card",
+		Route:       "POST /api/boards/{board_id}/cards/{card_id}",
 		Title:       "Change a card",
 		Description: "Change any of a card's fields; leave out what should not change. Moving it (list_id, position) or archiving it needs edit rights on its column, and on the whole board to move it to another column. done marks it complete; doing and rank_place are the Doing stage and board-wide importance of a staged board. archived: true hides it from the board (reversible). Pass the card's rev when changing title or description: if someone edited it since, the change is refused rather than written over theirs.",
 		InputSchema: objectSchema( fiber.Map{
@@ -525,6 +539,7 @@ func ( handlers *Handlers ) registerBoardTools( server *mcp.Server ) {
 
 	server.Register( &mcp.Tool{
 		Name:        "add_checklist_item",
+		Route:       "POST /api/boards/{board_id}/cards/{card_id}/checklist",
 		Title:       "Add a checklist item",
 		Description: "Add an item to the end of a card's checklist. Returns the card.",
 		InputSchema: objectSchema( fiber.Map{
@@ -553,6 +568,7 @@ func ( handlers *Handlers ) registerBoardTools( server *mcp.Server ) {
 
 	server.Register( &mcp.Tool{
 		Name:        "update_checklist_item",
+		Route:       "POST /api/boards/{board_id}/cards/{card_id}/checklist/{item_id}",
 		Title:       "Tick or edit a checklist item",
 		Description: "Tick an item off (done: true) or back on, change its text, or move it. Item ids are in the card's checklist. Returns the card.",
 		InputSchema: objectSchema( fiber.Map{

@@ -7,6 +7,7 @@ import (
 	fiber "github.com/gofiber/fiber/v3"
 
 	db "todoboard/server/db"
+	logs "todoboard/server/logs"
 	models "todoboard/server/models"
 	security "todoboard/server/security"
 )
@@ -42,7 +43,7 @@ type passwordAccessRequest struct {
 // RequirePasswords makes every password route answer 404 while auth.passwords
 // is off. Per request, for the same reason as RequireMCP.
 func ( handlers *Handlers ) RequirePasswords( c fiber.Ctx ) ( err error ) {
-	if handlers.Config.PasswordsEnabled == false {
+	if handlers.cfg().PasswordsEnabled == false {
 		err = notFound( c , "not found" )
 		return
 	}
@@ -55,13 +56,13 @@ func ( handlers *Handlers ) RequirePasswords( c fiber.Ctx ) ( err error ) {
 // nothing here that depends on a username.
 func ( handlers *Handlers ) GetLoginOptions( c fiber.Ctx ) ( err error ) {
 	payload := fiber.Map{
-		"passwords":  handlers.Config.PasswordsEnabled,
-		"two_factor": handlers.Config.TwoFactorEnabled,
+		"passwords":  handlers.cfg().PasswordsEnabled,
+		"two_factor": handlers.cfg().TwoFactorEnabled,
 	}
-	if handlers.Config.PasswordsEnabled {
+	if handlers.cfg().PasswordsEnabled {
 		salt , salt_err := models.InstallSalt( handlers.Store )
 		if salt_err != nil {
-			err = serverError( c )
+			err = serverError( c , salt_err )
 			return
 		}
 		payload[ "salt" ] = salt
@@ -97,17 +98,21 @@ func ( handlers *Handlers ) PasswordLogin( c fiber.Ctx ) ( err error ) {
 	if user != nil {
 		var sign_in_err error
 		if signed , sign_in_err = models.StartPasswordSignIn( handlers.Store , user , handlers.signInRules() ); sign_in_err != nil {
-			err = serverError( c )
+			err = serverError( c , sign_in_err )
 			return
 		}
 	}
 	if signed == nil {
 		handlers.PasswordNames.Record( name , false )
 		handlers.PasswordAddresses.Record( address , false )
+		handlers.auditAs( c , logs.Anonymous() , logs.KindAuth , logs.LevelWarn , "password refused" , nil )
 		err = badRequest( c , "invalid_login" )
 		return
 	}
 	handlers.PasswordNames.Record( name , true )
+	message := "signed in with a password"
+	if signed.Challenge != "" { message = "password accepted, waiting for a code" }
+	handlers.auditAs( c , handlers.logUser( user.ID , security.MethodSession ) , logs.KindAuth , logs.LevelInfo , message , nil )
 	err = handlers.signInResponse( c , signed , fiber.Map{ "ok": true } , fiber.StatusOK )
 	return
 }
@@ -115,7 +120,7 @@ func ( handlers *Handlers ) PasswordLogin( c fiber.Ctx ) ( err error ) {
 // sessionID is the id of the session this request came with, to leave it
 // alone when the account's others end.
 func ( handlers *Handlers ) sessionID( c fiber.Ctx ) ( session_id string ) {
-	credential , err := handlers.Guard.DecryptCookie( c.Cookies( handlers.Config.CookieName ) )
+	credential , err := handlers.Guard.DecryptCookie( c.Cookies( handlers.cfg().CookieName ) )
 	if err != nil { return }
 	session_id = models.SessionID( credential )
 	return
@@ -136,7 +141,7 @@ func ( handlers *Handlers ) SetPassword( c fiber.Ctx ) ( err error ) {
 	}
 
 	user_id := security.UserFrom( c ).ID
-	cfg := handlers.Config
+	cfg := handlers.cfg()
 	if handlers.Codes.Locked( user_id ) {
 		err = tooMany( c , "two_factor_locked" )
 		return
@@ -160,9 +165,12 @@ func ( handlers *Handlers ) SetPassword( c fiber.Ctx ) ( err error ) {
 		err = forbidden( c , "two_factor_wrong" )
 		return
 	case set_err != nil:
-		err = serverError( c )
+		err = serverError( c , set_err )
 		return
 	}
+	message := "password changed"
+	if body.PasswordDigest == "" { message = "password removed" }
+	handlers.audit( c , logs.KindAuth , message , nil )
 	err = c.JSON( fiber.Map{ "ok": true , "has_password": body.PasswordDigest != "" } )
 	return
 }
@@ -195,9 +203,10 @@ func ( handlers *Handlers ) SetPasswordAccess( c fiber.Ctx ) ( err error ) {
 		return
 	}
 	if block_err != nil {
-		err = serverError( c )
+		err = serverError( c , block_err )
 		return
 	}
+	handlers.audit( c , logs.KindAdmin , "password access set" , fiber.Map{ "user_id": user_id , "allowed": *body.Allowed } )
 	err = c.JSON( fiber.Map{ "ok": true , "password_blocked": *body.Allowed == false } )
 	return
 }

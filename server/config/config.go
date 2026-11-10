@@ -15,6 +15,14 @@
 // config.yaml is decoded on top of it, strictly: an unknown key is an error,
 // because a typo that is silently ignored is a setting that silently is not
 // applied.
+//
+// The secret key is not in config.yaml. It is in secret.key beside it (see
+// secret.go), which is what lets config.yaml be edited while the server runs
+// -- from the owner's Settings screen or by hand -- without either path ever
+// touching the key. live.go holds the running configuration and applies those
+// edits; yamledit.go rewrites single values in place so the file's comments
+// survive; schema.go reads which keys can change live from the tags in
+// defaults.yaml.
 package config
 
 import (
@@ -32,8 +40,6 @@ import (
 	time "time"
 
 	yaml "gopkg.in/yaml.v3"
-
-	encryption "todoboard/server/encryption"
 )
 
 // AppSlug names the application on disk. It is what turns into
@@ -52,7 +58,17 @@ const (
 	DatabaseFileName  = "app.db"
 	ControlSocketName = "control.sock"
 	StorageDirName    = "storage"
+	LogsDirName       = "logs"
+	BackupsDirName    = "backups"
 	LanguageFileName  = "language.yaml"
+
+	// SecretFileName sits beside config.yaml. See SecretPathFor.
+	SecretFileName = "secret.key"
+
+	// BackupFileName is the previous config.yaml, kept in the app directory
+	// whenever the container rewrites its mounted copy in place. See
+	// writeConfigFile.
+	BackupFileName = "config.yaml.bak"
 )
 
 // defaultsYAML and exampleHeader are config/defaults.yaml and
@@ -89,12 +105,16 @@ type File struct {
 	Auth     AuthSection     `yaml:"auth"`
 	Pushover PushoverSection `yaml:"pushover"`
 	Notify   NotifySection   `yaml:"notify"`
+	Logs     LogsSection     `yaml:"logs"`
 	Docker   DockerSection   `yaml:"docker"`
-	Build  BuildSection  `yaml:"build"`
+	Build    BuildSection    `yaml:"build"`
 }
 
 type AppSection struct {
-	Name string `yaml:"name"`
+	Name        string `yaml:"name"`
+	Repo        string `yaml:"repo"`
+	Description string `yaml:"description"`
+	ShowAbout   bool   `yaml:"show_about"`
 }
 
 type ServerSection struct {
@@ -104,6 +124,9 @@ type ServerSection struct {
 	AppDir                 string `yaml:"app_dir"`
 	StaticDir              string `yaml:"static_dir"`
 	LanguageFile           string `yaml:"language_file"`
+	// Deprecated: the key lives in secret.key. This is read only so that a
+	// config.yaml from before the move can be migrated (MigrateLegacySecret);
+	// defaults.yaml has no such key, so nothing else ever sees it.
 	SecretKey              string `yaml:"secret_key"`
 	EncryptAtRest          bool   `yaml:"encrypt_at_rest"`
 	SecureCookies          bool   `yaml:"secure_cookies"`
@@ -114,8 +137,11 @@ type ServerSection struct {
 	BodyLimitBytes         int    `yaml:"body_limit_bytes"`
 	RateLimitMax           int    `yaml:"rate_limit_max"`
 	RateLimitWindowSeconds int    `yaml:"rate_limit_window_seconds"`
+	RateLimitSignInMax     int    `yaml:"rate_limit_signin_max"`
 	ControlSocket          bool   `yaml:"control_socket"`
 	MCP                    bool   `yaml:"mcp"`
+	Maintenance            string `yaml:"maintenance"`
+	Announcement           string `yaml:"announcement"`
 }
 
 type AuthSection struct {
@@ -127,6 +153,7 @@ type AuthSection struct {
 	APIKeyTTLSeconds     int  `yaml:"api_key_ttl_seconds"`
 	Passwords            bool `yaml:"passwords"`
 	TwoFactor            bool `yaml:"two_factor"`
+	InviteLinks          bool `yaml:"invite_links"`
 }
 
 type PushoverSection struct {
@@ -135,11 +162,26 @@ type PushoverSection struct {
 }
 
 type NotifySection struct {
-	DueCheckIntervalSeconds int `yaml:"due_check_interval_seconds"`
-	ChangeDebounceSeconds   int `yaml:"change_debounce_seconds"`
+	DueCheckIntervalSeconds int    `yaml:"due_check_interval_seconds"`
+	ChangeDebounceSeconds   int    `yaml:"change_debounce_seconds"`
 	WebPush                 bool   `yaml:"web_push"`
 	WebPushContact          string `yaml:"web_push_contact"`
 }
+
+type LogsSection struct {
+	Enabled           bool `yaml:"enabled"`
+	RetentionDays     int  `yaml:"retention_days"`
+	MaxTotalMB        int  `yaml:"max_total_mb"`
+	MaxFileMB         int  `yaml:"max_file_mb"`
+	CompressAfterDays int  `yaml:"compress_after_days"`
+	StaticAssets      bool `yaml:"static_assets"`
+	UIClicks          bool `yaml:"ui_clicks"`
+	Echo              bool `yaml:"echo"`
+}
+
+
+
+
 
 type DockerSection struct {
 	Image       string `yaml:"image"`
@@ -181,21 +223,39 @@ type Config struct {
 	URL       string
 	URLSource string
 
-	// ConfigFile is the config.yaml this was loaded from. It also holds the
-	// secret key, which is why it is reported wherever backups are mentioned.
+	// ConfigFile is the config.yaml this was loaded from.
 	ConfigFile string
 
 	// ConfigCreated is true when this run wrote ConfigFile because none
-	// existed. The startup log says so, since a fresh key was generated.
+	// existed.
 	ConfigCreated bool
 
-	// ConfigWarning is non-empty when ConfigFile is readable by other users.
-	// It is a warning rather than an error so a misconfigured mode never
-	// stops a server that was working, but it does get logged on every start.
+	// SecretFile is secret.key, beside ConfigFile: the one file besides the
+	// app directory that a backup must include.
+	SecretFile string
+
+	// SecretCreated is true when this run generated the key, SecretMigrated
+	// when it moved server.secret_key out of config.yaml into SecretFile.
+	// The startup log says so either way.
+	SecretCreated  bool
+	SecretMigrated bool
+
+	// RotationFinished is true when this load completed a key rotation that
+	// had been cut short. RotationPending is the same discovery inside the
+	// container, which cannot complete one: docker/rotate-key.sh does, on the
+	// host. See secret.go.
+	RotationFinished bool
+	RotationPending  bool
+
+	// ConfigWarning is non-empty when secret.key is readable by other users,
+	// or config.yaml writable by them. It is a warning rather than an error
+	// so a misconfigured mode never stops a server that was working, but it
+	// does get logged on every start.
 	ConfigWarning string
 
 	// AppDir is the one directory this application owns: the database, the
-	// control socket, and any uploaded or generated files.
+	// control socket (except in the container, see layout_container.go), and
+	// any uploaded or generated files.
 	//
 	// Defaulting to ~/.config/<slug> rather than ./data matters for the
 	// single-file build: a binary run from a Downloads folder, a USB stick,
@@ -218,9 +278,9 @@ type Config struct {
 	ControlSocketPath    string
 	ControlSocketEnabled bool
 
-	// StorageDir is for application files -- uploads, exports, generated
-	// artifacts. Nothing in the base template writes here; it exists so that
-	// features added later have an obvious, backed-up place to put files
+	// StorageDir is for application files -- exports, generated artifacts.
+	// Finished uploads are in storage/files (see Files.Dir); the rest exists
+	// so that features added later have an obvious, backed-up place to put files
 	// instead of inventing one.
 	StorageDir string
 
@@ -243,27 +303,27 @@ type Config struct {
 	CookieName    string
 
 	SessionTTL    time.Duration
-	// SessionMaxAge caps how far use can push a session's end out: a
-	// session ends this long after it was signed in, however busy it is.
 	SessionMaxAge time.Duration
 	LoginTokenTTL time.Duration
 	// MultiUseLoginTokenTTL is the default expiry of a link that works more
 	// than once (see models.ResolveLoginLink).
 	MultiUseLoginTokenTTL time.Duration
 
-	// PasswordsEnabled decides whether a password is believed at all, and
-	// whether an account can set one. Off keeps the hashes, so switching it
-	// back on restores them. Read at start: change config.yaml and restart.
-	PasswordsEnabled bool
-	// TwoFactorEnabled decides whether 2FA is offered and asked for. Off keeps
-	// the secrets, the same way.
-	TwoFactorEnabled bool
-
 	// APIKeysEnabled decides whether the Authorization: Bearer header is
 	// believed at all, and whether the endpoints that mint keys exist.
 	// Turning it off stops existing keys from authenticating too -- the rows
 	// stay, so switching it back on restores them.
 	APIKeysEnabled bool
+	// PasswordsEnabled decides whether a password is believed at all, and
+	// whether an account can set one. Off keeps the hashes, so switching it
+	// back on restores them.
+	PasswordsEnabled bool
+	// TwoFactorEnabled decides whether 2FA is offered and asked for. Off keeps
+	// the secrets, the same way.
+	TwoFactorEnabled bool
+	// InviteLinksEnabled decides whether /join and every invite route answer,
+	// and whether a PIN can be set. Off keeps the links and PINs, the same way.
+	InviteLinksEnabled bool
 
 	// APIKeyTTL is how long a new key lasts when the request does not say.
 	// The default is bounded so that a forgotten key eventually stops being
@@ -274,26 +334,6 @@ type Config struct {
 	// so with APIKeysEnabled off it is not registered either -- nothing could
 	// authenticate to it.
 	MCPEnabled bool
-
-	// SecretKey encrypts session cookie payloads and, when EncryptAtRest is
-	// on, every value written to bolt. Losing it means losing the database
-	// contents.
-	SecretKey     string
-	EncryptAtRest bool
-
-	RateLimitMax    int
-	RateLimitWindow time.Duration
-	BodyLimit       int
-
-	// TrustProxy tells fiber to believe ProxyHeader -- but only on a
-	// connection whose peer address is in TrustedProxies. Fiber with
-	// TrustProxy on and no allowlist trusts nobody, so every visitor behind
-	// the proxy shares the proxy's one rate-limit budget; with the allowlist
-	// and nothing else, any client could still name its own IP. Both halves
-	// are required, and Validate refuses one without the other.
-	TrustProxy     bool
-	TrustedProxies []string
-	ProxyHeader    string
 
 	// PublicURL is server.public_url alone, with no fallback: push
 	// notifications use it for their links, and a reminder pointing at a
@@ -310,15 +350,88 @@ type Config struct {
 	// WebPush sends notifications to browsers people turn them on in.
 	WebPush          bool
 	WebPushContact   string
+
+	// SecretKey encrypts session cookie payloads and, when EncryptAtRest is
+	// on, every value written to bolt. Losing it means losing the database
+	// contents.
+	SecretKey     string
+	EncryptAtRest bool
+
+	RateLimitMax    int
+	RateLimitWindow time.Duration
+	// Maintenance is server.maintenance: read it through MaintenanceMode.
+	Maintenance string
+	// Announcement is server.announcement: shown on every signed-in page.
+	Announcement string
+	// Repo is app.repo with any trailing / or .git cut: where the source
+	// lives. Empty when it is not set. See RepoFile.
+	Repo string
+	// Description is app.description.
+	Description string
+	// ShowAbout is app.show_about: About in the menu.
+	ShowAbout bool
+
+	// RateLimitSignInMax is the separate budget for signing in and joining.
+	RateLimitSignInMax int
+	BodyLimit       int
+
+	// TrustProxy tells fiber to believe ProxyHeader -- but only on a
+	// connection whose peer address is in TrustedProxies. Fiber with
+	// TrustProxy on and no allowlist trusts nobody, so every visitor behind
+	// the proxy shares the proxy's one rate-limit budget; with the allowlist
+	// and nothing else, any client could still name its own IP. Both halves
+	// are required, and Validate refuses one without the other.
+	TrustProxy     bool
+	TrustedProxies []string
+	ProxyHeader    string
+
+	// Logs is the activity log's settings; see server/logs.
+	Logs LogsConfig
+
+	// Backups is the scheduled backup's settings; see server/backup.
+	Backups BackupsConfig
+
+	// file and raw are what this was built from, for NewHolder.
+	file *File
+	raw  []byte
+}
+
+// LogsConfig is config.yaml's logs section, resolved: sizes in bytes, and the
+// directory the day files go in (<app_dir>/logs, created 0700 by Load).
+type LogsConfig struct {
+	Enabled           bool
+	Dir               string
+	RetentionDays     int
+	MaxTotalBytes     int64
+	MaxFileBytes      int64
+	CompressAfterDays int
+	StaticAssets      bool
+	UIClicks          bool
+	Echo              bool
+}
+
+// ErrRotationPending is what everything but the rotation itself says when one
+// was left half way inside the container.
+var ErrRotationPending = errors.New( "a key rotation was cut short -- run docker/rotate-key.sh on the host to finish it" )
+
+
+
+
+// BackupsConfig is config.yaml's backups section, resolved. Dir is where every
+// backup goes unless `manage backup -out` says otherwise (<app_dir>/backups,
+// created 0700 the first time something is written there).
+type BackupsConfig struct {
+	Dir      string
 }
 
 // layout is what the container image pins, regardless of config.yaml. See
 // layout_container.go; outside the image every field is empty and nothing is
 // pinned.
 type layout struct {
-	ConfigFile string
-	AppDir     string
-	Host       string
+	ConfigFile    string
+	AppDir        string
+	ControlSocket string
+	Host          string
 }
 
 // InContainer reports whether this binary was built for the container image.
@@ -484,6 +597,24 @@ var (
 // out of range, a Docker size the daemon would refuse, a build target go
 // cannot parse. The docker and build values also end up in shell commands,
 // so they are held to strict patterns rather than trusted.
+// The values of server.maintenance. "none" rather than "off": YAML 1.1 readers
+// take a bare off as false, and the Python template's reader is one of those.
+const (
+	MaintenanceNone     = "none"
+	MaintenanceReadOnly = "read_only"
+	MaintenanceFull     = "full"
+)
+
+// MaintenanceMode is server.maintenance, with a Config built by hand reading
+// as normal running.
+func ( cfg *Config ) MaintenanceMode() ( mode string ) {
+	mode = cfg.Maintenance
+	if mode == "" {
+		mode = MaintenanceNone
+	}
+	return
+}
+
 func ( file *File ) Validate() ( err error ) {
 	var problems []string
 	check := func( ok bool , format string , values ...any ) {
@@ -497,6 +628,9 @@ func ( file *File ) Validate() ( err error ) {
 	}
 
 	check( strings.TrimSpace( file.App.Name ) != "" , "app.name must not be empty" )
+	check( validRepo( file.App.Repo ) ,
+		"app.repo %q must be empty or a repository address like https://github.com/you/app (https, no query)" , file.App.Repo )
+	check( len( file.App.Description ) <= 500 , "app.description must be 500 characters or fewer" )
 
 	server := file.Server
 	check( strings.TrimSpace( server.Host ) != "" , "server.host must not be empty" )
@@ -514,14 +648,19 @@ func ( file *File ) Validate() ( err error ) {
 	check( server.BodyLimitBytes > 0 , "server.body_limit_bytes must be positive" )
 	check( server.RateLimitMax > 0 , "server.rate_limit_max must be positive" )
 	check( server.RateLimitWindowSeconds > 0 , "server.rate_limit_window_seconds must be positive" )
+	check( server.RateLimitSignInMax > 0 , "server.rate_limit_signin_max must be positive" )
+	check( server.Maintenance == MaintenanceNone || server.Maintenance == MaintenanceReadOnly || server.Maintenance == MaintenanceFull ,
+		"server.maintenance must be none, read_only or full" )
+	check( len( server.Announcement ) <= 500 , "server.announcement must be 500 characters or fewer" )
 
 	auth := file.Auth
 	check( auth.SessionTTLSeconds > 0 , "auth.session_ttl_seconds must be positive" )
 	check( auth.SessionMaxAgeSeconds >= auth.SessionTTLSeconds , "auth.session_max_age_seconds must be at least auth.session_ttl_seconds" )
-	check( auth.MultiUseLoginTokenTTLSeconds > 0 , "auth.multi_use_login_token_ttl_seconds must be positive" )
 	check( auth.LoginTokenTTLSeconds > 0 , "auth.login_token_ttl_seconds must be positive" )
+	check( auth.MultiUseLoginTokenTTLSeconds > 0 , "auth.multi_use_login_token_ttl_seconds must be positive" )
 	check( auth.APIKeyTTLSeconds > 0 , "auth.api_key_ttl_seconds must be positive" )
 
+	logs := file.Logs
 	check( strings.HasPrefix( file.Pushover.APIURL , "https://" ) || strings.HasPrefix( file.Pushover.APIURL , "http://" ) ,
 		"pushover.api_url must be an http(s) URL, got %q" , file.Pushover.APIURL )
 	check( file.Notify.DueCheckIntervalSeconds >= 10 , "notify.due_check_interval_seconds must be at least 10" )
@@ -529,6 +668,12 @@ func ( file *File ) Validate() ( err error ) {
 	contact := strings.TrimSpace( file.Notify.WebPushContact )
 	check( contact == "" || strings.HasPrefix( contact , "mailto:" ) || strings.HasPrefix( contact , "https://" ) ,
 		"notify.web_push_contact must be a mailto: or https:// address, got %q" , file.Notify.WebPushContact )
+
+	check( logs.RetentionDays >= 1 && logs.RetentionDays <= 3650 , "logs.retention_days must be 1-3650, got %d" , logs.RetentionDays )
+	check( logs.MaxTotalMB >= 1 , "logs.max_total_mb must be positive" )
+	check( logs.MaxFileMB >= 1 && logs.MaxFileMB <= logs.MaxTotalMB , "logs.max_file_mb must be positive and no more than logs.max_total_mb" )
+	check( logs.CompressAfterDays >= 0 , "logs.compress_after_days must be 0 (never) or more" )
+
 
 	docker := file.Docker
 	check( imagePattern.MatchString( docker.Image ) , "docker.image %q is not a valid lowercase image name" , docker.Image )
@@ -551,8 +696,20 @@ func ( file *File ) Validate() ( err error ) {
 	}
 
 	if len( problems ) > 0 {
-		err = errors.New( strings.Join( problems , "; " ) )
+		err = &ValidationError{ Problems: problems }
 	}
+	return
+}
+
+// ValidationError lists everything wrong with a config.yaml at once. Each
+// problem starts with the key it is about ("server.port must be ..."), which
+// is how the Settings screen puts it under the right field.
+type ValidationError struct {
+	Problems []string
+}
+
+func ( validation *ValidationError ) Error() ( result string ) {
+	result = strings.Join( validation.Problems , "; " )
 	return
 }
 
@@ -577,44 +734,78 @@ func validPublicURL( value string ) ( result bool ) {
 	return
 }
 
+func validRepo( value string ) ( result bool ) {
+	if value == "" {
+		result = true
+		return
+	}
+	parsed , err := url.Parse( value )
+	result = err == nil && parsed.Scheme == "https" && parsed.Host != "" &&
+		parsed.RawQuery == "" && parsed.Fragment == "" && parsed.User == nil &&
+		strings.ContainsAny( value , " \n\r\t\"<>" ) == false
+	return
+}
+
+// cleanRepo is app.repo as links are built from it: no trailing / or .git.
+func cleanRepo( value string ) ( result string ) {
+	result = strings.TrimRight( strings.TrimSpace( value ) , "/" )
+	result = strings.TrimSuffix( result , ".git" )
+	return
+}
+
+// RepoFile is the address of one file in app.repo, on its default branch
+// (GitHub and GitLab both read HEAD as that), or "" when there is no repo.
+func ( cfg *Config ) RepoFile( path string ) ( result string ) {
+	if cfg.Repo == "" { return }
+	result = cfg.Repo + "/blob/HEAD/" + strings.TrimLeft( path , "/" )
+	return
+}
+
 func validBindAddress( value string ) ( result bool ) {
 	result = net.ParseIP( value ) != nil
 	return
 }
 
 // CheckSecretKey is separate from Validate because only a process that will
-// actually use the key needs one.
+// actually use the key needs one. label says where the key came from, for
+// the message.
 //
-// An empty key is refused rather than filled in. A file that already exists
-// was created with a key, so an empty one means it was removed -- and
+// An empty key is refused rather than filled in. A secret.key that exists
+// was written with a key, so an empty one means it was emptied -- and
 // quietly generating a replacement would make every existing record
 // permanently unreadable.
-func CheckSecretKey( file *File , path string ) ( err error ) {
-	key := strings.TrimSpace( file.Server.SecretKey )
+func CheckSecretKey( key string , label string ) ( err error ) {
+	key = strings.TrimSpace( key )
 	if key == "" {
 		err = fmt.Errorf(
-			"server.secret_key is empty in %s\n"+
+			"%s is empty\n"+
 				"  If this app already has data, put back the key it was written with -- a new key cannot read it.\n"+
-				"  For a fresh install, generate one with: openssl rand -hex 32" , path )
+				"  For a fresh install, delete the empty file and the server writes a new one." , label )
 		return
 	}
 	if secretPattern.MatchString( key ) == false {
-		err = fmt.Errorf( "server.secret_key in %s must be 64 hex characters (32 bytes), got %d characters" , path , len( key ) )
+		err = fmt.Errorf( "%s must hold 64 hex characters (32 bytes), got %d characters" , label , len( key ) )
 	}
 	return
 }
 
-// permissionWarning flags a config.yaml anyone on the machine can read. The
-// file holds the secret key, so that is everyone's copy of it.
-func permissionWarning( path string ) ( warning string ) {
+// permissionWarning flags a secret.key other users can read or anyone but
+// its owner can change, and a config.yaml anyone on the machine can write --
+// the server applies an edit to that within seconds. Group read on
+// secret.key is allowed: it is how the container's user reads it (see
+// docker/run.sh).
+func permissionWarning( config_path string , secret_path string ) ( warning string ) {
 	if runtime.GOOS == "windows" {
 		return
 	}
-	info , err := os.Stat( path )
-	if err != nil { return }
-	if info.Mode().Perm() & 0o004 != 0 {
-		warning = fmt.Sprintf( "%s is readable by every user (mode %04o) and holds the secret key -- chmod 600 it" , path , info.Mode().Perm() )
+	var problems []string
+	if info , err := os.Stat( secret_path ); err == nil && info.Mode().Perm() & 0o027 != 0 {
+		problems = append( problems , fmt.Sprintf( "%s is open to other users (mode %04o) and holds the secret key -- chmod 600 it" , secret_path , info.Mode().Perm() ) )
 	}
+	if info , err := os.Stat( config_path ); err == nil && info.Mode().Perm() & 0o002 != 0 {
+		problems = append( problems , fmt.Sprintf( "%s is writable by every user (mode %04o), and the server applies edits to it -- chmod 600 it" , config_path , info.Mode().Perm() ) )
+	}
+	warning = strings.Join( problems , "; " )
 	return
 }
 
@@ -622,33 +813,32 @@ func permissionWarning( path string ) ( warning string ) {
 // creating a config.yaml
 // ---------------------------------------------------------------------------
 
-var secretKeyLine = regexp.MustCompile( `(?m)^(\s*secret_key:\s*)""` )
-
-// NewFileContent is defaults.yaml with a freshly generated secret key -- the
-// whole file, comments included, so the result documents itself.
+// NewFileContent is defaults.yaml as it is -- the whole file, comments
+// included, so the result documents itself. It holds no secret: that is
+// written to secret.key separately.
 func NewFileContent() ( content []byte , err error ) {
-	matches := secretKeyLine.FindAllIndex( defaultsYAML , -1 )
-	if len( matches ) != 1 {
-		err = fmt.Errorf( "embedded defaults.yaml must contain exactly one `secret_key: \"\"` line, found %d" , len( matches ) )
-		return
-	}
-	key := encryption.GenerateKeyHex()
-	content = secretKeyLine.ReplaceAll( defaultsYAML , []byte( `${1}"` + key + `"` ) )
+	if err = checkNoSecretInDefaults(); err != nil { return }
+	content = append( []byte{} , defaultsYAML... )
 	return
 }
 
 // ExampleFileContent is defaults.yaml with a header explaining how to copy
-// it into place, and the secret key left empty. It is generated rather than
-// kept by hand so that it cannot drift from the defaults it documents, and
-// the empty key is deliberate: a key in a committed file is everyone's key.
-// A copy that never gets one fails at startup with the line to run (see
-// CheckSecretKey) instead of running on a shared key.
+// it into place. It is generated rather than kept by hand so that it cannot
+// drift from the defaults it documents.
 func ExampleFileContent() ( content []byte , err error ) {
-	if matches := secretKeyLine.FindAllIndex( defaultsYAML , -1 ); len( matches ) != 1 {
-		err = fmt.Errorf( "embedded defaults.yaml must contain exactly one `secret_key: \"\"` line, found %d" , len( matches ) )
-		return
-	}
+	if err = checkNoSecretInDefaults(); err != nil { return }
 	content = append( append( []byte{} , exampleHeader... ) , defaultsYAML... )
+	return
+}
+
+// checkNoSecretInDefaults keeps a key from creeping back into defaults.yaml,
+// where every config.yaml and the committed example would copy it.
+func checkNoSecretInDefaults() ( err error ) {
+	defaults , err := Defaults()
+	if err != nil { return }
+	if defaults.Server.SecretKey != "" || bytes.Contains( defaultsYAML , []byte( "\n  secret_key:" ) ) {
+		err = errors.New( "embedded defaults.yaml must not contain server.secret_key -- the key lives in secret.key" )
+	}
 	return
 }
 
@@ -662,11 +852,13 @@ func WriteExample( path string ) ( err error ) {
 }
 
 // WriteNew creates path from NewFileContent, refusing to overwrite: an
-// existing config.yaml holds a key that existing data depends on.
-func WriteNew( path string ) ( err error ) {
+// existing config.yaml is someone's settings. A secret.key is written beside
+// it unless one is already there -- an existing key is what existing data
+// depends on, so it is never replaced. secret_created says which.
+func WriteNew( path string ) ( secret_created bool , err error ) {
 	content , err := NewFileContent()
 	if err != nil { return }
-	// 0700 because the secret key lives in here.
+	// 0700 because secret.key lives in here too.
 	if err = os.MkdirAll( filepath.Dir( path ) , 0o700 ); err != nil {
 		err = fmt.Errorf( "could not create %s: %w" , filepath.Dir( path ) , err )
 		return
@@ -676,33 +868,76 @@ func WriteNew( path string ) ( err error ) {
 		err = fmt.Errorf( "could not create %s: %w" , path , err )
 		return
 	}
-	defer handle.Close()
 	_ , err = handle.Write( content )
+	if close_err := handle.Close(); err == nil {
+		err = close_err
+	}
+	if err != nil { return }
+	secret_path := SecretPathFor( path )
+	if isFile( secret_path ) {
+		return
+	}
+	if err = WriteSecret( secret_path , GenerateSecret() ); err != nil { return }
+	secret_created = true
 	return
 }
 
 // ---------------------------------------------------------------------------
 
-// Load finds config.yaml (creating it with a fresh key if there is none),
+// Load finds config.yaml (creating it, and secret.key, if there is none),
+// moves a secret key out of an older config.yaml (see resolveSecret),
 // validates it, and makes sure the app directory exists. The server and the
 // manage CLI both start here.
 func Load() ( cfg *Config , err error ) {
 	path , exists := Locate()
+	cfg , err = LoadPath( path , exists )
+	return
+}
+
+// LoadPath is Load for a config.yaml whose path is already known: the one
+// Locate found, or a test's.
+func LoadPath( path string , exists bool ) ( cfg *Config , err error ) {
 	created := false
 	if exists == false {
 		if InContainer() {
 			err = fmt.Errorf( "no config at %s -- docker/run.sh mounts the project's config/config.yaml there" , path )
 			return
 		}
-		if err = WriteNew( path ); err != nil { return }
+		if _ , err = WriteNew( path ); err != nil { return }
 		created = true
 	}
 
 	file , err := ReadFile( path )
 	if err != nil { return }
-	if err = CheckSecretKey( file , path ); err != nil { return }
 
 	paths := ResolvePaths( file , path )
+
+	// A key rotation cut short: the data may already be on the new key, so
+	// this has to finish before the key is read. Inside the container
+	// secret.key cannot be written, so it is left for docker/rotate-key.sh.
+	rotation_pending := false
+	rotation_finished := false
+	if RotationPending( paths.AppDir ) {
+		if InContainer() {
+			rotation_pending = true
+		} else {
+			if err = finishRotation( paths , path ); err != nil {
+				err = fmt.Errorf( "could not finish an interrupted key rotation: %w" , err )
+				return
+			}
+			rotation_finished = true
+		}
+	}
+
+	secret , err := resolveSecret( file , path , paths.DatabasePath )
+	if err != nil { return }
+	if secret.Rewrote {
+		// The migration took the key's line out of config.yaml: build from
+		// the file as it now is, which is also what the Holder starts from.
+		if file , err = ReadFile( path ); err != nil { return }
+	}
+	raw , err := os.ReadFile( path )
+	if err != nil { return }
 
 	// 0700 because the database lives in here.
 	if mkdir_err := os.MkdirAll( paths.AppDir , 0o700 ); mkdir_err != nil {
@@ -715,6 +950,30 @@ func Load() ( cfg *Config , err error ) {
 		return
 	}
 
+	logs_dir := filepath.Join( paths.AppDir , LogsDirName )
+	if mkdir_err := os.MkdirAll( logs_dir , 0o700 ); mkdir_err != nil {
+		err = fmt.Errorf( "could not create logs directory %q: %w" , logs_dir , mkdir_err )
+		return
+	}
+
+	cfg = build( file , path , paths , secret.Key )
+	cfg.ConfigCreated = created
+	cfg.SecretCreated = secret.Created
+	cfg.SecretMigrated = secret.Migrated
+	cfg.RotationPending = rotation_pending
+	cfg.RotationFinished = rotation_finished
+	cfg.ConfigWarning = permissionWarning( path , cfg.SecretFile )
+	if secret.Warning != "" {
+		cfg.ConfigWarning = strings.TrimPrefix( cfg.ConfigWarning + "; " + secret.Warning , "; " )
+	}
+	cfg.raw = raw
+	return
+}
+
+// build is config.yaml resolved into the Config the server runs on. It
+// creates nothing, which is what lets the Holder rebuild the live part of it
+// on every edit (see liveConfig).
+func build( file *File , path string , paths Paths , secret_key string ) ( cfg *Config ) {
 	host := file.Server.Host
 	if pinned.Host != "" {
 		host = pinned.Host
@@ -727,16 +986,15 @@ func Load() ( cfg *Config , err error ) {
 		URL:         link_url,
 		URLSource:   link_source,
 
-		ConfigFile:    path,
-		ConfigCreated: created,
-		ConfigWarning: permissionWarning( path ),
+		ConfigFile: path,
+		SecretFile: SecretPathFor( path ),
 
 		AppDir:       paths.AppDir,
 		DatabasePath: paths.DatabasePath,
 
-		ControlSocketPath:    filepath.Join( paths.AppDir , ControlSocketName ),
+		ControlSocketPath:    paths.ControlSocketPath,
 		ControlSocketEnabled: file.Server.ControlSocket,
-		StorageDir:           storage_dir,
+		StorageDir:           filepath.Join( paths.AppDir , StorageDirName ),
 
 		StaticDir:    paths.StaticDir,
 		LanguageFile: paths.LanguageFile,
@@ -748,26 +1006,21 @@ func Load() ( cfg *Config , err error ) {
 		CookieName:    file.Server.CookieName,
 
 		SessionTTL:    seconds( file.Auth.SessionTTLSeconds ),
-		LoginTokenTTL: seconds( file.Auth.LoginTokenTTLSeconds ),
 		SessionMaxAge: seconds( file.Auth.SessionMaxAgeSeconds ),
+		LoginTokenTTL: seconds( file.Auth.LoginTokenTTLSeconds ),
 		MultiUseLoginTokenTTL: seconds( file.Auth.MultiUseLoginTokenTTLSeconds ),
-		PasswordsEnabled: file.Auth.Passwords,
-		TwoFactorEnabled: file.Auth.TwoFactor,
 
 		APIKeysEnabled: file.Auth.APIKeys,
+		PasswordsEnabled: file.Auth.Passwords,
+		TwoFactorEnabled: file.Auth.TwoFactor,
+		InviteLinksEnabled: file.Auth.InviteLinks,
 		APIKeyTTL:      seconds( file.Auth.APIKeyTTLSeconds ),
 		MCPEnabled:     file.Server.MCP,
-
-		SecretKey:     strings.TrimSpace( file.Server.SecretKey ),
-		EncryptAtRest: file.Server.EncryptAtRest,
-
-		RateLimitMax:    file.Server.RateLimitMax,
-		RateLimitWindow: seconds( file.Server.RateLimitWindowSeconds ),
-		BodyLimit:       file.Server.BodyLimitBytes,
-
-		TrustProxy:     file.Server.TrustProxy,
-		TrustedProxies: file.Server.TrustedProxies,
-		ProxyHeader:    file.Server.ProxyHeader,
+		Maintenance:    file.Server.Maintenance,
+		Announcement:   file.Server.Announcement,
+		Repo:           cleanRepo( file.App.Repo ),
+		Description:    file.App.Description,
+		ShowAbout:      file.App.ShowAbout,
 
 		PublicURL: strings.TrimRight( strings.TrimSpace( file.Server.PublicURL ) , "/" ),
 
@@ -778,6 +1031,36 @@ func Load() ( cfg *Config , err error ) {
 		ChangeDebounce:   seconds( file.Notify.ChangeDebounceSeconds ),
 		WebPush:          file.Notify.WebPush,
 		WebPushContact:   strings.TrimSpace( file.Notify.WebPushContact ),
+
+		SecretKey:     secret_key,
+		EncryptAtRest: file.Server.EncryptAtRest,
+
+		RateLimitMax:    file.Server.RateLimitMax,
+		RateLimitWindow: seconds( file.Server.RateLimitWindowSeconds ),
+		RateLimitSignInMax: file.Server.RateLimitSignInMax,
+		BodyLimit:       file.Server.BodyLimitBytes,
+
+		TrustProxy:     file.Server.TrustProxy,
+		TrustedProxies: file.Server.TrustedProxies,
+		ProxyHeader:    file.Server.ProxyHeader,
+
+		Logs: LogsConfig{
+			Enabled:           file.Logs.Enabled,
+			Dir:               filepath.Join( paths.AppDir , LogsDirName ),
+			RetentionDays:     file.Logs.RetentionDays,
+			MaxTotalBytes:     int64( file.Logs.MaxTotalMB ) * 1024 * 1024,
+			MaxFileBytes:      int64( file.Logs.MaxFileMB ) * 1024 * 1024,
+			CompressAfterDays: file.Logs.CompressAfterDays,
+			StaticAssets:      file.Logs.StaticAssets,
+			UIClicks:          file.Logs.UIClicks,
+			Echo:              file.Logs.Echo,
+		},
+
+		Backups: BackupsConfig{
+			Dir:      filepath.Join( paths.AppDir , BackupsDirName ),
+		},
+
+		file: file,
 	}
 	return
 }
@@ -786,11 +1069,12 @@ func Load() ( cfg *Config , err error ) {
 // way the server resolves it. `config shell server` prints the same values,
 // so the scripts never work out a path on their own.
 type Paths struct {
-	ProjectDir   string
-	AppDir       string
-	DatabasePath string
-	StaticDir    string
-	LanguageFile string
+	ProjectDir        string
+	AppDir            string
+	DatabasePath      string
+	ControlSocketPath string
+	StaticDir         string
+	LanguageFile      string
 }
 
 // ResolvePaths works the paths out without creating anything.
@@ -809,6 +1093,10 @@ func ResolvePaths( file *File , config_path string ) ( paths Paths ) {
 		paths.AppDir = absolute
 	}
 	paths.DatabasePath = filepath.Join( paths.AppDir , DatabaseFileName )
+	paths.ControlSocketPath = filepath.Join( paths.AppDir , ControlSocketName )
+	if pinned.ControlSocket != "" {
+		paths.ControlSocketPath = pinned.ControlSocket
+	}
 	paths.StaticDir = resolvePath( base , file.Server.StaticDir )
 
 	// An operator can drop a language.yaml into the app directory to reword

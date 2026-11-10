@@ -20,8 +20,7 @@ import (
 	static "todoboard/server/static"
 )
 
-// What the auth tests in this package share (ported from the go-webserver
-// template): an app wired through the real routes,
+// What the tests in this package share: an app wired through the real routes,
 // and a browser to drive it with. Anything one feature's tests alone use stays
 // in that feature's test file, since a project can leave the feature out.
 
@@ -50,6 +49,7 @@ func newAuthFixture( t *testing.T ) ( fixture *authFixture ) {
 		APIKeysEnabled:   true,
 		PasswordsEnabled: true,
 		TwoFactorEnabled: true,
+		InviteLinksEnabled: true,
 		SessionTTL:       time.Hour,
 	}
 	store , err := db.Open( cfg )
@@ -60,7 +60,8 @@ func newAuthFixture( t *testing.T ) ( fixture *authFixture ) {
 	alice , _ := models.CreateUser( store , "Alice" , models.RoleUser )
 
 	static_server , _ := static.New( fstest.MapFS{ "index.html": { Data: []byte( "index" ) } } )
-	handlers := New( store , cfg , security.New( store , cfg ) , nil , static_server , nil , "test" )
+	settings := config.NewStaticHolder( cfg )
+	handlers := New( store , settings , security.New( store , settings ) , nil , static_server , "test" )
 	app := fiber.New()
 	handlers.Register( app )
 	fixture = &authFixture{ app: app , store: store , cfg: cfg , owner: owner , alice: alice , handlers: handlers }
@@ -88,18 +89,6 @@ func ( client *browser ) do( t *testing.T , method string , path string , body f
 	text , _ := io.ReadAll( response.Body )
 	status = response.StatusCode
 	json.Unmarshal( text , &reply )
-	return
-}
-
-// users is GET /api/admin/users, which TodoBoard answers as a plain list.
-func ( client *browser ) users( t *testing.T ) ( rows []any ) {
-	t.Helper()
-	request , _ := http.NewRequest( http.MethodGet , "/api/admin/users" , nil )
-	request.Header.Set( "Cookie" , client.cookie )
-	response , err := client.fixture.app.Test( request , fiber.TestConfig{ Timeout: 10 * time.Second } )
-	if err != nil { t.Fatal( err ) }
-	text , _ := io.ReadAll( response.Body )
-	if err = json.Unmarshal( text , &rows ); err != nil { t.Fatalf( "%d %s" , response.StatusCode , text ) }
 	return
 }
 

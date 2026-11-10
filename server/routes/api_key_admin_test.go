@@ -112,7 +112,8 @@ func TestAdminKeyLimits( t *testing.T ) {
 
 	if status , reply := fixture.make( t , fixture.owner.ID , "" ); status != 403 { t.Errorf( "a key for the owner: %d %s" , status , reply ) }
 	if status , reply := fixture.make( t , fixture.member.ID , models.RoleAdmin ); status != 403 { t.Errorf( "an admin key for a user: %d %s" , status , reply ) }
-	if status , reply := fixture.make( t , fixture.other.ID , models.RoleAdmin ); status != 201 { t.Errorf( "an admin key for an admin: %d %s" , status , reply ) }
+	// Only the owner makes a key for another admin (models.IssueAPIKeyFor).
+	if status , reply := fixture.make( t , fixture.other.ID , models.RoleAdmin ); status != 403 { t.Errorf( "a plain admin made a key for an admin: %d %s" , status , reply ) }
 	if status , reply := fixture.make( t , 99999 , "" ); status != 404 { t.Errorf( "nobody: %d %s" , status , reply ) }
 
 	// No board limit on offer: which boards they are is not an admin's to see.
@@ -137,7 +138,7 @@ func TestAdminKeyLimits( t *testing.T ) {
 // signed in through the app is held to it.
 func TestOwnerKeysStillMadeWithoutAnAdmin( t *testing.T ) {
 	fixture := newAdminKeys( t )
-	_ , key , err := models.IssueAPIKey( fixture.store , fixture.owner.ID , "cli" , models.RoleAdmin , time.Hour , models.BoardAccessAll , nil )
+	_ , key , err := models.IssueAPIKey( fixture.store , fixture.owner.ID , "cli" , models.RoleAdmin , time.Hour )
 	if err != nil { t.Fatal( err ) }
 	if key.CreatedBy != 0 { t.Errorf( "made by nobody: %d" , key.CreatedBy ) }
 }

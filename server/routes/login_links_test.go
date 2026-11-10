@@ -66,9 +66,9 @@ func TestMakingAReusableLoginLink( t *testing.T ) {
 	for range 2 { signInWith( t , fixture , credential ) }
 
 	// The user list shows it, with the uses so far.
-	list := owner.users( t )
+	_ , list := owner.do( t , "GET" , "/api/admin/users" , nil )
 	found := false
-	for _ , row := range list {
+	for _ , row := range list[ "users" ].( []any ) {
 		user := row.( map[string]any )
 		if user[ "id" ] != float64( fixture.alice.ID ) { continue }
 		link , _ := user[ "login_link" ].( map[string]any )

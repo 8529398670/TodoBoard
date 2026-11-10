@@ -38,7 +38,7 @@ const TwoFactor = {
         return;
       }
       input.value = "";
-      App.showError( error.message );
+      App.showFieldError( error.message , { two_factor_wrong: "two-factor-step-code" } );
       input.focus();
     }
   },
@@ -107,7 +107,7 @@ const TwoFactor = {
       this.show( "recovery" );
       Password.render();
     } catch ( error ) {
-      App.showError( error.message );
+      App.showFieldError( error.message , { two_factor_wrong: "two-factor-code" } );
     }
   },
 
@@ -122,7 +122,7 @@ const TwoFactor = {
       Password.render();
       Dom.toast( I18n.get( "ui.saved" ) , "ok" );
     } catch ( error ) {
-      App.showError( error.message );
+      App.showFieldError( error.message , { two_factor_wrong: "two-factor-disable-code" } );
     }
   },
 };

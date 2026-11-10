@@ -2,9 +2,10 @@
 // the admin screens, one sidebar screen at a time (nav.js).
 //
 // The shape: load the language file, ask /api/me once, then branch on
-// authenticated/role. Do not re-check the session anywhere else -- the server
-// is the authority, and a second client-side notion of "am I logged in" is
-// how the two drift apart.
+// authenticated/role. Do not keep a second client-side notion of "am I logged
+// in" -- the server is the authority, and guessing is how the two drift apart.
+// When the page needs to know again it asks again: see fresh.js, and the 401
+// handling in api.js.
 //
 // New screens belong in their own file under /js/ with their own init(),
 // rather than being appended here until this becomes the monolith the rest of
@@ -40,6 +41,13 @@ const App = {
     }
     Dom.show( Dom.get( "main" ) , true );
 
+    Dom.passwordToggles();
+    // Not a plain #main link: the hash is which screen is showing.
+    Dom.get( "skip-link" ).addEventListener( "click" , ( event ) => {
+      event.preventDefault();
+      Dom.get( "main" ).focus();
+    } );
+
     if ( this.loginCredential() !== "" ) {
       this.renderLoginConfirm( me );
       return;
@@ -68,6 +76,11 @@ const App = {
     if ( params.get( "login" ) === "expired" ) {
       const banner = Dom.get( "sign-in-expired" );
       if ( I18n.get( "signed_out.sign_in_expired" ) !== "" ) Dom.show( banner , true );
+    }
+    // The session went while the page was open (signed out elsewhere, or it
+    // expired): see Api.sessionEnded.
+    if ( params.get( "login" ) === "ended" ) {
+      Dom.show( Dom.get( "session-ended" ) , I18n.get( "signed_out.session_ended" ) !== "" );
     }
     if ( PushClient.homeScreenApp() ) this.bindPasteLogin();
     Password.initLogin();
@@ -169,6 +182,34 @@ const App = {
     } );
   },
 
+  // Says so on every screen, so nobody wonders why a change was refused and
+  // the owner, whom the mode lets through, cannot leave it on by accident.
+  showMaintenance( me ) {
+    const banner = Dom.get( "maintenance-banner" );
+    const on = me.maintenance === "read_only" || me.maintenance === "full";
+    if ( on ) Dom.text( banner , I18n.get( "maintenance." + me.maintenance + "_banner" ) );
+    Dom.show( banner , on );
+  },
+
+  // What the owner wants everyone to read. Dismissing it is remembered against
+  // its text, so the next message shows up however the last one went.
+  showAnnouncement( me ) {
+    const text = me.announcement || "";
+    let dismissed = "";
+    try {
+      dismissed = window.localStorage.getItem( "announcement-dismissed" ) || "";
+    } catch ( error ) { /* storage blocked: it comes back on the next load */ }
+    Dom.text( Dom.get( "announcement-text" ) , text );
+    Dom.show( Dom.get( "announcement-banner" ) , text !== "" && text !== dismissed );
+  },
+
+  onDismissAnnouncement() {
+    Dom.show( Dom.get( "announcement-banner" ) , false );
+    try {
+      window.localStorage.setItem( "announcement-dismissed" , Dom.get( "announcement-text" ).textContent );
+    } catch ( error ) { /* storage blocked: it comes back on the next load */ }
+  },
+
   async renderSignedIn( me ) {
     // The account screens used to be a page of their own at /account, and
     // links to it are still around (/account#notifications from a board's
@@ -177,35 +218,66 @@ const App = {
       window.history.replaceState( null , "" , "/" + ( window.location.hash || "#account" ) );
     }
 
+    Dom.show( Dom.get( "app-loading" ) , true );
     Dom.show( Dom.get( "signed-in" ) , true );
+    this.showMaintenance( me );
+    this.showAnnouncement( me );
+    Dom.get( "announcement-dismiss" ).addEventListener( "click" , () => this.onDismissAnnouncement() );
     this.labelProfile();
     Dom.get( "display-name" ).value = me.display_name;
 
-    Dom.get( "rename-form" ).addEventListener( "submit" , this.onRename.bind( this ) );
+    Dom.onSubmit( Dom.get( "rename-form" ) , this.onRename.bind( this ) );
     Dom.get( "logout-button" ).addEventListener( "click" , this.onLogout.bind( this ) );
 
     // Each screen owns its own file and its own init(). The boards come
     // first: they are what most visits are for.
+    Track.init( me );
+    Fresh.init( me );
     await Home.init( me );
     UserSettings.render( Dom.get( "user-settings-root" ) , me );
-    await NotifySettings.init( me );
+    // Side by side: the wait is the slowest screen, not all of them added up.
+    const loading = [];
+    loading.push( NotifySettings.init( me ) );
     Pin.init( me );
     LoginLink.init( me );
     Password.init( me );
     TwoFactor.init( me );
-    await Sessions.init( me );
+    loading.push( Sessions.init( me ) );
     Backup.initAccount( me );
-    await Keys.init( me );
+    loading.push( Keys.init( me ) );
+    Mcp.init( me );
+    About.init( me );
 
     if ( me.role === "admin" ) {
       Dom.show( Dom.get( "admin-panel" ) , true );
       LoginLinks.fill( Dom.get( "new-uses" ) , Dom.get( "new-expires" ) );
-      Dom.get( "create-user-form" ).addEventListener( "submit" , this.onCreateUser.bind( this ) );
+      Dom.onSubmit( Dom.get( "create-user-form" ) , this.onCreateUser.bind( this ) );
       Dom.get( "copy-link-button" ).addEventListener( "click" , this.onCopyLink.bind( this ) );
+      Qr.toggle( Dom.get( "login-link-qr-button" ) , Dom.get( "login-link-qr" ) , Dom.get( "login-link-value" ) );
       Dom.get( "copy-admin-key-button" ).addEventListener( "click" , function () { Dom.copy( Dom.get( "admin-key-value" ) ); } );
-      await this.refreshUsers();
-      await Invites.init( me );
+      Pager.search( "users-table" , "users-search" , () => this.refreshUsers() );
+      Pager.sortable( "users-table" , () => this.refreshUsers() );
+      // Only the owner gets the Logs, Jobs and server Settings screens; each
+      // init checks is_owner.
+      loading.push( this.refreshUsers() );
+      loading.push( Invites.init( me ) );
+      loading.push( Logs.init( me ) );
+      loading.push( Jobs.init( me ) );
+      loading.push( Settings.init( me ) );
+      const version = I18n.get( "nav.version" );
+      if ( version !== "" ) {
+        Dom.text( Dom.get( "sidebar-version" ) , version.replace( "{version}" , () => me.version ) );
+        Dom.show( Dom.get( "sidebar-version" ) , true );
+      }
     }
+
+    // allSettled, not all: Nav.init has to run whatever else went wrong, or
+    // one screen's failure would leave no screen showing at all.
+    const results = await Promise.allSettled( loading );
+    results.forEach( ( result ) => {
+      if ( result.status === "rejected" ) this.showError( result.reason.message );
+    } );
+    Dom.show( Dom.get( "app-loading" ) , false );
 
     // Last, so the sidebar offers exactly the screens the lines above un-hid.
     Nav.init();
@@ -214,14 +286,37 @@ const App = {
   async onRename( event ) {
     event.preventDefault();
     const value = Dom.get( "display-name" ).value.trim();
+    const previous = this.currentUser.display_name;
+    if ( value === previous ) {
+      Dom.toast( I18n.get( "ui.unchanged" ) , "ok" );
+      return;
+    }
     try {
-      await Api.rename( value );
-      this.currentUser.display_name = value;
-      this.labelProfile();
-      Dom.toast( I18n.get( "ui.saved" ) , "ok" );
+      await this.applyRename( value , previous );
     } catch ( error ) {
       this.showError( error.message );
+      return;
     }
+    // Let go of the field, so the next Ctrl+Z undoes the rename rather than
+    // the typing.
+    Undo.saved( event.target );
+    // Both directions go through the API, so Ctrl+Z puts the old name back on
+    // the account, not just on the screen. Each says which name it expects to
+    // find, so a rename made in another tab since is refused (409) rather
+    // than overwritten.
+    Undo.record( {
+      label: I18n.get( "undo.rename" ),
+      toast: true,
+      undo: () => this.applyRename( previous , value ),
+      redo: () => this.applyRename( value , previous ),
+    } );
+  },
+
+  async applyRename( value , expect ) {
+    await Api.rename( value , expect );
+    this.currentUser.display_name = value;
+    Dom.get( "display-name" ).value = value;
+    this.labelProfile();
   },
 
   // The sidebar's Account entry says, in its tooltip, who is signed in,
@@ -268,8 +363,10 @@ const App = {
     Dom.text( Dom.get( "login-link-for" ) , I18n.fill( "admin.link_for" , { name: name } ) );
     Dom.text( Dom.get( "login-link-notice" ) , I18n.fill( "admin.link_notice" , { summary: LoginLinks.summary( issued ) } ) );
     Dom.text( Dom.get( "login-link-value" ) , window.location.origin + issued.login_path );
+    Qr.hide( Dom.get( "login-link-qr" ) );
     const box = Dom.get( "login-link-box" );
     Dom.show( box , true );
+    // The row that asked for it may be a long way down the Users table.
     box.scrollIntoView( { block: "nearest" } );
   },
 
@@ -333,7 +430,7 @@ const App = {
   // asking), then runs action, refreshes the table and says it is done.
   async confirmed( questionKey , user , action , toastKey , extra ) {
     const question = I18n.fill( questionKey , Object.assign( { name: user.display_name } , extra || {} ) );
-    if ( question !== "" && !window.confirm( question ) ) return;
+    if ( !( await Dom.confirm( question ) ) ) return;
     try {
       await action();
     } catch ( error ) {
@@ -356,10 +453,10 @@ const App = {
     // Nobody changes their own role; the owner is always an admin; only the
     // owner takes an admin's rights away.
     if ( !isProtected && user.role === "user" ) {
-      items.push( { key: "admin.make_admin_button" , action: () => this.confirmed( "admin.make_admin_confirm" , user , () => Api.setRole( user.id , "admin" ) , "admin.role_changed_toast" , { role: I18n.get( "admin.role_admin" ) } ) } );
+      items.push( { key: "admin.make_admin_button" , action: () => this.confirmed( "admin.make_admin_confirm" , user , () => Api.setUserRole( user.id , "admin" ) , "admin.role_changed_toast" , { role: I18n.get( "admin.role_admin" ) } ) } );
     }
     if ( !isProtected && user.role === "admin" && me.is_owner ) {
-      items.push( { key: "admin.make_user_button" , action: () => this.confirmed( "admin.make_user_confirm" , user , () => Api.setRole( user.id , "user" ) , "admin.role_changed_toast" , { role: I18n.get( "admin.role_user" ) } ) } );
+      items.push( { key: "admin.make_user_button" , action: () => this.confirmed( "admin.make_user_confirm" , user , () => Api.setUserRole( user.id , "user" ) , "admin.role_changed_toast" , { role: I18n.get( "admin.role_user" ) } ) } );
     }
     // Devices: the owner's own are the owner's alone.
     if ( me.auth === "session" && ( !user.owner || me.is_owner ) ) {
@@ -436,16 +533,7 @@ const App = {
 
   async refreshUsers() {
     const body = Dom.get( "users-table" ).querySelector( "tbody" );
-    let users = [];
-    try {
-      users = await Api.listUsers();
-    } catch ( error ) {
-      this.showError( error.message );
-      return;
-    }
-
-    Dom.clear( body );
-    users.forEach( function ( user ) {
+    await Pager.load( "users-table" , "users" , ( offset ) => Api.listUsers( offset , Pager.params( "users-table" ) ) , function ( user ) {
       const statusKey = user.disabled ? "admin.status_disabled" : "admin.status_active";
       const statusTone = user.disabled ? "secondary" : "success";
 
@@ -476,22 +564,31 @@ const App = {
         class: "btn btn-sm btn-outline-danger",
         text: I18n.get( "admin.revoke_button" ),
         on: { click: async function () {
-          const question = I18n.get( "admin.revoke_confirm" ).replace( "{name}" , user.display_name );
-          if ( question !== "" && !window.confirm( question ) ) return;
+          const question = I18n.get( "admin.revoke_confirm" ).replace( "{name}" , () => user.display_name );
+          if ( !( await Dom.confirm( question ) ) ) return;
           try {
             await Api.revokeAccess( user.id );
+            await App.refreshUsers();
             if ( App.currentUser.api_keys_enabled ) await Keys.refreshAll();
+            Dom.toast( I18n.get( "admin.revoked_toast" ).replace( "{name}" , () => user.display_name ) , "ok" );
           } catch ( error ) { App.showError( error.message ); }
         } },
       } );
 
+      // Disabling asks first and is not undoable, like a revoke: it ends their
+      // sessions and links, and enabling does not bring those back.
       const toggleButton = isProtected ? null : Dom.el( "button" , {
         class: "btn btn-sm btn-outline-secondary",
         text: I18n.get( user.disabled ? "admin.enable_button" : "admin.disable_button" ),
         on: { click: async function () {
+          if ( !user.disabled ) {
+            const question = I18n.get( "admin.disable_confirm" ).replace( "{name}" , () => user.display_name );
+            if ( !( await Dom.confirm( question ) ) ) return;
+          }
           try {
             await Api.setDisabled( user.id , !user.disabled );
             await App.refreshUsers();
+            Dom.toast( I18n.get( user.disabled ? "admin.enabled_toast" : "admin.disabled_toast" ).replace( "{name}" , () => user.display_name ) , "ok" );
           } catch ( error ) { App.showError( error.message ); }
         } },
       } );
@@ -503,8 +600,8 @@ const App = {
         class: "btn btn-sm btn-outline-danger",
         text: I18n.get( "admin.delete_button" ),
         on: { click: async function () {
-          const question = I18n.get( "admin.delete_confirm" ).replace( "{name}" , user.display_name );
-          if ( question !== "" && !window.confirm( question ) ) return;
+          const question = I18n.get( "admin.delete_confirm" ).replace( "{name}" , () => user.display_name );
+          if ( !( await Dom.confirm( question ) ) ) return;
           try {
             await Api.deleteUser( user.id );
             await App.refreshUsers();
@@ -536,8 +633,9 @@ const App = {
         Dom.el( "td" , { children: nameCell } ),
         Dom.el( "td" , { text: roleText } ),
         Dom.el( "td" , { children: statusCell } ),
+        Dom.el( "td" , { class: "text-nowrap" , children: [ Dom.when( user.created_at ) ] } ),
         Dom.el( "td" , { children: [
-          Dom.el( "div" , { class: "row-actions" , children: [ reissueButton , keyButton , revokeButton , toggleButton , deleteButton , App.moreActions( user , isSelf , isProtected ) ].filter( Boolean ) } ),
+          Dom.rowActions( user.display_name , [ reissueButton , keyButton , revokeButton , toggleButton , deleteButton , App.moreActions( user , isSelf , isProtected ) ] ),
         ] } ),
       ] } ) );
     } );
@@ -550,6 +648,21 @@ const App = {
     const worded = message ? I18n.get( "errors." + message ) : "";
     Dom.text( banner , worded || message || I18n.get( "errors.generic" ) );
     Dom.flash( banner , 5000 );
+    // It sits at the top of the screen, which may be scrolled well past.
+    banner.scrollIntoView( { block: "nearest" } );
+  },
+
+  // A refusal about one field goes beside that field, and anything else to the
+  // banner. fields maps error codes to input ids. A field that is not on screen
+  // cannot show it, so that goes to the banner too.
+  showFieldError( message , fields ) {
+    const input = Dom.get( fields[ message ] );
+    if ( !input || input.offsetParent === null ) {
+      this.showError( message );
+      return;
+    }
+    Dom.fieldError( input , Dom.worded( { message: message } ) );
+    input.focus();
   },
 };
 

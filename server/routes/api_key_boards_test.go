@@ -48,7 +48,7 @@ func newKeyBoards( t *testing.T ) ( fixture *keyBoards ) {
 
 func ( fixture *keyBoards ) key( t *testing.T , mode string , ids ...uint64 ) ( credential string , key *models.APIKey ) {
 	t.Helper()
-	credential , key , err := models.IssueAPIKey( fixture.store , fixture.member.ID , "limited" , models.RoleUser , time.Hour , mode , ids )
+	credential , key , err := models.IssueAPIKeyLimited( fixture.store , fixture.member.ID , "limited" , models.RoleUser , time.Hour , mode , ids )
 	if err != nil { t.Fatal( err ) }
 	return
 }
@@ -218,7 +218,7 @@ func TestSessionAndEditingALimit( t *testing.T ) {
 	// someone else's key is not there to edit.
 	if status , text := fixture.call( t , http.MethodPost , edit , credential , "" , widen ); status != 403 { t.Errorf( "key edited itself: %d %s" , status , text ) }
 	if status , text := fixture.call( t , http.MethodPost , edit , "" , cookie , `{"board_access":""}` ); status != 403 { t.Errorf( "no csrf: %d %s" , status , text ) }
-	other , other_key , err := models.IssueAPIKey( fixture.store , fixture.owner.ID , "other" , models.RoleUser , time.Hour , models.BoardAccessAll , nil )
+	other , other_key , err := models.IssueAPIKey( fixture.store , fixture.owner.ID , "other" , models.RoleUser , time.Hour )
 	if err != nil || other == "" { t.Fatal( err ) }
 	if status , text := fixture.call( t , http.MethodPost , "/api/keys/"+other_key.ID+"/boards" , "" , cookie , widen ); status != 404 { t.Errorf( "edited another's key: %d %s" , status , text ) }
 

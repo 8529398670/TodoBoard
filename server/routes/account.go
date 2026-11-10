@@ -5,6 +5,7 @@ import (
 
 	fiber "github.com/gofiber/fiber/v3"
 
+	logs "todoboard/server/logs"
 	models "todoboard/server/models"
 	security "todoboard/server/security"
 )
@@ -36,7 +37,7 @@ type renameRequest struct {
 func ( handlers *Handlers ) GetMe( c fiber.Ctx ) ( err error ) {
 	payload , row_err := handlers.meRow( security.ActorFrom( c ) )
 	if row_err != nil {
-		err = serverError( c )
+		err = serverError( c , row_err )
 		return
 	}
 	err = c.JSON( payload )
@@ -59,25 +60,37 @@ func ( handlers *Handlers ) meRow( actor *security.Actor ) ( payload fiber.Map ,
 	if prefs , prefs_err := models.GetUserPrefs( handlers.Store , user.ID ); prefs_err == nil {
 		display = displayPayload( prefs )
 	}
-
 	payload = fiber.Map{
-		"display":          display,
 		"authenticated":    true,
+		"display":          display,
 		"id":               user.ID,
 		"display_name":     user.DisplayName,
 		"role":             actor.Role,
 		"account_role":     user.Role,
 		"is_owner":         user.ID == owner_id,
 		"login_link":       login_link,
+		"maintenance":      handlers.cfg().MaintenanceMode(),
+		"version":          handlers.Version,
+		"announcement":     handlers.cfg().Announcement,
+		"repo":             handlers.cfg().Repo,
+		"description":      handlers.cfg().Description,
+		"show_about":       handlers.cfg().ShowAbout,
+		"openapi_url":      handlers.openAPIURL(),
+		"mcp_url":          handlers.mcpURL(),
 		"has_pin":          user.HasPin(),
 		"username":           user.Username,
 		"has_password":       user.HasPassword(),
 		"password_blocked":   user.PasswordBlocked,
 		"two_factor":         user.TwoFactorOn(),
-		"passwords_enabled":  handlers.Config.PasswordsEnabled,
-		"two_factor_enabled": handlers.Config.TwoFactorEnabled,
+		"passwords_enabled":  handlers.cfg().PasswordsEnabled,
+		"two_factor_enabled": handlers.cfg().TwoFactorEnabled,
 		"auth":             actor.Method(),
-		"api_keys_enabled": handlers.Config.APIKeysEnabled,
+		"api_keys_enabled": handlers.cfg().APIKeysEnabled,
+		"mcp_enabled": handlers.cfg().MCPEnabled,
+		"invite_links_enabled": handlers.inviteLinksOn(),
+		// Whether track.js sends anything, and whether it sends clicks.
+		"logs_enabled":   handlers.Logs.Enabled(),
+		"logs_ui_clicks": handlers.Logs.Enabled() && handlers.cfg().Logs.UIClicks,
 	}
 	// Only a session has a CSRF token. A key-authenticated request has no
 	// ambient credential to protect, so there is nothing to hand back -- see
@@ -92,6 +105,7 @@ func ( handlers *Handlers ) meRow( actor *security.Actor ) ( payload fiber.Map ,
 	return
 }
 
+
 func ( handlers *Handlers ) RenameAccount( c fiber.Ctx ) ( err error ) {
 	var body renameRequest
 	if c.Bind().JSON( &body ) != nil {
@@ -102,23 +116,35 @@ func ( handlers *Handlers ) RenameAccount( c fiber.Ctx ) ( err error ) {
 		err = forbidden( c , "invalid csrf token" )
 		return
 	}
-	if models.ValidDisplayName( body.DisplayName ) == false {
-		err = badRequest( c , "display name must be 1-80 characters" )
+	payload , refused := handlers.renameAccount( c , body.DisplayName , body.Expect )
+	if refused != nil {
+		err = refused.send( c )
 		return
 	}
+	err = c.JSON( payload )
+	return
+}
 
+// renameAccount is RenameAccount after the request is read, for it and the
+// MCP rename_account tool.
+func ( handlers *Handlers ) renameAccount( c fiber.Ctx , display_name string , expect *string ) ( payload fiber.Map , refused *refusal ) {
+	if models.ValidDisplayName( display_name ) == false {
+		refused = refuse( fiber.StatusBadRequest , "display name must be 1-80 characters" )
+		return
+	}
 	user := security.UserFrom( c )
-	rename_err := models.RenameUser( handlers.Store , user.ID , body.DisplayName , body.Expect )
-	var refusal *models.RenameConflictError
-	if errors.As( rename_err , &refusal ) {
-		err = conflict( c , refusal.Error() , fiber.Map{ "display_name": refusal.Current } )
+	rename_err := models.RenameUser( handlers.Store , user.ID , display_name , expect )
+	var conflict_err *models.RenameConflictError
+	if errors.As( rename_err , &conflict_err ) {
+		refused = refuse( fiber.StatusConflict , conflict_err.Error() , fiber.Map{ "display_name": conflict_err.Current } )
 		return
 	}
 	if rename_err != nil {
-		err = serverError( c )
+		refused = internalFailure( rename_err )
 		return
 	}
-	err = c.JSON( fiber.Map{ "ok": true , "display_name": body.DisplayName } )
+	handlers.audit( c , logs.KindAuth , "renamed own account" , fiber.Map{ "name": display_name } )
+	payload = fiber.Map{ "ok": true , "display_name": display_name }
 	return
 }
 
@@ -129,7 +155,7 @@ type displayRequest struct {
 	PlainIcons       *bool         `json:"plain_icons"`
 	DoneOnTop        *bool         `json:"done_on_top"`
 	AddOnTop         *bool         `json:"add_on_top"`
-	Theme            *models.Theme `json:"theme"`
+	Theme            *models.DisplayTheme `json:"theme"`
 	ClearTheme       bool          `json:"clear_theme"`
 	OwnThemeOnBoards *bool         `json:"own_theme_on_boards"`
 	SwipeColumns     *bool         `json:"swipe_columns"`
@@ -161,7 +187,7 @@ func ( handlers *Handlers ) SaveLabelColors( c fiber.Ctx ) ( err error ) {
 	user := security.UserFrom( c )
 	prefs , get_err := models.GetUserPrefs( handlers.Store , user.ID )
 	if get_err != nil {
-		err = serverError( c )
+		err = serverError( c , get_err )
 		return
 	}
 	prefs.LabelColors = body.Colors
@@ -189,7 +215,7 @@ func ( handlers *Handlers ) SaveDisplay( c fiber.Ctx ) ( err error ) {
 	user := security.UserFrom( c )
 	prefs , get_err := models.GetUserPrefs( handlers.Store , user.ID )
 	if get_err != nil {
-		err = serverError( c )
+		err = serverError( c , get_err )
 		return
 	}
 	prefs.DisplayTimezone , prefs.Hour12 = body.Timezone , body.Hour12
@@ -235,9 +261,10 @@ func ( handlers *Handlers ) SetPin( c fiber.Ctx ) ( err error ) {
 		return
 	}
 	if set_err != nil {
-		err = serverError( c )
+		err = serverError( c , set_err )
 		return
 	}
+	handlers.audit( c , logs.KindAuth , "pin changed" , fiber.Map{ "has_pin": body.Pin != "" } )
 	err = c.JSON( fiber.Map{ "ok": true , "has_pin": body.Pin != "" } )
 	return
 }
@@ -264,9 +291,10 @@ func ( handlers *Handlers ) CreateMyLoginLink( c fiber.Ctx ) ( err error ) {
 	if ok == false { return }
 	credential , info , token_err := models.IssueLoginLink( handlers.Store , security.UserFrom( c ).ID , options )
 	if token_err != nil {
-		err = serverError( c )
+		err = serverError( c , token_err )
 		return
 	}
+	handlers.audit( c , logs.KindAuth , "own login link created" , fiber.Map{ "max_uses": info.MaxUses , "expires_at": info.ExpiresAt } )
 	err = c.JSON( loginLinkResponse( credential , info ) )
 	return
 }
@@ -284,9 +312,10 @@ func ( handlers *Handlers ) CancelMyLoginLink( c fiber.Ctx ) ( err error ) {
 	}
 	removed , cancel_err := models.CancelLoginLink( handlers.Store , security.UserFrom( c ).ID )
 	if cancel_err != nil {
-		err = serverError( c )
+		err = serverError( c , cancel_err )
 		return
 	}
+	handlers.audit( c , logs.KindAuth , "own login link cancelled" , fiber.Map{ "removed": removed } )
 	err = c.JSON( fiber.Map{ "ok": true , "removed": removed } )
 	return
 }
@@ -311,8 +340,30 @@ func ( handlers *Handlers ) Logout( c fiber.Ctx ) ( err error ) {
 		err = forbidden( c , "invalid csrf token" )
 		return
 	}
+	handlers.audit( c , logs.KindAuth , "signed out" , nil )
 	handlers.destroyCookieSession( c )
 	handlers.Guard.ClearSessionCookie( c )
 	err = c.JSON( fiber.Map{ "ok": true } )
+	return
+}
+
+// openAPIURL is where the API reference is read: config/openapi.json in
+// app.repo when that is set, so it opens as a page there, else this server's
+// own copy, which needs the same sign-in.
+func ( handlers *Handlers ) openAPIURL() ( result string ) {
+	result = handlers.cfg().RepoFile( "config/openapi.json" )
+	if result == "" {
+		result = "/api/openapi.json"
+	}
+	return
+}
+
+// mcpURL is where the MCP reference is read: config/mcp.json in app.repo when
+// that is set, else this server's own copy, which needs the same sign-in.
+func ( handlers *Handlers ) mcpURL() ( result string ) {
+	result = handlers.cfg().RepoFile( "config/mcp.json" )
+	if result == "" {
+		result = "/api/mcp.json"
+	}
 	return
 }

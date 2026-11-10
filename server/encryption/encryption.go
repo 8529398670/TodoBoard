@@ -104,6 +104,14 @@ func KeyedURLToken( key string , message string ) ( result string ) {
 	return
 }
 
+// HMACSHA256Hex signs a message, as lowercase hex.
+func HMACSHA256Hex( key string , message string ) ( result string ) {
+	mac := hmac.New( sha256.New , []byte( key ) )
+	mac.Write( []byte( message ) )
+	result = hex.EncodeToString( mac.Sum( nil ) )
+	return
+}
+
 // ConstantTimeEqual compares two hex/ASCII digests without leaking, through
 // how long the comparison takes, how many leading characters matched. Go's ==
 // on strings returns early at the first difference, which is exactly the
@@ -114,13 +122,13 @@ func ConstantTimeEqual( a string , b string ) ( result bool ) {
 }
 
 // ---------------------------------------------------------------------------
-// bcrypt -- for one-time login secrets
+// bcrypt -- for login-link secrets
 // ---------------------------------------------------------------------------
 
 // BcryptHash is used on login-link secrets. The cost is paid once per
 // sign-in through a link (a link can allow several) rather than on every
-// request, so bcrypt's slowness buys real protection here without hurting
-// throughput.
+// request, and sign-ins have their own rate budget, so bcrypt's slowness buys
+// real protection here without hurting throughput.
 func BcryptHash( plain_text string ) ( result string , err error ) {
 	hashed , err := bcrypt.GenerateFromPassword( []byte( plain_text ) , bcrypt.DefaultCost )
 	if err != nil { return }
@@ -212,6 +220,14 @@ func GenerateKeyHex() ( key_hex string ) {
 	return
 }
 
+// KeyFingerprint names a key without revealing it: the start of a hash of the
+// key, which a backup's manifest can carry so a restore can say which key it
+// needs. The prefix keeps this hash from matching any other use of the key.
+func KeyFingerprint( key_hex string ) ( result string ) {
+	result = Sha256Hex( "key-fingerprint-v1:" + key_hex )[ :16 ]
+	return
+}
+
 func decodeKey( key_hex string ) ( key [32]byte , err error ) {
 	raw , decode_err := hex.DecodeString( key_hex )
 	if decode_err != nil || len( raw ) != 32 {
@@ -269,6 +285,21 @@ func SecretBoxDecrypt( key_hex string , encrypted string ) ( result string , err
 // nonce is prepended to the cipher text; the Poly1305 tag means a modified
 // value fails to open rather than decrypting to garbage.
 func ChaChaEncryptBytes( key_hex string , plain_text []byte ) ( result []byte , err error ) {
+	result , err = ChaChaEncryptBound( key_hex , plain_text , nil )
+	return
+}
+
+func ChaChaDecryptBytes( key_hex string , encrypted []byte ) ( result []byte , err error ) {
+	result , err = ChaChaDecryptBound( key_hex , encrypted , nil )
+	return
+}
+
+// ChaChaEncryptBound seals plain_text to bound as well as to the key: it opens
+// only with the same bound, which is itself not stored. A file's chunks use
+// this, bound to their place in the file, so that one moved, swapped with
+// another file's or dropped from the end fails to open instead of decrypting
+// to the wrong file.
+func ChaChaEncryptBound( key_hex string , plain_text []byte , bound []byte ) ( result []byte , err error ) {
 	key , err := decodeKey( key_hex )
 	if err != nil { return }
 	aead , aead_err := chacha.NewX( key[ : ] )
@@ -277,11 +308,11 @@ func ChaChaEncryptBytes( key_hex string , plain_text []byte ) ( result []byte , 
 		return
 	}
 	nonce := GenerateRandomBytes( aead.NonceSize() )
-	result = aead.Seal( nonce , nonce , plain_text , nil )
+	result = aead.Seal( nonce , nonce , plain_text , bound )
 	return
 }
 
-func ChaChaDecryptBytes( key_hex string , encrypted []byte ) ( result []byte , err error ) {
+func ChaChaDecryptBound( key_hex string , encrypted []byte , bound []byte ) ( result []byte , err error ) {
 	key , err := decodeKey( key_hex )
 	if err != nil { return }
 	aead , aead_err := chacha.NewX( key[ : ] )
@@ -294,7 +325,7 @@ func ChaChaDecryptBytes( key_hex string , encrypted []byte ) ( result []byte , e
 		return
 	}
 	nonce := encrypted[ :aead.NonceSize() ]
-	opened , open_err := aead.Open( nil , nonce , encrypted[ aead.NonceSize(): ] , nil )
+	opened , open_err := aead.Open( nil , nonce , encrypted[ aead.NonceSize(): ] , bound )
 	if open_err != nil {
 		err = ErrCipherText
 		return

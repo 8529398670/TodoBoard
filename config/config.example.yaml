@@ -1,16 +1,17 @@
 # ===========================================================================
-# config.example.yaml -- every setting with its default. Safe to commit: it
-# has no secret key. config.yaml itself is gitignored, so a fresh clone starts
-# from this file.
+# config.example.yaml -- every setting with its default. Safe to commit: no
+# setting is a secret. config.yaml itself is gitignored, so a fresh clone
+# starts from this file.
 #
 # To use it:
 #
 #   cp config/config.example.yaml config/config.yaml
 #   chmod 600 config/config.yaml
-#   openssl rand -hex 32        # paste the output into server.secret_key
 #
+# There is no key to fill in: the secret key lives in config/secret.key, which
+# the server writes on its first start (as long as there is no database yet).
 # Or skip the copy: `todoboard config init` (or `go run . config init`)
-# writes config/config.yaml with a fresh key already in it. scripts/run.sh
+# writes config/config.yaml and config/secret.key in one go. scripts/run.sh
 # and docker/run.sh do that for you on their first run.
 #
 # This file is generated from config/defaults.yaml. After changing a default
@@ -23,8 +24,19 @@
 # portable build. Nothing reads environment variables. Every key is optional;
 # a key you leave out takes the value shown in this file.
 #
-# This file holds the secret key, so treat it like one: mode 0600, never
-# committed (it is in .gitignore), never baked into an image (.dockerignore).
+# It holds no secret. The secret key is in secret.key, beside this file: 64
+# hex characters, mode 0600, never committed (.gitignore), never baked into an
+# image (.dockerignore). Back the two up together with the app directory.
+#
+# It can be changed while the server runs -- by hand, or from the owner's
+# Settings screen, which edits only the values it changes and leaves every
+# comment where it is. The server checks this file every two seconds; an
+# edit that does not validate is reported and ignored, and the server keeps
+# running on the last good version. Each key is tagged:
+#
+#   [live]      takes effect within seconds of saving
+#   [restart]   saved now, takes effect when the server restarts
+#   [scripts]   read by docker/run.sh or scripts/build.sh, not the server
 #
 # Where it is read from, first match wins:
 #
@@ -32,9 +44,9 @@
 #                                      script in scripts/ and docker/ reads
 #   ~/.config/todoboard/config.yaml   a portable binary run anywhere else
 #
-# If neither exists the server writes the second one, with a fresh secret key,
-# on first run. `todoboard config init` writes ./config/config.yaml the
-# same way, and `todoboard config check` validates whichever file is in use.
+# If neither exists the server writes the second one, and a secret.key beside
+# it, on first run. `todoboard config init` writes both into ./config/
+# the same way, and `todoboard config check` validates whichever is in use.
 #
 # Relative paths resolve against the project directory: the folder that holds
 # config/ (in a checkout, and /app in the container), or the folder holding
@@ -43,8 +55,23 @@
 # An unknown key is an error, not a silently ignored typo.
 
 app:
-  # Shown in the page title and the startup log.
+  # Shown in the page title and the startup log. [restart]
   name: "TodoBoard"
+
+  # Where this app's source lives, e.g. https://github.com/you/app -- just the
+  # repository, no /tree or /blob path. Links to files in it, such as the API
+  # reference on the API keys card, point there; empty points them at this
+  # server's own copy. scaffold.py fills it from --repo, or from a
+  # github.com/... module path.
+  # [live]
+  repo: ""
+
+  # One line on what this app is for, shown on the About screen. [live]
+  description: ""
+
+  # Adds About to the menu: the description above, the version, the source
+  # repository and the API reference. [live]
+  show_about: false
 
 server:
   # 127.0.0.1 answers only this machine, which is what a development run and
@@ -52,8 +79,9 @@ server:
   # to listen on every interface -- and then put TLS in front, because login
   # links, cookies, and API keys all cross the wire. Ignored inside the
   # container, which always listens on 0.0.0.0 (what is reachable from
-  # outside is docker.bind_address).
+  # outside is docker.bind_address). [restart]
   host: 127.0.0.1
+  # The port the server listens on. [restart]
   port: 8080
 
   # The address people open this at, e.g. https://app.example.com -- just the
@@ -64,29 +92,32 @@ server:
   # Push notifications use it for their "open this card" link too -- a
   # background reminder has no request to read the origin from -- and are
   # sent without a link while it is empty.
+  # [live]
   public_url: ""
 
   # Where the database, the control socket and app storage live. Empty means
   # ~/.config/todoboard/. Ignored inside the container, which always
-  # uses /app/data (mounted from docker.data_dir).
+  # uses /app/data (mounted from docker.data_dir) and keeps the socket on its
+  # tmpfs. [restart]
   app_dir: ""
 
   # Checked on disk first, embedded copy otherwise. Empty language_file means
   # <app_dir>/language.yaml if it exists, else language.yaml beside this file
-  # (config/language.yaml in a checkout).
+  # (config/language.yaml in a checkout). [restart]
   static_dir: ./static
   language_file: ""
 
-  # Encrypts session cookies and, with encrypt_at_rest, every database value.
-  # 64 hex characters. Generated when this file is created. It must never
-  # change: a different key cannot read anything written with this one, so
-  # back this file up together with the app directory.
-  secret_key: ""
+  # Encrypt every database value and every activity-log line with the key in
+  # secret.key. Session cookies are always encrypted with it. [restart]
   encrypt_at_rest: true
 
   # false ONLY for plain http://localhost. A Secure cookie is silently dropped
-  # over http, so login appears to succeed and then does nothing.
+  # over http, so login appears to succeed and then does nothing. Also turns
+  # HSTS on. [live]
   secure_cookies: true
+  # Browsers share cookies across every port on a host, so two local
+  # projects using the same name would log each other out.
+  # Changing it signs everyone out. [restart]
   cookie_name: session
 
   # Turn on when a reverse proxy you control is in front (the Docker setup
@@ -105,25 +136,58 @@ server:
   # This only holds if clients cannot reach this server except through the
   # proxy. With a single-value header (X-Real-IP, CF-Connecting-IP) the proxy
   # must also overwrite whatever the client sent rather than pass it on.
+  # [restart]
   trust_proxy: false
   trusted_proxies: []
   proxy_header: X-Forwarded-For
 
-  body_limit_bytes: 1048576        # 1 MiB
-  rate_limit_max: 300               # boards poll for changes every few seconds
-  rate_limit_window_seconds: 60
+  # The largest request body accepted, and how many requests one address may
+  # make per window before getting 429s. Files the page loads (/js, /css,
+  # /vendor, images) do not count: index.html alone pulls in over twenty.
+  body_limit_bytes: 1048576        # 1 MiB [restart]
+  rate_limit_max: 300              # boards poll for changes every few seconds [live]
+  rate_limit_window_seconds: 60    # [live]
+
+  # Signing in and joining through an invite link have their own budget, out
+  # of the same window. Everyone behind one office network shares an address,
+  # and each person joining makes several of these calls, so raise this before
+  # handing an invite link to a large group in one room. [live]
+  rate_limit_signin_max: 60
+
 
   # Lets `manage` and other processes reach the database through the running
-  # server, over a unix socket in the app directory (bolt allows only one
-  # process to open the file). Off means `manage` needs the server stopped.
+  # server, over a unix socket in the app directory, or on the tmpfs inside
+  # the container (bolt allows only one process to open the file). Off means `manage` needs the server stopped.
+  # [restart]
   control_socket: true
 
   # POST /mcp: the Model Context Protocol, so an agent (Claude Code, any MCP
   # client that can send a header) can use this app with an API key, at that
   # key's role. Only keys are accepted there, never a browser session. Needs
-  # auth.api_keys; false removes /mcp.
+  # auth.api_keys; false makes /mcp answer 404. [live]
   mcp: true
 
+  # Maintenance mode. none is normal running. read_only keeps the app readable
+  # and refuses every write; full refuses everything. Either way the owner's
+  # browser session still works, signing in still works (scripts/login.sh gets
+  # the owner in), and /api/health, /api/ready and /metrics keep answering.
+  # Everyone else gets a 503 with Retry-After. Background jobs keep running.
+  # [live]
+  maintenance: none
+
+  # One line at the top of every signed-in page: planned downtime, say. Empty
+  # shows nothing. Anyone can dismiss it, and a changed message comes back.
+  # [live]
+  announcement: ""
+
+# How long a sign-in lasts, and a login link stays usable. [live]
+# A sign-in that is in use extends itself: session_ttl_seconds counts from the
+# last time it was used, so only an idle one ends then. session_max_age_seconds
+# is the limit on that, counted from signing in, so a stolen cookie cannot be
+# kept alive forever. Set the two equal for a fixed lifetime.
+# login_token_ttl_seconds is how long a one-time login link lasts when whoever
+# makes it does not pick an expiry; multi_use_login_token_ttl_seconds is the
+# same for a link that works more than once.
 auth:
   session_ttl_seconds: 1209600     # 14 days
   # A session in use keeps moving its end out by session_ttl_seconds, but
@@ -139,28 +203,38 @@ auth:
   # role of the account that owns them, never higher. false closes the surface
   # completely: the Authorization header stops being believed, existing keys
   # stop working (the rows survive), and the endpoints that mint keys 404.
+  # [live]
   api_keys: true
 
   # Lifetime of a new key when the request does not say. A key that never
-  # expires has to be asked for (expires_in_days: 0, or `-days 0`).
+  # expires has to be asked for (expires_in_days: 0, or `-days 0`). [live]
   api_key_ttl_seconds: 7776000     # 90 days
 
   # Password sign-in. true lets any account set a username and password on
-  # its own Account screen, after signing in with a link -- there is still no
-  # signup, and a forgotten password is still "get a new login link". The
-  # owner can block one account from the Users screen. false stops every
-  # password working and hides the form; the hashes stay, so switching it
-  # back on restores them. Needs HTTPS (or localhost), because the browser
-  # hashes the password with WebCrypto before sending it. Read at start.
+  # its own screen, after signing in with a link -- there is still no signup,
+  # and a forgotten password is still "get a new login link". The owner can
+  # block one account from the Users screen. false stops every password
+  # working and hides the form; the hashes stay, so switching it back on
+  # restores them. Needs HTTPS (or localhost), because the browser hashes the
+  # password with WebCrypto before sending it. [live]
   passwords: false
 
   # Two-factor sign-in with an authenticator app, which each person turns on
   # for themselves. It is asked for on every browser sign-in -- password,
   # login link, and invite link -- never for an API key. false stops offering
   # it and stops asking for it; the secrets stay, so switching it back on
-  # restores them. Read at start.
+  # restores them. [live]
   two_factor: true
 
+  # Invite links: one link a whole group can join through, and the PINs that
+  # guard a name on it. false hides the Invite links and PIN screens and makes
+  # /join and every invite route answer 404, so a link already handed out stops
+  # working, and someone who only ever signed in through one needs a login link
+  # meanwhile. The links and PINs stay, so switching it back on restores them.
+  # [live]
+  invite_links: true
+
+# Push notifications through Pushover. [restart]
 pushover:
   # The application token from https://pushover.net/apps/build. Each person
   # adds their own Pushover *user* key in their account settings. Empty
@@ -168,6 +242,7 @@ pushover:
   app_token: ""
   api_url: https://api.pushover.net/1/messages.json
 
+# Reminders and browser notifications. [restart]
 notify:
   # How often due dates are checked for reminders and overdue cards.
   due_check_interval_seconds: 60
@@ -181,6 +256,27 @@ notify:
   # https:// address. Empty uses server.public_url when that is https.
   web_push_contact: ""
 
+# The activity log: every request, every sign-in and admin action, and what
+# people do on the page (see static/js/track.js). Only the owner can read it,
+# on the Logs screen. It is written as one file per UTC day under
+# <app_dir>/logs/, each line encrypted when server.encrypt_at_rest is on.
+# Login links, keys, PINs and anything typed are never written. [live]
+logs:
+  enabled: true                    # [restart]
+  retention_days: 30               # days older than this are deleted
+  max_total_mb: 500                # past this the oldest days are recycled, never today
+  max_file_mb: 50                  # a day past this continues in a new part file
+  compress_after_days: 1           # finished days older than this are gzipped; 0 = never
+  static_assets: false             # also log requests for /js, /css, /vendor files
+  ui_clicks: true                  # log every click; screen changes, submits and errors always are
+  echo: true                       # print a one-line summary of each request to stdout
+
+
+
+
+
+# [scripts] Read by docker/run.sh, which applies a change the next time it
+# runs. Edit these on the host: inside the container they are read-only.
 docker:
   image: todoboard
   container: todoboard
@@ -192,8 +288,8 @@ docker:
   host_port: 8080
 
   # Host directory mounted at /app/data: the database and app storage. This
-  # file is mounted separately (read-only), so a backup of data_dir alone does
-  # not carry the key.
+  # file and secret.key are mounted separately (secret.key read-only), so a
+  # backup of data_dir alone does not carry the key.
   data_dir: ./data
 
   restart: unless-stopped          # no | always | unless-stopped | on-failure[:N]
@@ -204,6 +300,7 @@ docker:
   pids_limit: 128
   tmpfs_size: 16m                  # the only writable path besides data_dir
 
+# [scripts] Read by scripts/build.sh.
 build:
   binary_name: todoboard
   output_dir: dist

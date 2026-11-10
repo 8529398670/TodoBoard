@@ -12,6 +12,7 @@ import (
 	fiber "github.com/gofiber/fiber/v3"
 
 	db "todoboard/server/db"
+	jobs "todoboard/server/jobs"
 	models "todoboard/server/models"
 )
 
@@ -168,7 +169,7 @@ func TestRevokeOthersKeepsThisOne( t *testing.T ) {
 
 func TestAnAPIKeyCannotManageDevices( t *testing.T ) {
 	fixture := newAuthFixture( t )
-	key , _ , err := models.IssueAPIKey( fixture.store , fixture.alice.ID , "script" , models.RoleUser , time.Hour , models.BoardAccessAll , nil )
+	key , _ , err := models.IssueAPIKey( fixture.store , fixture.alice.ID , "script" , models.RoleUser , time.Hour )
 	if err != nil { t.Fatal( err ) }
 	request , _ := http.NewRequest( http.MethodGet , "/api/account/sessions" , nil )
 	request.Header.Set( "Authorization" , "Bearer "+key )
@@ -307,6 +308,22 @@ func TestASessionStopsExtendingAtItsLimit( t *testing.T ) {
 	}
 }
 
+func TestALiveStreamCheckIsNotUse( t *testing.T ) {
+	fixture := newAuthFixture( t )
+	fixture.cfg.SessionMaxAge = 24 * time.Hour
+	client := fixture.signIn( t , fixture.owner.ID )
+	session_id := fixture.age( t , fixture.owner.ID , 2 * time.Hour , 10 * time.Minute )
+	before := fixture.sessionEnd( t , session_id )
+	credential , err := fixture.handlers.Guard.DecryptCookie( strings.TrimPrefix( client.cookie , fixture.cfg.CookieName + "=" ) )
+	if err != nil { t.Fatal( err ) }
+
+	if fixture.handlers.Guard.StillOwner( credential ) == false {
+		t.Fatal( "the session should be alive" )
+	}
+	if fixture.sessionEnd( t , session_id ).Equal( before ) == false {
+		t.Fatal( "a stream re-checking its session kept it alive" )
+	}
+}
 
 func TestLoggingOutOnARequestThatExtendsStillClearsTheCookie( t *testing.T ) {
 	fixture := newAuthFixture( t )
@@ -392,7 +409,31 @@ func TestSessionAdminRoutesRefuse( t *testing.T ) {
 	}
 }
 
+func TestSearchingUsersKeepsPagingHonest( t *testing.T ) {
+	fixture := newAuthFixture( t )
+	owner := fixture.signIn( t , fixture.owner.ID )
+	for _ , name := range []string{ "Zed One" , "zed two" , "Zed Three" } {
+		if _ , err := models.CreateUser( fixture.store , name , models.RoleUser ); err != nil { t.Fatal( err ) }
+	}
+	_ , page := owner.do( t , http.MethodGet , "/api/admin/users?q=ZED&limit=2" , nil )
+	rows , _ := page[ "users" ].( []any )
+	if len( rows ) != 2 || page[ "total" ] != float64( 3 ) || page[ "next" ] != float64( 2 ) {
+		t.Fatalf( "%v" , page )
+	}
+	if _ , page = owner.do( t , http.MethodGet , "/api/admin/users?q=nobody" , nil ); page[ "total" ] != float64( 0 ) {
+		t.Fatalf( "%v" , page )
+	}
+}
 
+func TestMeSaysTheVersionAndTheAnnouncement( t *testing.T ) {
+	fixture := newAuthFixture( t )
+	fixture.cfg.Announcement = "Down at noon"
+	client := fixture.signIn( t , fixture.alice.ID )
+	_ , me := client.do( t , http.MethodGet , "/api/me" , nil )
+	if me[ "version" ] != "test" || me[ "announcement" ] != "Down at noon" {
+		t.Fatalf( "%v" , me )
+	}
+}
 
 func TestSessionFromBeforeTheseFieldsStillLoads( t *testing.T ) {
 	fixture := newAuthFixture( t )
@@ -407,6 +448,45 @@ func TestSessionFromBeforeTheseFieldsStillLoads( t *testing.T ) {
 	}
 }
 
+func TestJobsAreTheOwnersAlone( t *testing.T ) {
+	fixture := newAuthFixture( t )
+	handlers_jobs := jobs.New( fixture.store , nil )
+	release := make( chan struct{} )
+	handlers_jobs.Register( "slow" , time.Hour , func() ( note string , err error ) {
+		<-release
+		return
+	} )
+	fixture.handlers.Jobs = handlers_jobs
+	owner := fixture.signIn( t , fixture.owner.ID )
+	alice := fixture.signIn( t , fixture.alice.ID )
+
+	if status , _ := alice.do( t , http.MethodGet , "/api/owner/jobs" , nil ); status != http.StatusNotFound {
+		t.Fatalf( "a user reached the jobs: %d" , status )
+	}
+	status , reply := owner.do( t , http.MethodGet , "/api/owner/jobs" , nil )
+	listed , _ := reply[ "jobs" ].( []any )
+	if status != http.StatusOK || len( listed ) != 1 {
+		t.Fatalf( "%d %v" , status , reply )
+	}
+	if status , _ = owner.post( t , "/api/owner/jobs/slow/run" , fiber.Map{} ); status != http.StatusForbidden {
+		t.Fatalf( "no CSRF token: %d" , status )
+	}
+	csrf := owner.csrf( t )
+	if status , _ = owner.post( t , "/api/owner/jobs/nope/run" , fiber.Map{ "csrf_token": csrf } ); status != http.StatusNotFound {
+		t.Fatalf( "unknown job: %d" , status )
+	}
+	if status , _ = owner.post( t , "/api/owner/jobs/slow/run" , fiber.Map{ "csrf_token": csrf } ); status != http.StatusAccepted {
+		t.Fatalf( "run: %d" , status )
+	}
+	status , reply = owner.post( t , "/api/owner/jobs/slow/run" , fiber.Map{ "csrf_token": csrf } )
+	close( release )
+	if status != http.StatusConflict || reply[ "error" ] != "job already running" {
+		t.Fatalf( "%d %v" , status , reply )
+	}
+	if handlers_jobs.Wait( 5 * time.Second ) == false {
+		t.Fatal( "the job did not finish" )
+	}
+}
 
 func TestNamingADevice( t *testing.T ) {
 	fixture := newAuthFixture( t )
@@ -464,7 +544,7 @@ func TestAKeyCannotNameADevice( t *testing.T ) {
 	fixture := newAuthFixture( t )
 	alice := fixture.signIn( t , fixture.alice.ID )
 	id , _ := alice.devices( t )[ 0 ][ "id" ].( string )
-	key , _ , err := models.IssueAPIKey( fixture.store , fixture.alice.ID , "ops" , models.RoleUser , time.Hour , models.BoardAccessAll , nil )
+	key , _ , err := models.IssueAPIKey( fixture.store , fixture.alice.ID , "ops" , models.RoleUser , time.Hour )
 	if err != nil { t.Fatal( err ) }
 	request , _ := http.NewRequest( http.MethodPost , "/api/account/sessions/"+id+"/label" , strings.NewReader( `{"label":"x"}` ) )
 	request.Header.Set( "Authorization" , "Bearer " + key )

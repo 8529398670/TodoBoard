@@ -11,17 +11,26 @@
 #                                  (--expires takes 30m, 12h, 7d or never)
 #   scripts/login.sh --docker      the docker container, even if a local
 #                                  server is running too
-#   scripts/login.sh --local       this checkout's local database
+#   scripts/login.sh --local       this checkout's local server
+#   scripts/login.sh --no-start    never start a server: with none running,
+#                                  write the link into the database offline
+#   scripts/login.sh --background  with none running, start one detached
+#                                  instead of in this terminal
 #
 # Where the link comes from:
 #   - the local server (scripts/run.sh) when it is running: the link goes
 #     through its control socket;
 #   - otherwise the docker container (docker/run.sh) when it is running:
 #     the link goes through `docker exec`;
-#   - otherwise the local database directly, offline. The link waits there
-#     until the server is started.
-# The two keep separate databases, so a link from one does nothing in the
-# other. This says which one it used.
+#   - otherwise this writes the link into the database, prints it, and
+#     becomes scripts/run.sh: the server runs in this terminal and Ctrl-C
+#     stops it. With no database yet, the server's first start prints the
+#     owner's link instead.
+# With --background the server starts detached instead (log in
+# .run/server.log, stop it with scripts/run.sh stop), and the link comes
+# from it once it answers. Use that where nothing can hold a terminal open.
+# The local server and the container keep separate databases, so a link from
+# one does nothing in the other. This says which one it used.
 #
 # The URL in the link is server.public_url when set, otherwise the local
 # address (see `scripts/run.sh config shell server`).
@@ -31,6 +40,8 @@ cd "$( dirname "${BASH_SOURCE[0]}" )/.."
 
 USER_ID=1
 MODE=auto
+START=true
+BACKGROUND=false
 LINK_FLAGS=()
 while [ $# -gt 0 ]; do
   argument="$1"
@@ -38,6 +49,8 @@ while [ $# -gt 0 ]; do
   case "$argument" in
     --docker) MODE=docker ;;
     --local)  MODE=local ;;
+    --no-start) START=false ;;
+    --background) BACKGROUND=true ;;
     --uses|--expires)
       if [ $# -eq 0 ]; then
         echo "ERROR: ${argument} needs a value." >&2
@@ -48,9 +61,9 @@ while [ $# -gt 0 ]; do
     --uses=*|--expires=*)
       name="${argument%%=*}"
       LINK_FLAGS+=( "-${name#--}" "${argument#*=}" ) ;;
-    -h|--help) sed -n '2,28p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,36p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *[!0-9]*|"")
-      echo "ERROR: expected a numeric user id, --uses, --expires, --docker or --local; got '${argument}'." >&2
+      echo "ERROR: expected a numeric user id, --uses, --expires, --docker, --local, --no-start or --background; got '${argument}'." >&2
       exit 1 ;;
     *) USER_ID="$argument" ;;
   esac
@@ -113,23 +126,86 @@ if [ "$MODE" = "docker" ]; then
   exit 0
 fi
 
-if [ ! -f "$database" ]; then
-  echo "ERROR: there is no database yet at ${database}." >&2
-  echo "       Start the server with scripts/run.sh -- its first start creates the owner" >&2
-  echo "       and prints their login link." >&2
-  exit 1
-fi
+issue_link() {
+  if ! "$BINARY" manage reissue-login -user-id "$USER_ID" ${LINK_FLAGS[@]+"${LINK_FLAGS[@]}"}; then
+    echo "" >&2
+    echo "Accounts in this database: scripts/run.sh manage list-users" >&2
+    exit 1
+  fi
+}
 
 if [ -n "$LOCAL_PID" ]; then
   echo "Local server (pid ${LOCAL_PID}), served at ${url}"
-else
+  echo "  database ${database}"
+  echo ""
+  issue_link
+  exit 0
+fi
+
+if [ "$START" != "true" ]; then
+  if [ ! -f "$database" ]; then
+    echo "ERROR: there is no database yet at ${database}." >&2
+    echo "       Start the server with scripts/run.sh -- its first start creates the owner" >&2
+    echo "       and prints their login link." >&2
+    exit 1
+  fi
   echo "No server is running for this checkout, so the link goes straight into"
   echo "the database. It works once you start it: scripts/run.sh"
+  echo "  database ${database}"
+  echo ""
+  issue_link
+  exit 0
 fi
+
+if [ "$BACKGROUND" != "true" ]; then
+  if [ -f "$database" ]; then
+    echo "No server is running for this checkout, so the link goes straight into"
+    echo "the database, and the server starts right here."
+    echo "  database ${database}"
+    echo ""
+    issue_link
+    echo ""
+  else
+    echo "No database yet: the first start below creates the owner and prints their"
+    echo "login link."
+    echo ""
+  fi
+  echo "Starting the server here; Ctrl-C stops it."
+  echo ""
+  exec scripts/run.sh
+fi
+
+if [ "${url#http://}" != "$url" ] && [ "$secure_cookies" = "true" ]; then
+  echo "WARNING: server.secure_cookies is true but the URL is ${url}."
+  echo "         The browser will drop the session cookie and this link will seem to do"
+  echo "         nothing. Set it to false on line $( config_line secure_cookies ) of ${config_file}"
+  echo "         for local use, or set server.public_url to the https:// address in front."
+  echo ""
+fi
+
+# Without the control socket, manage cannot reach a running server and opens
+# the database itself -- so the link has to go in before the server starts.
+# With no database yet there is nothing to put it in; the server's first
+# start creates the owner and prints their link into the log instead.
+if [ "$control_socket" != "true" ] && [ -f "$database" ]; then
+  echo "server.control_socket is off, so the link goes into the database before the"
+  echo "server starts."
+  echo ""
+  issue_link
+  echo ""
+fi
+
+echo "No server was running for this checkout; starting one in the background..."
+start_in_background
+echo "Local server (pid ${BACKGROUND_PID}), served at ${url}"
 echo "  database ${database}"
+echo "  log      ${LOG_FILE}"
+echo "  stop it  scripts/run.sh stop"
 echo ""
-if ! "$BINARY" manage reissue-login -user-id "$USER_ID" ${LINK_FLAGS[@]+"${LINK_FLAGS[@]}"}; then
-  echo "" >&2
-  echo "Accounts in this database: scripts/run.sh manage list-users" >&2
-  exit 1
+if [ "$control_socket" = "true" ]; then
+  issue_link
+elif grep -q "LOGIN LINK" "$LOG_FILE"; then
+  # The first start's link for the owner, as the server printed it. (Older
+  # builds headed it ONE-TIME LOGIN LINK, which this matches too.)
+  grep -B1 -A9 "LOGIN LINK" "$LOG_FILE"
 fi

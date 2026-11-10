@@ -15,6 +15,7 @@
 package main
 
 import (
+	context "context"
 	embed "embed"
 	fmt "fmt"
 	fs "io/fs"
@@ -37,8 +38,11 @@ import (
 	config "todoboard/server/config"
 	control "todoboard/server/control"
 	db "todoboard/server/db"
+	errorpage "todoboard/server/errorpage"
 	healthcheck "todoboard/server/healthcheck"
+	jobs "todoboard/server/jobs"
 	language "todoboard/server/language"
+	logs "todoboard/server/logs"
 	manage "todoboard/server/manage"
 	middleware "todoboard/server/middleware"
 	models "todoboard/server/models"
@@ -46,6 +50,18 @@ import (
 	routes "todoboard/server/routes"
 	security "todoboard/server/security"
 	static "todoboard/server/static"
+	stream "todoboard/server/stream"
+)
+
+// How long a shutdown waits, first for requests to finish and then for
+// background jobs. Together they have to fit inside what scripts/lib.sh and
+// `docker stop` allow before they kill the process (--stop-timeout in
+// docker/run.sh).
+const (
+	drainWait   = 10 * time.Second
+	jobStopWait = 5 * time.Second
+	// A few browsers with the Logs screen open is all there should ever be.
+	logStreamLimit = 8
 )
 
 // The frontend and every shipped YAML file, compiled into the binary.
@@ -70,6 +86,11 @@ var (
 	// into this binary, so a copy on disk could only disagree with them.
 	//go:embed config/openapi.json
 	embeddedOpenAPI []byte
+
+	// The tools /mcp offers, written by scripts/mcp_json.sh from the
+	// registered tools; embedded for the same reason as openapi.json.
+	//go:embed config/mcp.json
+	embeddedMCPManifest []byte
 
 	//go:embed config/defaults.yaml
 	embeddedDefaults []byte
@@ -145,6 +166,13 @@ func main() {
 func run() ( err error ) {
 	cfg , err := config.Load()
 	if err != nil { return }
+	if cfg.RotationPending {
+		err = config.ErrRotationPending
+		return
+	}
+	if cfg.RotationFinished {
+		log.Printf( "[secret] finished a key rotation that had been cut short; the new key is in %s" , cfg.SecretFile )
+	}
 
 	embedded , err := embeddedStatic()
 	if err != nil { return }
@@ -160,32 +188,78 @@ func run() ( err error ) {
 	lang , err := language.Parse( bundle.LanguageYAML )
 	if err != nil { return }
 
+	error_pages := errorpage.New( lang )
+
 	static_server , err := static.New( bundle.Static )
 	if err != nil { return }
+	static_server.NotFound = error_pages.NotFound( static_server.NotFound )
 
 	if err = bootstrap.EnsureFirstAdmin( store , cfg , "Admin" ); err != nil { return }
 	if err = models.EnsureBoardSlugs( store ); err != nil { return }
 	if err = models.EnsureCardIdentity( store ); err != nil { return }
+
+	// The running configuration. config.yaml can change while the server
+	// runs -- from the owner's Settings screen, or by hand -- and everything
+	// that reads a setting per request reads it from here. cfg stays what
+	// the server started with: the listener, the database, the control
+	// socket and every [restart] setting.
+	settings := config.NewHolder( cfg )
 
 	// The control socket is what lets `manage` run against a live server.
 	// bolt hands the database to exactly one process, so without it every
 	// admin command would need the server stopped first. It is started after
 	// the database opens, which means the socket existing is itself proof
 	// that a live process holds the lock.
-	control_server , err := control.Listen( store , cfg )
+	control_server , err := control.Listen( store , settings )
 	if err != nil { return }
 	defer control_server.Close()
 
-	guard := security.New( store , cfg )
+	// The activity log writes from its own goroutine; Close, deferred here,
+	// runs after the server has stopped, so the last requests make it to disk.
+	logger := logs.New( cfg.Logs , cfg.SecretKey , cfg.EncryptAtRest )
+	log_stream := stream.NewHub( logStreamLimit )
+	logger.OnFlushed( func() { log_stream.Publish( "changed" , "1" ) } )
+	logger.Start()
+	defer logger.Close()
+	logger.System( logs.LevelInfo , "server started" , map[string]any{ "version": version } )
+	defer logger.System( logs.LevelInfo , "server stopped" , nil )
+	if cfg.SecretMigrated {
+		logger.System( logs.LevelWarn , "secret key moved to secret.key" , map[string]any{ "config": cfg.ConfigFile , "secret": cfg.SecretFile } )
+	}
+
+	// A change to config.yaml reaches the activity log's own settings, and
+	// is reported on stdout and in the log itself.
+	settings.OnChange( func( _ *config.Config , next *config.Config ) {
+		logger.Apply( next.Logs )
+	} )
+	settings.Report = func( level string , message string , detail map[string]any ) {
+		log.Printf( "[config] %s" , message )
+		logger.System( level , message , detail )
+	}
+	stop_watching := settings.Watch( 2 * time.Second )
+	defer close( stop_watching )
+
+	guard := security.New( store , settings )
 
 	// Push notifications: off (and every publish a no-op) when
-	// pushover.app_token is empty.
+	// pushover.app_token is empty and notify.web_push is off. They read the
+	// configuration the server started with: pushover and notify are
+	// [restart] settings, and the links they carry follow server.public_url
+	// as it was at start.
 	notifier := notify.New( store , cfg , lang )
 	notifier.Start()
 	defer notifier.Stop()
 
-	handlers := routes.New( store , cfg , guard , lang , static_server , notifier , version )
+	handlers := routes.New( store , settings , guard , lang , static_server , version )
+	handlers.Notify = notifier
+	handlers.Logs = logger
+	registry := jobs.New( store , logger )
+	jobs.Housekeeping( registry , store , logger , settings )
+	handlers.Jobs = registry
+	handlers.ErrorPages = error_pages
 	handlers.OpenAPI = embeddedOpenAPI
+	handlers.MCPManifest = embeddedMCPManifest
+	handlers.LogStream = log_stream
 
 	app := fiber.New( fiber.Config{
 		AppName: cfg.ProjectName,
@@ -205,33 +279,33 @@ func run() ( err error ) {
 		TrustProxyConfig:   fiber.TrustProxyConfig{ Proxies: cfg.TrustedProxies },
 		EnableIPValidation: true,
 		ProxyHeader:        proxyHeader( cfg ),
-		ErrorHandler: func( c fiber.Ctx , handler_err error ) ( response_err error ) {
-			// Never hand an internal error message to a client. The detail
-			// goes to the log, where the operator can see it.
-			code := fiber.StatusInternalServerError
-			var fiber_err *fiber.Error
-			if ok := asFiberError( handler_err , &fiber_err ); ok {
-				code = fiber_err.Code
-			}
-			if code >= 500 {
-				log.Printf( "[error] %s %s: %v" , c.Method() , c.Path() , handler_err )
-			}
-			response_err = c.Status( code ).JSON( fiber.Map{ "error": statusText( code ) } )
-			return
-		},
+		ErrorHandler:       middleware.NewErrorHandler( error_pages ),
 	} )
 
-	app.Use( middleware.Recover( cfg ) )
-	app.Use( middleware.SecurityHeaders( cfg ) )
-	app.Use( middleware.RateLimit( cfg ) )
+	// RequestID and Metrics come first, outside Recover: a panic still has to
+	// carry a reference and be counted, and neither depends on the activity
+	// log being on.
+	app.Use( middleware.RequestID() )
+	app.Use( middleware.Recover( settings ) )
+	app.Use( middleware.SecurityHeaders( settings ) )
+	app.Use( middleware.RateLimit( settings ) )
+	app.Use( middleware.RequestLog( logger ) )
 
 	handlers.Register( app )
 
-	stop_purging := startPurgeLoop( store )
-	defer close( stop_purging )
+	// Background work: see server/jobs. Stop is deferred after the logger and
+	// the store, so it runs before they close, and a job finishing during the
+	// wait can still write to both.
+	registry.Start()
+	defer registry.Stop( jobStopWait )
 
 	// Shut down on a signal rather than being killed, so in-flight requests
 	// finish and bolt closes cleanly instead of leaving a locked file behind.
+	// Listen only waits for that drain when it is given a context to watch:
+	// without one it returns as the listener closes, and the deferred closes
+	// above would run underneath requests still being answered.
+	draining , drain := context.WithCancel( context.Background() )
+	defer drain()
 	shutdown := make( chan os.Signal , 1 )
 	signal.Notify( shutdown , os.Interrupt , syscall.SIGTERM )
 	go func() {
@@ -241,23 +315,46 @@ func run() ( err error ) {
 		// come through, and letting a manage command start against a
 		// database that is about to close would fail confusingly.
 		control_server.Close()
-		app.ShutdownWithTimeout( 10 * time.Second )
+		// Streams never finish by themselves, so the drain would wait out its
+		// whole timeout for any page left open.
+		log_stream.Close()
+		drain()
 	}()
 
 	log.Printf( "[start] %s %s listening on %s (secure cookies: %v)" , cfg.ProjectName , version , cfg.ListenAddress() , cfg.SecureCookies )
 	log.Printf( "[url]    %s  (from %s)" , cfg.URL , cfg.URLSource )
 	if cfg.ConfigCreated {
-		log.Printf( "[config] %s (created, with a new secret key -- back it up)" , cfg.ConfigFile )
+		log.Printf( "[config] %s (created; edits apply while the server runs)" , cfg.ConfigFile )
 	} else {
-		log.Printf( "[config] %s" , cfg.ConfigFile )
+		log.Printf( "[config] %s (edits apply while the server runs)" , cfg.ConfigFile )
+	}
+	switch {
+	case cfg.SecretMigrated:
+		log.Printf( "[secret] %s" , cfg.SecretFile )
+		log.Printf( "[secret] ================================================================" )
+		log.Printf( "[secret] MOVED server.secret_key out of %s" , cfg.ConfigFile )
+		log.Printf( "[secret] into %s (mode 0600). config.yaml holds no secret now." , cfg.SecretFile )
+		log.Printf( "[secret] Back secret.key up with the database: nothing else can read it." )
+		log.Printf( "[secret] ================================================================" )
+	case cfg.SecretCreated:
+		log.Printf( "[secret] %s (created, with a new key -- back it up)" , cfg.SecretFile )
+	default:
+		log.Printf( "[secret] %s" , cfg.SecretFile )
 	}
 	if cfg.ConfigWarning != "" {
 		log.Printf( "[config] warning: %s" , cfg.ConfigWarning )
 	}
 	log.Printf( "[state]  %s" , cfg.AppDir )
+	if logger.Enabled() {
+		log.Printf( "[logs]   %s (keeping %d days, up to %d MB)" , cfg.Logs.Dir , cfg.Logs.RetentionDays , cfg.Logs.MaxTotalBytes / 1024 / 1024 )
+	}
 	log.Printf( "[assets] %s" , bundle.Source )
 	log.Printf( "[control] %s" , control_server.Path() )
-	err = app.Listen( cfg.ListenAddress() , fiber.ListenConfig{ DisableStartupMessage: true } )
+	err = app.Listen( cfg.ListenAddress() , fiber.ListenConfig{
+		DisableStartupMessage: true,
+		GracefulContext:       draining,
+		ShutdownTimeout:       drainWait,
+	} )
 	return
 }
 
@@ -265,60 +362,5 @@ func proxyHeader( cfg *config.Config ) ( result string ) {
 	if cfg.TrustProxy {
 		result = cfg.ProxyHeader
 	}
-	return
-}
-
-func asFiberError( err error , out **fiber.Error ) ( ok bool ) {
-	converted , ok := err.( *fiber.Error )
-	if ok {
-		*out = converted
-	}
-	return
-}
-
-func statusText( code int ) ( result string ) {
-	switch {
-	case code == fiber.StatusNotFound:
-		result = "not found"
-	case code == fiber.StatusUnauthorized:
-		result = "not authenticated"
-	case code == fiber.StatusForbidden:
-		result = "forbidden"
-	case code == fiber.StatusTooManyRequests:
-		result = "too many requests"
-	case code >= 500:
-		result = "internal error"
-	default:
-		result = "bad request"
-	}
-	return
-}
-
-// startPurgeLoop drops expired sessions, expired login tokens, and the API
-// keys and invite links that have been dead long enough to stop being worth
-// listing. None of it is a correctness issue -- every one of those is
-// already refused on read -- so this runs quietly in the background purely to
-// keep the bolt file from growing forever.
-func startPurgeLoop( store *db.Store ) ( stop chan struct{} ) {
-	stop = make( chan struct{} )
-	go func() {
-		ticker := time.NewTicker( time.Hour )
-		defer ticker.Stop()
-		for {
-			select {
-			case <-stop:
-				return
-			case <-ticker.C:
-				sessions , _ := models.PurgeExpiredSessions( store )
-				tokens , _ := models.PurgeExpiredLoginTokens( store )
-				keys , _ := models.PurgeDeadAPIKeys( store )
-				invites , _ := models.PurgeDeadInviteLinks( store )
-				challenges , _ := models.PurgeExpiredChallenges( store )
-				if sessions > 0 || tokens > 0 || keys > 0 || invites > 0 || challenges > 0 {
-					fmt.Printf( "[purge] removed %d expired sessions, %d expired login tokens, %d dead api keys, %d dead invite links, %d expired two-factor challenges\n" , sessions , tokens , keys , invites , challenges )
-				}
-			}
-		}
-	}()
 	return
 }

@@ -78,7 +78,7 @@ type BoardSnapshot struct {
 	Numbering   string           `json:"numbering"`
 	DefaultView string           `json:"default_view"`
 	Color       string           `json:"color"`
-	Theme       *Theme           `json:"theme"`
+	Theme       *DisplayTheme           `json:"theme"`
 	Shopping    bool             `json:"shopping,omitempty"`
 	CenterColumns bool           `json:"center_columns,omitempty"`
 	StageTabs   bool             `json:"stage_tabs,omitempty"`

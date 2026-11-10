@@ -1,8 +1,8 @@
 package routes
 
 import (
-	io "io"
 	json "encoding/json"
+	io "io"
 	http "net/http"
 	filepath "path/filepath"
 	strings "strings"
@@ -45,6 +45,7 @@ func newMCPFixture( t *testing.T ) ( fixture *mcpFixture ) {
 		CookieName:     "session",
 		APIKeysEnabled: true,
 		MCPEnabled:     true,
+		InviteLinksEnabled: true,
 		SessionTTL:     time.Hour,
 	}
 	store , err := db.Open( cfg )
@@ -54,14 +55,15 @@ func newMCPFixture( t *testing.T ) ( fixture *mcpFixture ) {
 	owner , _ := models.CreateUser( store , "Owner" , models.RoleAdmin )
 	if _ , err = models.EnsureOwner( store ); err != nil { t.Fatal( err ) }
 	member , _ := models.CreateUser( store , "Member" , models.RoleUser )
-	admin_key , _ , err := models.IssueAPIKey( store , owner.ID , "admin" , models.RoleAdmin , time.Hour , models.BoardAccessAll , nil )
+	admin_key , _ , err := models.IssueAPIKey( store , owner.ID , "admin" , models.RoleAdmin , time.Hour )
 	if err != nil { t.Fatal( err ) }
 	// An admin's user-scoped key: the ceiling is what is being tested.
-	user_key , _ , err := models.IssueAPIKey( store , owner.ID , "user" , models.RoleUser , time.Hour , models.BoardAccessAll , nil )
+	user_key , _ , err := models.IssueAPIKey( store , owner.ID , "user" , models.RoleUser , time.Hour )
 	if err != nil { t.Fatal( err ) }
 
 	static_server , _ := static.New( fstest.MapFS{ "index.html": { Data: []byte( "index" ) } } )
-	handlers := New( store , cfg , security.New( store , cfg ) , nil , static_server , nil , "test" )
+	settings := config.NewStaticHolder( cfg )
+	handlers := New( store , settings , security.New( store , settings ) , nil , static_server , "test" )
 	app := fiber.New()
 	handlers.Register( app )
 
@@ -171,8 +173,7 @@ func TestMCPAuthentication( t *testing.T ) {
 	login , _ := models.IssueLoginToken( fixture.store , fixture.owner.ID , time.Hour )
 	signed , err := models.RedeemLoginToken( fixture.store , login , models.SignInRules{ SessionTTL: time.Hour } )
 	if err != nil { t.Fatal( err ) }
-	session := signed.SessionCredential
-	cookie , _ := encryption.ChaChaEncryptString( fixture.cfg.SecretKey , session )
+	cookie , _ := encryption.ChaChaEncryptString( fixture.cfg.SecretKey , signed.SessionCredential )
 	if status , _ := fixture.post( t , "" , rpc( "ping" , `{}` ) , "Cookie" , "session="+cookie ); status != 403 {
 		t.Errorf( "session: status %d, want 403" , status )
 	}
@@ -249,3 +250,4 @@ func itoa( value uint64 ) ( result string ) {
 	result = string( encoded )
 	return
 }
+

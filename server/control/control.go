@@ -5,12 +5,12 @@
 // the database open at a time. Rather than working around that, this package
 // leans on it: the server process owns the database, and anything else that
 // needs to act on it -- the manage CLI, a cron job, a sidecar -- asks the
-// server to do so over a unix socket in the app directory.
+// server to do so over a unix socket.
 //
 // That is the cheapest answer available in security terms. There is no second
 // process holding the secret key, no second copy of the model layer's rules
 // to keep in step, and no new network surface: the socket is a file, and it
-// is reachable only by something that can already read the app directory.
+// is reachable only by something that can already read the key.
 //
 // # Why there is no token on this socket
 //
@@ -23,8 +23,25 @@
 //
 // This is also why the socket must never be moved somewhere world-readable,
 // and why the server refuses to bind it over a TCP address: the whole
-// argument depends on the socket being as hard to reach as the database file
-// sitting beside it.
+// argument depends on the socket being as hard to reach as the database file.
+//
+// # In the container
+//
+// The container's data directory is usually shared from the host, and such a
+// mount may be unable to hold a socket at all (colima's refuses the bind). So
+// the image pins the socket to /tmp/control on the container's tmpfs instead
+// (server/config/layout_container.go). The argument above still holds, for
+// these reasons:
+//
+// /tmp itself is open to every user, so the socket never sits there directly.
+// Listen makes /tmp/control mode 0700 and refuses to use it unless it is a
+// real directory that this user owns and nobody else can enter. Anything
+// another user planted first stops the server rather than being trusted.
+//
+// That leaves the container's own user and root, who can both read the key
+// and the database already. Nothing outside the container can reach the
+// socket short of `docker exec`, because a tmpfs is private to its container:
+// that is tighter than a socket in a folder the host shares.
 package control
 
 import (
@@ -32,14 +49,17 @@ import (
 	json "encoding/json"
 	errors "errors"
 	fmt "fmt"
+	fs "io/fs"
 	log "log"
 	net "net"
 	http "net/http"
 	os "os"
+	filepath "path/filepath"
 	runtime "runtime"
 	strconv "strconv"
 	time "time"
 
+	backup "todoboard/server/backup"
 	config "todoboard/server/config"
 	db "todoboard/server/db"
 	models "todoboard/server/models"
@@ -63,7 +83,7 @@ const maxSocketPathLength = 103
 // so its existence is itself the signal that a live server holds the lock.
 type Server struct {
 	store    *db.Store
-	cfg      *config.Config
+	settings *config.Holder
 	http     *http.Server
 	listener net.Listener
 	path     string
@@ -74,7 +94,11 @@ type Server struct {
 // A socket file left behind by a crashed process is removed first. That is
 // safe precisely because bolt already granted us the database lock: if this
 // process holds the lock, no live server is using that stale socket.
-func Listen( store *db.Store , cfg *config.Config ) ( server *Server , err error ) {
+// The socket itself is set up from the configuration the server started
+// with; what a request may do (API keys on or off, link lifetimes) is read
+// from the running one, so it follows edits to config.yaml.
+func Listen( store *db.Store , settings *config.Holder ) ( server *Server , err error ) {
+	cfg := settings.Boot()
 	if cfg.ControlSocketEnabled == false {
 		return
 	}
@@ -85,6 +109,14 @@ func Listen( store *db.Store , cfg *config.Config ) ( server *Server , err error
 				"Set server.app_dir in config.yaml to a shorter path, or server.control_socket: false to run without the socket -- manage will then need the server stopped." ,
 			len( cfg.ControlSocketPath ) , maxSocketPathLength , cfg.ControlSocketPath )
 		return
+	}
+
+	// The app directory has its own permissions, set when it was made. Any
+	// other home for the socket has to earn them here.
+	if socket_dir := filepath.Dir( cfg.ControlSocketPath ); socket_dir != cfg.AppDir {
+		if err = privateDir( socket_dir ); err != nil {
+			return
+		}
 	}
 
 	if _ , stat_err := os.Stat( cfg.ControlSocketPath ); stat_err == nil {
@@ -100,7 +132,7 @@ func Listen( store *db.Store , cfg *config.Config ) ( server *Server , err error
 		return
 	}
 
-	// Belt and braces on top of the 0700 app directory. On Windows this is a
+	// Belt and braces on top of the 0700 directory around it. On Windows this is a
 	// no-op and the directory ACL is what protects the socket -- see the
 	// package docs; the security argument is the same either way, but it is
 	// worth knowing which mechanism is doing the work.
@@ -115,7 +147,7 @@ func Listen( store *db.Store , cfg *config.Config ) ( server *Server , err error
 
 	server = &Server{
 		store:    store,
-		cfg:      cfg,
+		settings: settings,
 		listener: listener,
 		path:     cfg.ControlSocketPath,
 	}
@@ -132,6 +164,33 @@ func Listen( store *db.Store , cfg *config.Config ) ( server *Server , err error
 			log.Printf( "[control] listener stopped: %v" , serve_err )
 		}
 	}()
+	return
+}
+
+// privateDir makes dir, or accepts it if it is already what making it would
+// have produced: a real directory, owned by this user, that nobody else can
+// enter. It is called for a directory inside /tmp, where anyone can get there
+// first, so the check is the point and an existing directory earns no trust.
+// Lstat rather than Stat, or a symlink would be judged by what it points at.
+func privateDir( dir string ) ( err error ) {
+	if mkdir_err := os.Mkdir( dir , 0o700 ); mkdir_err != nil && errors.Is( mkdir_err , fs.ErrExist ) == false {
+		err = fmt.Errorf(
+			"could not create control socket directory %s: %w\n"+
+				"docker/run.sh mounts a tmpfs at /tmp for this. Without one, set server.control_socket: false -- manage will then need the server stopped." ,
+			dir , mkdir_err )
+		return
+	}
+
+	info , err := os.Lstat( dir )
+	if err != nil {
+		err = fmt.Errorf( "could not check control socket directory %s: %w" , dir , err )
+		return
+	}
+	if info.IsDir() == false || config.OwnedByProcess( info ) == false || info.Mode().Perm()&0o077 != 0 {
+		err = fmt.Errorf(
+			"control socket directory %s is not private to this user (%s), so anyone who can reach it could run admin commands. Remove it and start again." ,
+			dir , info.Mode() )
+	}
 	return
 }
 
@@ -174,6 +233,7 @@ func ( server *Server ) routes() ( handler http.Handler ) {
 	mux.HandleFunc( "POST /v1/api-keys/{id}/revoke" , server.handleRevokeAPIKey )
 	mux.HandleFunc( "POST /v1/api-keys/{id}/delete" , server.handleDeleteAPIKey )
 	mux.HandleFunc( "POST /v1/invite-links" , server.handleCreateInviteLink )
+	mux.HandleFunc( "POST /v1/backup" , server.handleBackup )
 	handler = mux
 	return
 }
@@ -209,6 +269,25 @@ func pathUserID( w http.ResponseWriter , r *http.Request ) ( user_id uint64 , ok
 	}
 	ok = true
 	return
+}
+
+// BackupRequest is the body of POST /v1/backup.
+type BackupRequest struct {
+	Out        string `json:"out"`
+	IncludeKey bool   `json:"include_key"`
+}
+
+// handleBackup is why a backup can run against a live server: bolt lets only
+// this process read the file, so the copy has to be made from in here.
+func ( server *Server ) handleBackup( w http.ResponseWriter , r *http.Request ) {
+	request := BackupRequest{}
+	if decodeBody( w , r , &request ) == false { return }
+	result , err := backup.Create( server.store , server.settings.Get() , backup.Options{ Out: request.Out , IncludeKey: request.IncludeKey } )
+	if err != nil {
+		writeError( w , http.StatusInternalServerError , err.Error() )
+		return
+	}
+	writeJSON( w , http.StatusOK , result )
 }
 
 // HealthResponse tells a client it is talking to a live server, and which one.
@@ -273,9 +352,10 @@ type CreateUserRequest struct {
 	models.LoginLinkRequest
 }
 
-// loginLink resolves a link request against the config, as the web routes do.
+// loginLink resolves a link request against the live config, as the web
+// routes do.
 func ( server *Server ) loginLink( w http.ResponseWriter , request models.LoginLinkRequest ) ( options models.LoginLinkOptions , ok bool ) {
-	options , err := models.ResolveLoginLink( request , server.cfg.LoginTokenTTL , server.cfg.MultiUseLoginTokenTTL )
+	options , err := models.ResolveLoginLink( request , server.cfg().LoginTokenTTL , server.cfg().MultiUseLoginTokenTTL )
 	if err != nil {
 		writeError( w , http.StatusBadRequest , err.Error() )
 		return
@@ -400,7 +480,7 @@ func ( server *Server ) handleListAPIKeys( w http.ResponseWriter , r *http.Reque
 // that a key cannot outrank its owner is enforced here too: this endpoint
 // cannot mint an admin key for a non-admin account.
 func ( server *Server ) handleCreateAPIKey( w http.ResponseWriter , r *http.Request ) {
-	if server.cfg.APIKeysEnabled == false {
+	if server.cfg().APIKeysEnabled == false {
 		writeError( w , http.StatusForbidden , "api keys are disabled on this server (auth.api_keys: false)" )
 		return
 	}
@@ -420,7 +500,7 @@ func ( server *Server ) handleCreateAPIKey( w http.ResponseWriter , r *http.Requ
 		writeError( w , http.StatusBadRequest , "role must be admin or user" )
 		return
 	}
-	ttl , ok := models.APIKeyTTLFromDays( body.ExpiresInDays , server.cfg.APIKeyTTL )
+	ttl , ok := models.APIKeyTTLFromDays( body.ExpiresInDays , server.cfg().APIKeyTTL )
 	if ok == false {
 		writeError( w , http.StatusBadRequest , "expires_in_days must be 0 (never) or up to 3650" )
 		return
@@ -432,7 +512,7 @@ func ( server *Server ) handleCreateAPIKey( w http.ResponseWriter , r *http.Requ
 		return
 	}
 
-	credential , key , err := models.IssueAPIKey( server.store , user.ID , body.Name , role , ttl , models.BoardAccessAll , nil )
+	credential , key , err := models.IssueAPIKey( server.store , user.ID , body.Name , role , ttl )
 	if err != nil {
 		writeError( w , http.StatusBadRequest , err.Error() )
 		return
@@ -526,7 +606,8 @@ func ( server *Server ) handleDeleteAPIKey( w http.ResponseWriter , r *http.Requ
 		writeError( w , http.StatusInternalServerError , err.Error() )
 		return
 	}
-	if err = models.DeleteAPIKey( server.store , key.ID ); err != nil {
+	// The CLI has no undo, so its delete is the hard one (see PurgeAPIKey).
+	if err = models.PurgeAPIKey( server.store , key.ID ); err != nil {
 		if errors.Is( err , db.ErrNotFound ) {
 			writeError( w , http.StatusNotFound , fmt.Sprintf( "no api key with id %s" , key_id ) )
 			return
@@ -539,8 +620,8 @@ func ( server *Server ) handleDeleteAPIKey( w http.ResponseWriter , r *http.Requ
 
 func ( server *Server ) handleHealth( w http.ResponseWriter , r *http.Request ) {
 	writeJSON( w , http.StatusOK , HealthResponse{
-		ProjectName: server.cfg.ProjectName,
-		AppDir:      server.cfg.AppDir,
+		ProjectName: server.cfg().ProjectName,
+		AppDir:      server.cfg().AppDir,
 	} )
 }
 
@@ -617,7 +698,7 @@ func ( server *Server ) handleReissueLogin( w http.ResponseWriter , r *http.Requ
 }
 
 // handleSetDisabled goes through models.SetUserDisabled, which deletes the
-// account's sessions and unused login links in the same transaction as the
+// account's sessions and live login links in the same transaction as the
 // change. Keeping that in the model rather than in each caller is what keeps
 // "disabled" meaning "logged out now" no matter which door the change came
 // through.
@@ -648,7 +729,7 @@ func ( server *Server ) handleSetDisabled( w http.ResponseWriter , r *http.Reque
 }
 
 // handleRevokeAccess is models.RevokeAllCredentials over the socket: every
-// session, unused login link, and live API key the account holds stops
+// session, live login link, and live API key the account holds stops
 // working now. The account stays enabled.
 //
 // Unlike the web route, this one may cut off the owner: when it is the
@@ -723,4 +804,9 @@ func ( server *Server ) handleTransferOwner( w http.ResponseWriter , r *http.Req
 	default:
 		writeError( w , http.StatusInternalServerError , err.Error() )
 	}
+}
+
+func ( server *Server ) cfg() ( cfg *config.Config ) {
+	cfg = server.settings.Get()
+	return
 }

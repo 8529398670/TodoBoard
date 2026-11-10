@@ -1,15 +1,16 @@
 // "Where you're signed in", on the Account screen: every device with a live
-// session on this account, a name for each, and a way to sign one out from
-// here. The Users screen uses the same rows for an admin's view of someone's
-// devices. app.js calls Sessions.init() once it knows who is signed in.
+// session on this account, a name for each (edited in place), and a way to
+// sign one out from here. The Users screen uses the same rows for an admin's
+// view of someone's devices. app.js calls Sessions.init( me ) once it knows
+// who is signed in.
 //
-// Signing a device out cannot be undone: it is the button for a lost phone,
-// and an undo would let the session back in. So it asks first. This device
-// has no button here; that is what Log out is for.
+// Signing a device out is never undoable: it is the button for a lost phone,
+// and an undo would let the session back in. So it asks first, like revoking an
+// API key. This device has no button here; that is what Log out is for.
 const Sessions = {
-  ready: false,
   // Whose devices an admin has open under the Users table.
   shownFor: null,
+  ready: false,
 
   async init( me ) {
     if ( me.auth !== "session" ) return;
@@ -48,45 +49,41 @@ const Sessions = {
     return browser || system || agent || I18n.get( "sessions.unknown_device" );
   },
 
-  when( value ) {
-    if ( !value ) return I18n.get( "sessions.unknown" );
-    return new Date( value ).toLocaleString( undefined , { dateStyle: "medium" , timeStyle: "short" } );
-  },
-
   // What you call a device, in place of the name worked out for it. That name
-  // stays underneath, so a label cannot hide what a device says it is.
-  nameCell( session ) {
+  // stays underneath, so a label cannot hide what a device says it is. rename
+  // is left out on an admin's view: the label is the person's own.
+  nameCell( session , rename ) {
     const device = this.device( session );
-    const line = [ Dom.el( "span" , { text: session.label || device } ) ];
+    const detail = Dom.el( "div" , { class: "small text-body-secondary" , text: device } );
+    Dom.show( detail , Boolean( session.label ) );
+    const name = !rename ? Dom.el( "span" , { text: session.label || device } ) : Dom.editable( session.label || "" , {
+      label: I18n.get( "sessions.table_device" ),
+      maxLength: 80,
+      optional: true,
+      placeholder: device,
+      save: async ( value ) => {
+        await rename( value );
+        Dom.show( detail , value !== "" );
+      },
+    } );
+    const line = [ name ];
     if ( session.current ) line.push( Dom.el( "span" , { class: "ms-2" , children: [ Dom.badge( I18n.get( "sessions.this_device" ) , "success" ) ] } ) );
-    const cell = [ Dom.el( "div" , { children: line } ) ];
-    if ( session.label ) cell.push( Dom.el( "div" , { class: "small text-body-secondary" , text: device } ) );
-    return cell;
+    return [ Dom.el( "div" , { children: line } ) , detail ];
   },
 
-  // Names one of your own devices. Empty puts the worked-out name back.
+  // Saves a label on your own list. An empty one puts the worked-out name back.
   rename( session ) {
-    Panel.open( "sessions.rename_title" , ( body ) => {
-      const form = Dom.el( "form" , { attrs: { autocomplete: "off" } } );
-      const input = Dom.el( "input" , { class: "form-control" , attrs: { maxlength: "80" , placeholder: this.device( session ) } } );
-      input.value = session.label || "";
-      form.appendChild( Ui.field( "sessions.rename_label" , input ) );
-      form.appendChild( Dom.el( "div" , { class: "form-text mb-3" , text: I18n.get( "sessions.rename_help" ) } ) );
-      form.appendChild( Dom.el( "button" , { class: "btn btn-primary" , text: I18n.get( "account.save_button" ) , attrs: { type: "submit" } } ) );
-      form.addEventListener( "submit" , async ( event ) => {
-        event.preventDefault();
-        try {
-          await Api.labelSession( session.id , input.value.trim() , session.label || "" );
-        } catch ( error ) {
-          Ui.error( error );
-          return;
-        }
-        Panel.close();
-        await this.refresh();
+    return async ( value ) => {
+      const previous = session.label || "";
+      await Api.labelSession( session.id , value , previous );
+      session.label = value;
+      Undo.record( {
+        label: I18n.get( "undo.rename_session" ),
+        toast: true,
+        undo: async () => { await Api.labelSession( session.id , previous , value ); await this.refresh(); },
+        redo: async () => { await Api.labelSession( session.id , value , previous ); await this.refresh(); },
       } );
-      body.appendChild( form );
-      window.setTimeout( function () { input.focus(); } , 0 );
-    } );
+    };
   },
 
   // revoke is the call that ends this session and redraws its table: the
@@ -95,12 +92,11 @@ const Sessions = {
     return Dom.el( "button" , {
       class: "btn btn-sm btn-outline-danger text-nowrap",
       text: I18n.get( "sessions.revoke_button" ),
-      attrs: { type: "button" },
       on: { click: async () => {
         // An empty confirm message means "do not ask", following the same
         // language.yaml rule as every other string here.
         const question = I18n.get( "sessions.revoke_confirm" );
-        if ( question !== "" && !window.confirm( question ) ) return;
+        if ( !( await Dom.confirm( question ) ) ) return;
         try {
           await revoke();
         } catch ( error ) { App.showError( error.message ); }
@@ -110,7 +106,7 @@ const Sessions = {
 
   async onRevokeOthers() {
     const question = I18n.get( "sessions.revoke_others_confirm" );
-    if ( question !== "" && !window.confirm( question ) ) return;
+    if ( !( await Dom.confirm( question ) ) ) return;
     try {
       await Api.revokeOtherSessions();
       await this.refresh();
@@ -119,68 +115,44 @@ const Sessions = {
 
   async refresh() {
     if ( !this.ready ) return;
-    let page = { sessions: [] };
-    try {
-      page = await Api.sessions();
-    } catch ( error ) {
-      App.showError( error.message );
-      return;
-    }
     const body = Dom.get( "sessions-table" ).querySelector( "tbody" );
-    Dom.clear( body );
-    page.sessions.forEach( ( session ) => {
-      const actions = [ Dom.el( "button" , {
-        class: "btn btn-sm btn-outline-secondary text-nowrap",
-        text: I18n.get( "sessions.rename_button" ),
-        attrs: { type: "button" },
-        on: { click: () => this.rename( session ) },
-      } ) ];
-      if ( !session.current ) {
-        actions.push( this.revokeButton( async () => {
-          await Api.revokeSession( session.id );
-          await this.refresh();
-        } ) );
-      }
-      body.appendChild( this.row( session , actions ) );
+    const page = await Pager.load( "sessions-table" , "sessions" , ( offset ) => Api.sessions( offset ) , ( session ) => {
+      body.appendChild( this.row( session , async () => {
+        await Api.revokeSession( session.id );
+        await this.refresh();
+      } , this.rename( session ) ) );
     } );
-    Dom.show( Dom.get( "sessions-revoke-others" ) , page.sessions.length > 1 );
+    if ( page !== null ) Dom.show( Dom.get( "sessions-revoke-others" ) , ( page.total !== undefined ? page.total : page.sessions.length ) > 1 );
   },
 
-  row( session , actions ) {
+  row( session , revoke , rename ) {
     return Dom.el( "tr" , { children: [
-      Dom.el( "td" , { children: this.nameCell( session ) } ),
-      Dom.el( "td" , { text: session.ip || I18n.get( "sessions.unknown" ) } ),
-      Dom.el( "td" , { text: this.when( session.last_seen_at ) } ),
-      Dom.el( "td" , { text: this.when( session.created_at ) } ),
-      Dom.el( "td" , { children: [ Dom.el( "div" , { class: "row-actions" , children: actions } ) ] } ),
+      Dom.el( "td" , { children: this.nameCell( session , rename ) } ),
+      // ip_name reaches the owner only: see the server.
+      Dom.el( "td" , { children: session.ip_name
+        ? [ Dom.el( "div" , { text: session.ip_name } ) , Dom.el( "div" , { class: "small text-body-secondary" , text: session.ip } ) ]
+        : [ Dom.el( "span" , { text: session.ip || I18n.get( "sessions.unknown" ) } ) ] } ),
+      Dom.el( "td" , { children: [ Dom.when( session.last_seen_at , I18n.get( "sessions.unknown" ) ) ] } ),
+      Dom.el( "td" , { children: [ Dom.when( session.created_at , I18n.get( "sessions.unknown" ) ) ] } ),
+      Dom.el( "td" , { children: session.current ? [] : [ Dom.rowActions( session.label || this.device( session ) , [ this.revokeButton( revoke ) ] ) ] } ),
     ] } );
   },
 
   // An admin's view of one account's devices, under the Users table: for ending
-  // one of them, where revoke access would end everything. Addresses reach
-  // the owner only; the server leaves them out for other admins.
+  // one of them, where revoke access would end everything.
   async showFor( user ) {
+    // Someone else's devices must not sit under this name while it loads.
+    if ( !this.shownFor || this.shownFor.id !== user.id ) Pager.reset( "user-sessions-table" );
     this.shownFor = user;
     Dom.text( Dom.get( "user-sessions-heading" ) , I18n.get( "sessions.user_heading" ).replace( "{name}" , user.display_name ) );
-    const body = Dom.get( "user-sessions-table" ).querySelector( "tbody" );
-    // Someone else's devices must not sit under this name while it loads.
-    Dom.clear( body );
     Dom.show( Dom.get( "user-sessions" ) , true );
-    let page = { sessions: [] };
-    try {
-      page = await Api.userSessions( user.id );
-    } catch ( error ) {
-      App.showError( error.message );
-      return;
-    }
-    if ( !this.shownFor || this.shownFor.id !== user.id ) return;
-    page.sessions.forEach( ( session ) => {
-      body.appendChild( this.row( session , [ this.revokeButton( async () => {
+    const body = Dom.get( "user-sessions-table" ).querySelector( "tbody" );
+    await Pager.load( "user-sessions-table" , "sessions" , ( offset ) => Api.userSessions( user.id , offset ) , ( session ) => {
+      body.appendChild( this.row( session , async () => {
         await Api.revokeUserSession( user.id , session.id );
         await this.showFor( user );
-      } ) ] ) );
+      } ) );
     } );
-    Dom.show( Dom.get( "user-sessions-empty" ) , page.sessions.length === 0 );
     Dom.get( "user-sessions" ).scrollIntoView( { block: "nearest" } );
   },
 

@@ -1,0 +1,1373 @@
+{
+  "auth": "Authorization: Bearer <API key>",
+  "description": "Every tool POST /mcp offers. Written by scripts/mcp_json.sh from the registered tools; do not edit by hand. A key sees the tools its role allows (adminOnly ones need an admin key), and a tool whose feature is switched off answers like one that does not exist. route is the HTTP route the tool stands for, with the same rules; http_only are the routes a key may call that have no tool, and why.",
+  "endpoint": "/mcp",
+  "http_only": [
+    {
+      "reason": "A file (a picture, a spreadsheet or a backup), which travels over HTTP rather than as a tool answer.",
+      "route": "GET /api/backup"
+    },
+    {
+      "reason": "A file (a picture, a spreadsheet or a backup), which travels over HTTP rather than as a tool answer.",
+      "route": "GET /api/boards/{board_id}/cards/{card_id}/image"
+    },
+    {
+      "reason": "A file (a picture, a spreadsheet or a backup), which travels over HTTP rather than as a tool answer.",
+      "route": "GET /api/boards/{board_id}/cards/{card_id}/product-image"
+    },
+    {
+      "reason": "Notification settings are the person's own, set from the page.",
+      "route": "GET /api/boards/{board_id}/cards/{card_id}/subscription"
+    },
+    {
+      "reason": "A file (a picture, a spreadsheet or a backup), which travels over HTTP rather than as a tool answer.",
+      "route": "GET /api/boards/{board_id}/export"
+    },
+    {
+      "reason": "A file (a picture, a spreadsheet or a backup), which travels over HTTP rather than as a tool answer.",
+      "route": "GET /api/boards/{board_id}/lists/{list_id}/export"
+    },
+    {
+      "reason": "Who may see a board is decided by its people from the page, not by agents.",
+      "route": "GET /api/boards/{board_id}/shares"
+    },
+    {
+      "reason": "The page's cheap check for changes while it polls; get_board answers that for an agent.",
+      "route": "GET /api/boards/{board_id}/stamp"
+    },
+    {
+      "reason": "Notification settings are the person's own, set from the page.",
+      "route": "GET /api/boards/{board_id}/subscription"
+    },
+    {
+      "reason": "Not offered as a tool yet: call it over HTTP with the same key.",
+      "route": "GET /api/boards/{board_id}/trash"
+    },
+    {
+      "reason": "The MCP reference itself; tools/list gives the same list.",
+      "route": "GET /api/mcp.json"
+    },
+    {
+      "reason": "Notification settings are the person's own, set from the page.",
+      "route": "GET /api/notify/prefs"
+    },
+    {
+      "reason": "The API reference itself; GET /api/mcp.json is the MCP one.",
+      "route": "GET /api/openapi.json"
+    },
+    {
+      "reason": "How the page looks or is laid out for this person; nothing an agent works with.",
+      "route": "POST /api/account/display"
+    },
+    {
+      "reason": "How the page looks or is laid out for this person; nothing an agent works with.",
+      "route": "POST /api/account/label-colors"
+    },
+    {
+      "reason": "Sign-in: managed from a browser, not by agents.",
+      "route": "POST /api/account/login-link/cancel"
+    },
+    {
+      "reason": "Sign-in: managed from a browser, not by agents.",
+      "route": "POST /api/admin/users/{user_id}/cancel-login-link"
+    },
+    {
+      "reason": "A file (a picture, a spreadsheet or a backup), which travels over HTTP rather than as a tool answer.",
+      "route": "POST /api/backup/board"
+    },
+    {
+      "reason": "Deleting is left to people; an agent archives a card with update_card instead.",
+      "route": "POST /api/boards/{board_id}/cards/{card_id}/checklist/{item_id}/delete"
+    },
+    {
+      "reason": "Not offered as a tool yet: call it over HTTP with the same key.",
+      "route": "POST /api/boards/{board_id}/cards/{card_id}/comments/{comment_id}"
+    },
+    {
+      "reason": "Deleting is left to people; an agent archives a card with update_card instead.",
+      "route": "POST /api/boards/{board_id}/cards/{card_id}/comments/{comment_id}/remove"
+    },
+    {
+      "reason": "Deleting is left to people; an agent archives a card with update_card instead.",
+      "route": "POST /api/boards/{board_id}/cards/{card_id}/delete"
+    },
+    {
+      "reason": "A file (a picture, a spreadsheet or a backup), which travels over HTTP rather than as a tool answer.",
+      "route": "POST /api/boards/{board_id}/cards/{card_id}/image"
+    },
+    {
+      "reason": "A file (a picture, a spreadsheet or a backup), which travels over HTTP rather than as a tool answer.",
+      "route": "POST /api/boards/{board_id}/cards/{card_id}/image/delete"
+    },
+    {
+      "reason": "Not offered as a tool yet: call it over HTTP with the same key.",
+      "route": "POST /api/boards/{board_id}/cards/{card_id}/product/delete"
+    },
+    {
+      "reason": "Not offered as a tool yet: call it over HTTP with the same key.",
+      "route": "POST /api/boards/{board_id}/cards/{card_id}/product/refresh"
+    },
+    {
+      "reason": "Who may see a board is decided by its people from the page, not by agents.",
+      "route": "POST /api/boards/{board_id}/cards/{card_id}/share-user"
+    },
+    {
+      "reason": "Notification settings are the person's own, set from the page.",
+      "route": "POST /api/boards/{board_id}/cards/{card_id}/subscription"
+    },
+    {
+      "reason": "Not offered as a tool yet: call it over HTTP with the same key.",
+      "route": "POST /api/boards/{board_id}/carry-over"
+    },
+    {
+      "reason": "How the page looks or is laid out for this person; nothing an agent works with.",
+      "route": "POST /api/boards/{board_id}/folder"
+    },
+    {
+      "reason": "Not offered as a tool yet: call it over HTTP with the same key.",
+      "route": "POST /api/boards/{board_id}/labels/{label_id}"
+    },
+    {
+      "reason": "Deleting is left to people; an agent archives a card with update_card instead.",
+      "route": "POST /api/boards/{board_id}/labels/{label_id}/delete"
+    },
+    {
+      "reason": "Who may see a board is decided by its people from the page, not by agents.",
+      "route": "POST /api/boards/{board_id}/leave"
+    },
+    {
+      "reason": "Not offered as a tool yet: call it over HTTP with the same key.",
+      "route": "POST /api/boards/{board_id}/lists/{list_id}/archive-cards"
+    },
+    {
+      "reason": "Deleting is left to people; an agent archives a card with update_card instead.",
+      "route": "POST /api/boards/{board_id}/lists/{list_id}/delete"
+    },
+    {
+      "reason": "A file (a picture, a spreadsheet or a backup), which travels over HTTP rather than as a tool answer.",
+      "route": "POST /api/boards/{board_id}/lists/{list_id}/import"
+    },
+    {
+      "reason": "Who may see a board is decided by its people from the page, not by agents.",
+      "route": "POST /api/boards/{board_id}/members"
+    },
+    {
+      "reason": "How the page looks or is laid out for this person; nothing an agent works with.",
+      "route": "POST /api/boards/{board_id}/my-view"
+    },
+    {
+      "reason": "How the page looks or is laid out for this person; nothing an agent works with.",
+      "route": "POST /api/boards/{board_id}/my-view/collapsed"
+    },
+    {
+      "reason": "Who may see a board is decided by its people from the page, not by agents.",
+      "route": "POST /api/boards/{board_id}/shares/{link_id}/delete"
+    },
+    {
+      "reason": "Who may see a board is decided by its people from the page, not by agents.",
+      "route": "POST /api/boards/{board_id}/shares/{link_id}/revoke"
+    },
+    {
+      "reason": "Notification settings are the person's own, set from the page.",
+      "route": "POST /api/boards/{board_id}/subscription"
+    },
+    {
+      "reason": "Deleting is left to people; an agent archives a card with update_card instead.",
+      "route": "POST /api/boards/{board_id}/trash/empty"
+    },
+    {
+      "reason": "Deleting is left to people; an agent archives a card with update_card instead.",
+      "route": "POST /api/boards/{board_id}/trash/{card_id}/delete"
+    },
+    {
+      "reason": "Not offered as a tool yet: call it over HTTP with the same key.",
+      "route": "POST /api/boards/{board_id}/trash/{card_id}/restore"
+    },
+    {
+      "reason": "How the page looks or is laid out for this person; nothing an agent works with.",
+      "route": "POST /api/folders"
+    },
+    {
+      "reason": "How the page looks or is laid out for this person; nothing an agent works with.",
+      "route": "POST /api/folders/order"
+    },
+    {
+      "reason": "How the page looks or is laid out for this person; nothing an agent works with.",
+      "route": "POST /api/folders/{folder_id}"
+    },
+    {
+      "reason": "How the page looks or is laid out for this person; nothing an agent works with.",
+      "route": "POST /api/folders/{folder_id}/delete"
+    },
+    {
+      "reason": "How the page looks or is laid out for this person; nothing an agent works with.",
+      "route": "POST /api/folders/{folder_id}/parent"
+    },
+    {
+      "reason": "Ends a browser session; a key has none to end.",
+      "route": "POST /api/logout"
+    },
+    {
+      "reason": "The browser's own activity reports (track.js), not an action.",
+      "route": "POST /api/logs/events"
+    },
+    {
+      "reason": "Notification settings are the person's own, set from the page.",
+      "route": "POST /api/notify/prefs"
+    },
+    {
+      "reason": "Notification settings are the person's own, set from the page.",
+      "route": "POST /api/notify/test"
+    },
+    {
+      "reason": "The MCP endpoint itself.",
+      "route": "POST /mcp"
+    }
+  ],
+  "protocolVersions": [
+    "2025-11-25",
+    "2025-06-18",
+    "2025-03-26"
+  ],
+  "tools": [
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true,
+        "title": "Who am I"
+      },
+      "description": "The account this API key belongs to, the role it acts with (role -- never higher than the key's own scope), and the account's own role.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "name": "whoami",
+      "route": "GET /api/me",
+      "title": "Who am I"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true,
+        "title": "List team"
+      },
+      "description": "People with an active account, a page at a time: id and display name. Use the id wherever another tool asks for a user. next is the offset of the following page, or null on the last one.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "description": "Rows to return. Default 200.",
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "offset": {
+            "description": "Rows to skip: the next value of the previous page.",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "name": "list_team",
+      "route": "GET /api/team",
+      "title": "List team"
+    },
+    {
+      "adminOnly": true,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true,
+        "title": "List users (admin)"
+      },
+      "description": "Accounts, a page at a time, including disabled ones, with each one's role and which is the owner. next is the offset of the following page, or null on the last one.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "description": "Rows to return. Default 200.",
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "offset": {
+            "description": "Rows to skip: the next value of the previous page.",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "name": "admin_list_users",
+      "route": "GET /api/admin/users",
+      "title": "List users (admin)"
+    },
+    {
+      "adminOnly": true,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Disable or enable a user (admin)"
+      },
+      "description": "Switch an account off (disabled: true) or back on (false). Disabling signs it out everywhere and voids its live login link; its API keys stop working while it is off. Reversible. The owner and your own account cannot be disabled.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "disabled": {
+            "type": "boolean"
+          },
+          "user_id": {
+            "description": "The account's id, from list_team or admin_list_users.",
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "user_id",
+          "disabled"
+        ],
+        "type": "object"
+      },
+      "name": "admin_set_user_disabled",
+      "route": "POST /api/admin/users/{user_id}/disabled",
+      "title": "Disable or enable a user (admin)"
+    },
+    {
+      "adminOnly": true,
+      "annotations": {
+        "destructiveHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Revoke a user's access (admin)"
+      },
+      "description": "For an account that may be compromised: ends every session and voids its live login link and every API key it holds, at once. The account stays enabled; someone with a browser session must issue a new login link to let its owner back in. The owner and your own account cannot be revoked.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "user_id": {
+            "description": "The account's id, from list_team or admin_list_users.",
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "user_id"
+        ],
+        "type": "object"
+      },
+      "name": "admin_revoke_access",
+      "route": "POST /api/admin/users/{user_id}/revoke-access",
+      "title": "Revoke a user's access (admin)"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Rename your account"
+      },
+      "description": "Change your own display name (1-80 characters). expect, when given, is the name you think it has now; if someone changed it meanwhile the rename is refused with the current name, so nothing is overwritten unseen.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "display_name": {
+            "type": "string"
+          },
+          "expect": {
+            "description": "The current name, from whoami. Optional.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "display_name"
+        ],
+        "type": "object"
+      },
+      "name": "rename_account",
+      "route": "POST /api/account/rename",
+      "title": "Rename your account"
+    },
+    {
+      "adminOnly": true,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true,
+        "title": "List invite links (admin)"
+      },
+      "description": "Group invite links, a page at a time: label, places used and left, expiry, and whether each still works. The links themselves are never shown again after creation. next is the offset of the following page, or null on the last one.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "description": "Rows to return. Default 200.",
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "offset": {
+            "description": "Rows to skip: the next value of the previous page.",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "name": "admin_list_invite_links",
+      "route": "GET /api/admin/invite-links",
+      "title": "List invite links (admin)"
+    },
+    {
+      "adminOnly": true,
+      "annotations": {
+        "destructiveHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Switch off an invite link (admin)"
+      },
+      "description": "Stop an invite link from letting anyone else join or sign in through it. Accounts it already made keep working. Cannot be switched back on.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "link_id": {
+            "description": "The id from admin_list_invite_links.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "link_id"
+        ],
+        "type": "object"
+      },
+      "name": "admin_revoke_invite_link",
+      "route": "POST /api/admin/invite-links/{link_id}/revoke",
+      "title": "Switch off an invite link (admin)"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true,
+        "title": "List my boards"
+      },
+      "description": "Every board you own or are a member of (id, slug, title, your role, folder), your home-page folders, and single cards shared with you from boards you are not on.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "name": "list_boards",
+      "route": "GET /api/boards",
+      "title": "List my boards"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true,
+        "title": "Read a board"
+      },
+      "description": "A board as you can see it: its notes, its purpose if the board has that section on (board.purpose says what the board is for and how to work on it, so read it first), columns (lists), labels, members, and the cards you may see, with each card's column, labels, assignees, dates, checklist and rev. people maps user ids to names. Archived cards are left out unless include_archived is true.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "board": {
+            "description": "The board's id or URL slug, from list_boards.",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "include_archived": {
+            "default": false,
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "board"
+        ],
+        "type": "object"
+      },
+      "name": "get_board",
+      "route": "GET /api/boards/{board_id}",
+      "title": "Read a board"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true,
+        "title": "Read a board's purpose and notes"
+      },
+      "description": "Just the board's notes and purpose, without its cards. notes holds links, documents and reference material. purpose says what the board is for and how to work on it, and is only there when purpose_enabled is true. Both are markdown, and may be empty. Read them before working on a board. The revs go back to update_board_notes.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "board": {
+            "description": "The board's id or URL slug, from list_boards.",
+            "type": [
+              "integer",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "board"
+        ],
+        "type": "object"
+      },
+      "name": "get_board_notes",
+      "route": "GET /api/boards/{board_id}",
+      "title": "Read a board's purpose and notes"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Change a board's purpose or notes"
+      },
+      "description": "Replace a board's notes, its purpose, or both; leave out what should not change. A board's purpose can only be written while its Purpose section is on, which a person does in Board settings. Each is the whole new markdown text, so to add a link, send the old notes with it added. Each needs the rev it was read at, from get_board_notes or get_board: if someone edited the text since, the change is refused rather than written over theirs. Needs edit rights on the board.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "board": {
+            "description": "The board's id or URL slug, from list_boards.",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "notes": {
+            "description": "Markdown: links, documents, an index.",
+            "type": "string"
+          },
+          "notes_rev": {
+            "description": "Required with notes.",
+            "type": "integer"
+          },
+          "purpose": {
+            "description": "Markdown: what the board is for and how to work on it.",
+            "type": "string"
+          },
+          "purpose_rev": {
+            "description": "Required with purpose.",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "board"
+        ],
+        "type": "object"
+      },
+      "name": "update_board_notes",
+      "route": "POST /api/boards/{board_id}",
+      "title": "Change a board's purpose or notes"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true,
+        "title": "Read a card"
+      },
+      "description": "One card in full: title, description, column, labels, assignees, dates, checklist, and rev (pass rev back to update_card when changing the title or description).",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "board": {
+            "description": "The board's id or URL slug, from list_boards.",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "card_id": {
+            "description": "The card's id, from get_board or find_cards.",
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "board",
+          "card_id"
+        ],
+        "type": "object"
+      },
+      "name": "get_card",
+      "route": "GET /api/boards/{board_id}",
+      "title": "Read a card"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true,
+        "title": "Read a card's comments"
+      },
+      "description": "A card's comments, oldest first: who wrote each (by: a member's name, \"guest:Name\" for a guest, \"guest:\" for an anonymous one) and when.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "board": {
+            "description": "The board's id or URL slug, from list_boards.",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "card_id": {
+            "description": "The card's id, from get_board or find_cards.",
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "board",
+          "card_id"
+        ],
+        "type": "object"
+      },
+      "name": "list_comments",
+      "route": "GET /api/boards/{board_id}/cards/{card_id}/comments",
+      "title": "Read a card's comments"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Comment on a card"
+      },
+      "description": "Post a comment on a card, signed with your name. Markdown, up to 4000 characters. Needs edit rights on the card, or a card shared with you to comment on.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "board": {
+            "description": "The board's id or URL slug, from list_boards.",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "card_id": {
+            "description": "The card's id, from get_board or find_cards.",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "text": {
+            "description": "Markdown.",
+            "maxLength": 4000,
+            "type": "string"
+          }
+        },
+        "required": [
+          "board",
+          "card_id",
+          "text"
+        ],
+        "type": "object"
+      },
+      "name": "add_comment",
+      "route": "POST /api/boards/{board_id}/cards/{card_id}/comments",
+      "title": "Comment on a card"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true,
+        "title": "Find cards"
+      },
+      "description": "Search the cards you can see, across all your boards or one. query matches title and description (case-insensitive). Done and archived cards are left out unless asked for. Returns compact rows, soonest due first; use get_card for the full card.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "assigned_to_me": {
+            "default": false,
+            "type": "boolean"
+          },
+          "board": {
+            "description": "The board's id or URL slug, from list_boards.",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "due_before": {
+            "description": "Only cards due before this: \"2026-10-30\" or an RFC 3339 timestamp.",
+            "type": "string"
+          },
+          "include_archived": {
+            "default": false,
+            "type": "boolean"
+          },
+          "include_done": {
+            "default": false,
+            "type": "boolean"
+          },
+          "limit": {
+            "default": 50,
+            "maximum": 200,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "query": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "name": "find_cards",
+      "route": "GET /api/boards",
+      "title": "Find cards"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Create a board"
+      },
+      "description": "A new board owned by you, with the given columns in order (for example [\"To do\", \"Doing\", \"Done\"]); a board always gets at least three, so fewer are padded out. Returns its id and slug.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "lists": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "title": {
+            "maxLength": 120,
+            "type": "string"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "type": "object"
+      },
+      "name": "create_board",
+      "route": "POST /api/boards",
+      "title": "Create a board"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Add a column"
+      },
+      "description": "Add a column (list) to a board. Needs edit rights on the whole board.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "board": {
+            "description": "The board's id or URL slug, from list_boards.",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "position": {
+            "description": "Sort position within the column; lower comes first. Leave out to put it at the end.",
+            "type": "number"
+          },
+          "title": {
+            "maxLength": 120,
+            "type": "string"
+          }
+        },
+        "required": [
+          "board",
+          "title"
+        ],
+        "type": "object"
+      },
+      "name": "create_list",
+      "route": "POST /api/boards/{board_id}/lists",
+      "title": "Add a column"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Rename, move or archive a column"
+      },
+      "description": "Change a column's title or position, archive it (archived: true hides it; false brings it back), or on a staged board fix the stage it shows for everyone (stage_view; empty follows the navbar), or give it its own To do/Doing/Done buttons (stage_tabs: on, off, or empty to follow the board's setting). Leave out what should not change.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "archived": {
+            "type": "boolean"
+          },
+          "board": {
+            "description": "The board's id or URL slug, from list_boards.",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "list_id": {
+            "description": "The column's id, from get_board.",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "position": {
+            "description": "Sort position within the column; lower comes first. Leave out to put it at the end.",
+            "type": "number"
+          },
+          "stage_tabs": {
+            "enum": [
+              "",
+              "on",
+              "off"
+            ],
+            "type": "string"
+          },
+          "stage_view": {
+            "enum": [
+              "",
+              "todo",
+              "doing",
+              "done"
+            ],
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 120,
+            "type": "string"
+          }
+        },
+        "required": [
+          "board",
+          "list_id"
+        ],
+        "type": "object"
+      },
+      "name": "update_list",
+      "route": "POST /api/boards/{board_id}/lists/{list_id}",
+      "title": "Rename, move or archive a column"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Add a label"
+      },
+      "description": "Add a label to a board, to put on cards with update_card's label_ids. Needs edit rights on the whole board.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "board": {
+            "description": "The board's id or URL slug, from list_boards.",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "color": {
+            "description": "A palette name (blue, green, orange, red, purple, pink, teal, gray, yellow) or a #rrggbb colour.",
+            "pattern": "^(blue|green|orange|red|purple|pink|teal|gray|yellow|#[0-9a-fA-F]{6})$",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 40,
+            "type": "string"
+          }
+        },
+        "required": [
+          "board",
+          "color"
+        ],
+        "type": "object"
+      },
+      "name": "create_label",
+      "route": "POST /api/boards/{board_id}/labels",
+      "title": "Add a label"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Add a card"
+      },
+      "description": "Add a card to a column. The other fields are optional and set in the same call. Needs edit rights on that column.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "assignees": {
+            "description": "User ids, from get_board's members or list_team.",
+            "items": {
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "board": {
+            "description": "The board's id or URL slug, from list_boards.",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "day": {
+            "description": "On a calendar board (layout \"calendar\"), the day the card is filed under: \"2026-11-07\", or \"\" for none.",
+            "type": "string"
+          },
+          "description": {
+            "description": "Markdown.",
+            "type": "string"
+          },
+          "doing": {
+            "description": "On a staged board, the Doing stage. true starts the card (reopening it if done); done: true moves it on to Done.",
+            "type": "boolean"
+          },
+          "due_at": {
+            "description": "\"2026-10-30\" for an all-day date, an RFC 3339 timestamp for a time, \"\" to clear.",
+            "type": "string"
+          },
+          "label_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "list_id": {
+            "description": "The column's id, from get_board.",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "position": {
+            "description": "Sort position within the column; lower comes first. Leave out to put it at the end.",
+            "type": "number"
+          },
+          "rank_place": {
+            "description": "Importance across the whole board: 1 is the most important, and other cards shift to make room. 0 takes the card out of the ranking. Needs edit rights on the board.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "start_at": {
+            "description": "\"2026-10-30\" for an all-day date, an RFC 3339 timestamp for a time, \"\" to clear.",
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "board",
+          "list_id",
+          "title"
+        ],
+        "type": "object"
+      },
+      "name": "create_card",
+      "route": "POST /api/boards/{board_id}/cards",
+      "title": "Add a card"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Change a card"
+      },
+      "description": "Change any of a card's fields; leave out what should not change. Moving it (list_id, position) or archiving it needs edit rights on its column, and on the whole board to move it to another column. done marks it complete; doing and rank_place are the Doing stage and board-wide importance of a staged board. archived: true hides it from the board (reversible). Pass the card's rev when changing title or description: if someone edited it since, the change is refused rather than written over theirs.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "archived": {
+            "type": "boolean"
+          },
+          "assignees": {
+            "description": "The full set of user ids; replaces the current assignees.",
+            "items": {
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "board": {
+            "description": "The board's id or URL slug, from list_boards.",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "card_id": {
+            "description": "The card's id, from get_board or find_cards.",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "day": {
+            "description": "On a calendar board (layout \"calendar\"), the day the card is filed under: \"2026-11-07\", or \"\" for none.",
+            "type": "string"
+          },
+          "description": {
+            "description": "Markdown.",
+            "type": "string"
+          },
+          "doing": {
+            "description": "On a staged board, the Doing stage. true starts the card (reopening it if done); done: true moves it on to Done.",
+            "type": "boolean"
+          },
+          "done": {
+            "type": "boolean"
+          },
+          "due_at": {
+            "description": "\"2026-10-30\" for an all-day date, an RFC 3339 timestamp for a time, \"\" to clear.",
+            "type": "string"
+          },
+          "label_ids": {
+            "description": "The full set; replaces the current labels.",
+            "items": {
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "list_id": {
+            "description": "The column's id, from get_board.",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "position": {
+            "description": "Sort position within the column; lower comes first. Leave out to put it at the end.",
+            "type": "number"
+          },
+          "rank_place": {
+            "description": "Importance across the whole board: 1 is the most important, and other cards shift to make room. 0 takes the card out of the ranking. Needs edit rights on the board.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "rev": {
+            "description": "The rev from get_card / get_board.",
+            "type": "integer"
+          },
+          "start_at": {
+            "description": "\"2026-10-30\" for an all-day date, an RFC 3339 timestamp for a time, \"\" to clear.",
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "board",
+          "card_id"
+        ],
+        "type": "object"
+      },
+      "name": "update_card",
+      "route": "POST /api/boards/{board_id}/cards/{card_id}",
+      "title": "Change a card"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Add a checklist item"
+      },
+      "description": "Add an item to the end of a card's checklist. Returns the card.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "board": {
+            "description": "The board's id or URL slug, from list_boards.",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "card_id": {
+            "description": "The card's id, from get_board or find_cards.",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "board",
+          "card_id",
+          "text"
+        ],
+        "type": "object"
+      },
+      "name": "add_checklist_item",
+      "route": "POST /api/boards/{board_id}/cards/{card_id}/checklist",
+      "title": "Add a checklist item"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Tick or edit a checklist item"
+      },
+      "description": "Tick an item off (done: true) or back on, change its text, or move it. Item ids are in the card's checklist. Returns the card.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "board": {
+            "description": "The board's id or URL slug, from list_boards.",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "card_id": {
+            "description": "The card's id, from get_board or find_cards.",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "done": {
+            "type": "boolean"
+          },
+          "item_id": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "position": {
+            "type": "number"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "board",
+          "card_id",
+          "item_id"
+        ],
+        "type": "object"
+      },
+      "name": "update_checklist_item",
+      "route": "POST /api/boards/{board_id}/cards/{card_id}/checklist/{item_id}",
+      "title": "Tick or edit a checklist item"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Send a card to another board"
+      },
+      "description": "Move a card to another board, whole: it keeps its link, comments and picture. Labels are matched by name there (made if missing), assignees kept only if they are on that board, and per-person shares dropped. Needs edit rights on both boards.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "board": {
+            "description": "The board's id or URL slug, from list_boards.",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "card_id": {
+            "description": "The card's id, from get_board or find_cards.",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "list_id": {
+            "description": "The column on to_board it goes into, from get_board.",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "to_board": {
+            "description": "The board it goes to: id or URL slug, from list_boards.",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "top": {
+            "default": false,
+            "description": "Put it at the top of the column instead of the end.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "board",
+          "card_id",
+          "to_board",
+          "list_id"
+        ],
+        "type": "object"
+      },
+      "name": "send_card",
+      "route": "POST /api/boards/{board_id}/cards/{card_id}/send",
+      "title": "Send a card to another board"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Copy a card to a board"
+      },
+      "description": "Copy a card onto any board (its own included) with its content, comments and picture, optionally kept in step with the original (mirror). Needs edit rights where the copy goes, and on the card for a mirror.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "board": {
+            "description": "The board's id or URL slug, from list_boards.",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "card_id": {
+            "description": "The card's id, from get_board or find_cards.",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "list_id": {
+            "description": "The column on to_board it goes into, from get_board.",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "mirror": {
+            "default": "",
+            "description": "\"\" for a plain copy; \"one_way\" to keep the copy following the original (the copy's synced fields become read-only); \"two_way\" to keep both in step. Synced: title, description, checklist, dates, price, picture, To do/Doing/Done, comments.",
+            "enum": [
+              "",
+              "one_way",
+              "two_way"
+            ],
+            "type": "string"
+          },
+          "to_board": {
+            "description": "The board it goes to: id or URL slug, from list_boards.",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "top": {
+            "default": false,
+            "description": "Put it at the top of the column instead of the end.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "board",
+          "card_id",
+          "to_board",
+          "list_id"
+        ],
+        "type": "object"
+      },
+      "name": "copy_card",
+      "route": "POST /api/boards/{board_id}/cards/{card_id}/copy",
+      "title": "Copy a card to a board"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true,
+        "title": "List a card's mirrors"
+      },
+      "description": "The cards this one is kept in step with: each link's id, mode (one_way / two_way), direction (out: this card's changes flow there; in: this card follows that one; both), and the other card.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "board": {
+            "description": "The board's id or URL slug, from list_boards.",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "card_id": {
+            "description": "The card's id, from get_board or find_cards.",
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "board",
+          "card_id"
+        ],
+        "type": "object"
+      },
+      "name": "list_card_links",
+      "route": "GET /api/boards/{board_id}/cards/{card_id}/links",
+      "title": "List a card's mirrors"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Stop mirroring a card"
+      },
+      "description": "End one of a card's mirror links (link_id from list_card_links). Both cards stay as they are.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "board": {
+            "description": "The board's id or URL slug, from list_boards.",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "card_id": {
+            "description": "The card's id, from get_board or find_cards.",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "link_id": {
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "board",
+          "card_id",
+          "link_id"
+        ],
+        "type": "object"
+      },
+      "name": "unlink_card",
+      "route": "POST /api/boards/{board_id}/cards/{card_id}/links/{link_id}/delete",
+      "title": "Stop mirroring a card"
+    }
+  ],
+  "transport": "Streamable HTTP, stateless: one JSON-RPC message per POST, a JSON reply"
+}

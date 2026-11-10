@@ -14,10 +14,10 @@ import (
 func ( handlers *Handlers ) ListTeam( c fiber.Ctx ) ( err error ) {
 	members , list_err := handlers.teamRows()
 	if list_err != nil {
-		err = serverError( c )
+		err = serverError( c , list_err )
 		return
 	}
-	err = c.JSON( members )
+	err = sendPage( c , "members" , members )
 	return
 }
 

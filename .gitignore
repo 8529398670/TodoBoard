@@ -1,9 +1,15 @@
-# Runtime state -- never commit these. config/config.yaml holds the secret key;
-# the bare name also catches a stray copy anywhere else.
+# Runtime state -- never commit these. config/secret.key is the key that reads
+# the database; config/config.yaml is this deployment's settings. The bare
+# names also catch a stray copy anywhere else.
 config.yaml
+secret.key
+# A key rotation's new key, and every key it has retired.
+secret.key.*
+config.yaml.bak
+.config.yaml.*.tmp
 data/
 *.db
-.claude
+.claude/
 # Compiled output. Built by the Dockerfile, scripts/build.sh, or `go build`.
 #
 # The trailing negations matter: a bare "/server" also matches the server/
@@ -25,7 +31,8 @@ coverage.html
 go.work
 go.work.sum
 
-# scripts/run.sh's pid file and scripts/run.bat's staged build.
+# scripts/run.sh's pid file, scripts/run.bat's staged build, and the log of
+# the background server scripts/login.sh --background starts.
 .run/
 
 # Logs and stray temp files.
@@ -33,8 +40,8 @@ go.work.sum
 *.tmp
 *.bak
 
-# Secrets that must never be committed, wherever they turn up. docker/lib.sh
-# writes config.yaml.new before moving it into place.
+# Secrets that must never be committed, wherever they turn up. An older
+# docker/lib.sh wrote config.yaml.new before moving it into place.
 config.yaml.new
 .env
 .env.*

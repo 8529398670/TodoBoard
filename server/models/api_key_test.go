@@ -64,13 +64,13 @@ func TestAPIKeyBoardRules( t *testing.T ) {
 		{ "too many" , RoleUser , BoardAccessOnly , make( []uint64 , APIKeyMaxBoards+1 ) },
 	}
 	for _ , item := range refused {
-		if _ , _ , err := IssueAPIKey( store , owner.ID , "k" , item.role , time.Hour , item.mode , item.ids ); errors.Is( err , ErrAPIKeyBoards ) == false {
+		if _ , _ , err := IssueAPIKeyLimited( store , owner.ID , "k" , item.role , time.Hour , item.mode , item.ids ); errors.Is( err , ErrAPIKeyBoards ) == false {
 			t.Errorf( "%s: got %v" , item.name , err )
 		}
 	}
 
 	// Duplicates fold, and a board reached through one shared card counts.
-	_ , key , err := IssueAPIKey( store , owner.ID , "k" , RoleUser , time.Hour , BoardAccessOnly , []uint64{ shared.ID , mine.ID , mine.ID } )
+	_ , key , err := IssueAPIKeyLimited( store , owner.ID , "k" , RoleUser , time.Hour , BoardAccessOnly , []uint64{ shared.ID , mine.ID , mine.ID } )
 	if err != nil { t.Fatal( err ) }
 	if len( key.BoardIDs ) != 2 || key.AllowsBoard( mine.ID ) == false || key.AllowsBoard( shared.ID ) == false || key.AllowsBoard( theirs.ID ) {
 		t.Errorf( "issued: %+v" , key )
@@ -92,7 +92,7 @@ func TestAPIKeyBoardRules( t *testing.T ) {
 	}
 
 	// An admin key cannot be edited into a limit, or a dead key at all.
-	_ , admin_key , err := IssueAPIKey( store , owner.ID , "a" , RoleAdmin , time.Hour , BoardAccessAll , nil )
+	_ , admin_key , err := IssueAPIKey( store , owner.ID , "a" , RoleAdmin , time.Hour )
 	if err != nil { t.Fatal( err ) }
 	if err = SetAPIKeyBoards( store , admin_key.ID , BoardAccessOnly , []uint64{ mine.ID } ); errors.Is( err , ErrAPIKeyBoards ) == false {
 		t.Errorf( "limited an admin key: %v" , err )

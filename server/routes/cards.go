@@ -43,11 +43,11 @@ func ( handlers *Handlers ) CreateCard( c fiber.Ctx ) ( err error ) {
 // createCard is CreateCard's rule, shared with the MCP create_card tool.
 func ( handlers *Handlers ) createCard( principal *access.Principal , board *models.Board , list_id uint64 , title string , position *float64 ) ( card *models.Card , refused *refusal ) {
 	if board.List( list_id ) == nil {
-		refused = &refusal{ fiber.StatusNotFound , "list_not_found" }
+		refused = refuse( fiber.StatusNotFound , "list_not_found" )
 		return
 	}
 	if access.List( principal , board , list_id ) < access.Edit {
-		refused = &refusal{ fiber.StatusForbidden , "forbidden" }
+		refused = refuse( fiber.StatusForbidden , "forbidden" )
 		return
 	}
 	card , create_err := models.CreateCard( handlers.Store , board.ID , list_id , title , position , principal.UserID , principal.Name )
@@ -102,12 +102,12 @@ func ( handlers *Handlers ) patchCard( principal *access.Principal , board *mode
 		// editor has them everywhere, a column link nowhere else, and a link
 		// showing some columns only in those.
 		if ( leaves && access.List( principal , board , *patch.ListID ) < access.Edit ) || access.List( principal , board , card.ListID ) < access.Edit {
-			refused = &refusal{ fiber.StatusForbidden , "forbidden" }
+			refused = refuse( fiber.StatusForbidden , "forbidden" )
 			return
 		}
 	}
 	if patch.Ranks() && access.Board( principal , board ) < access.Edit {
-		refused = &refusal{ fiber.StatusForbidden , "forbidden" }
+		refused = refuse( fiber.StatusForbidden , "forbidden" )
 		return
 	}
 	updated , change , patch_err := models.PatchCard( handlers.Store , board.ID , card.ID , patch , principal.Name )

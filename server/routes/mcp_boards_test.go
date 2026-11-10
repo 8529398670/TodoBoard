@@ -17,7 +17,7 @@ import (
 
 func ( fixture *mcpFixture ) memberKey( t *testing.T ) ( key string ) {
 	t.Helper()
-	key , _ , err := models.IssueAPIKey( fixture.store , fixture.member.ID , "member" , models.RoleUser , time.Hour , models.BoardAccessAll , nil )
+	key , _ , err := models.IssueAPIKey( fixture.store , fixture.member.ID , "member" , models.RoleUser , time.Hour )
 	if err != nil { t.Fatal( err ) }
 	return
 }

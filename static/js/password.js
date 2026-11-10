@@ -14,6 +14,14 @@ const Password = {
   ITERATIONS: 600000,
   options: null,
   me: null,
+  // Which field each refusal of the panel's form is about.
+  fields: {
+    password_too_short: "password-new",
+    password_mismatch: "password-confirm",
+    bad_username: "password-username",
+    username_taken: "password-username",
+    two_factor_wrong: "password-code",
+  },
 
   async loadOptions() {
     if ( this.options === null ) this.options = await Api.loginOptions();
@@ -108,12 +116,16 @@ const Password = {
     event.preventDefault();
     const username = this.normalizeUsername( Dom.get( "password-username" ).value );
     const password = Dom.get( "password-new" ).value;
+    // Mending one field can settle a problem shown on another.
+    [ "password-username" , "password-new" , "password-confirm" , "password-code" ].forEach( function ( id ) {
+      Dom.clearFieldError( Dom.get( id ) );
+    } );
     if ( password.length < this.MIN_LENGTH ) {
-      App.showError( "password_too_short" );
+      App.showFieldError( "password_too_short" , this.fields );
       return;
     }
     if ( password !== Dom.get( "password-confirm" ).value ) {
-      App.showError( "password_mismatch" );
+      App.showFieldError( "password_mismatch" , this.fields );
       return;
     }
     const button = Dom.get( "password-save-button" );
@@ -126,7 +138,7 @@ const Password = {
       Dom.get( "password-username" ).value = username;
       this.saved();
     } catch ( error ) {
-      App.showError( error.message );
+      App.showFieldError( error.message , this.fields );
     } finally {
       button.disabled = false;
     }
@@ -134,13 +146,13 @@ const Password = {
 
   async onRemove() {
     const question = I18n.get( "password.remove_confirm" );
-    if ( question !== "" && !window.confirm( question ) ) return;
+    if ( !( await Dom.confirm( question ) ) ) return;
     try {
       await Api.setPassword( "" , "" , Dom.get( "password-code" ).value );
       this.me.has_password = false;
       this.saved();
     } catch ( error ) {
-      App.showError( error.message );
+      App.showFieldError( error.message , this.fields );
     }
   },
 

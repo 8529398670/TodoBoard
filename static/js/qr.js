@@ -1,4 +1,5 @@
-// QR codes: for the authenticator app on the two-factor setup screen.
+// QR codes: for the authenticator app, and for getting a login or invite link
+// onto a phone without typing it.
 const Qr = {
   // Black on white whatever the theme: scanners want the contrast, and four
   // modules of margin.
@@ -21,5 +22,19 @@ const Qr = {
         }
       }
     }
+  },
+
+  // A button that shows and hides the code for the link in value. A link is
+  // spent once used, so whoever shows a new one calls hide, or the code on
+  // screen would still be the old link's.
+  toggle( button , canvas , value ) {
+    button.addEventListener( "click" , () => {
+      if ( canvas.hidden ) this.draw( canvas , value.textContent );
+      Dom.show( canvas , canvas.hidden );
+    } );
+  },
+
+  hide( canvas ) {
+    Dom.show( canvas , false );
   },
 };

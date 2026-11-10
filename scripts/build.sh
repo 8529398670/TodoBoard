@@ -96,7 +96,7 @@ for TARGET in "${TARGETS[@]}"; do
 
   printf "  %-22s " "${GOOS}/${GOARCH}"
   if CGO_ENABLED=0 GOOS="$GOOS" GOARCH="$GOARCH" \
-       go build -trimpath -ldflags="$LDFLAGS" -o "$OUTPUT" . 2>/tmp/build_err_$$; then
+       go build -buildvcs=false -trimpath -ldflags="$LDFLAGS" -o "$OUTPUT" . 2>/tmp/build_err_$$; then
     SIZE="$( du -h "$OUTPUT" | cut -f1 | tr -d ' ' )"
     echo "ok  ${SIZE}  ${OUTPUT}"
   else
@@ -135,7 +135,9 @@ the directory it is started from, else ~/.config/todoboard/config.yaml,
 which it creates on first run along with the rest of its state:
 
   ~/.config/todoboard/
-    config.yaml     every setting, plus the secret key (mode 0600)
+    config.yaml     every setting; the owner can change most of them from
+                    the Settings screen while it runs (mode 0600)
+    secret.key      the key that encrypts the database (mode 0600)
     app.db          the database
     storage/        application files
 
@@ -146,9 +148,9 @@ built binary where it is looking with:
 
 Two things to pass on with any binary you hand someone:
 
-  * Back up config.yaml together with app.db. Its secret_key encrypts the
+  * Back up secret.key together with app.db. It is the key that encrypts the
     database, so app.db without it is unreadable -- and either one alone is
-    useless.
+    useless. config.yaml holds no secret.
   * server.secure_cookies must be true anywhere real, behind an HTTPS proxy.
     It defaults to true; set it false only for local http://localhost, or the
     browser will drop the session cookie and login will look like it silently

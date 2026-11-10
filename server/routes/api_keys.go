@@ -2,10 +2,13 @@ package routes
 
 import (
 	errors "errors"
+	strings "strings"
+
 
 	fiber "github.com/gofiber/fiber/v3"
 
 	db "todoboard/server/db"
+	logs "todoboard/server/logs"
 	models "todoboard/server/models"
 	security "todoboard/server/security"
 )
@@ -17,10 +20,11 @@ import (
 //
 // Every signed-in user can mint their own keys, and revoke or delete them. An
 // admin can additionally see, revoke, and delete everyone's, which is what
-// makes "who has standing access to this app" an answerable question.
+// makes "who has standing access to this app" an answerable question, and can
+// mint one that acts as someone else (CreateAPIKeyForUser).
 //
 // Revoking keeps the row, marked dead, so the listing still shows the key
-// existed and when it stopped working; the purge loop drops it later.
+// existed and when it stopped working; the `purge` job drops it later.
 // Deleting removes the row now. Either one stops the key immediately.
 //
 // Minting, revoking, and deleting require a browser session (the group in routes.go adds
@@ -38,18 +42,9 @@ type createAPIKeyRequest struct {
 	ExpiresInDays *int   `json:"expires_in_days"`
 	CSRFToken     string `json:"csrf_token"`
 	// BoardAccess is "" for every board, or "only" / "except" with BoardIDs.
+	// Only a key for yourself takes one: see models.IssueAPIKeyFor.
 	BoardAccess string   `json:"board_access"`
 	BoardIDs    []uint64 `json:"board_ids"`
-}
-
-// No board limit here: see models.IssueAPIKeyFor.
-type adminCreateAPIKeyRequest struct {
-	UserID uint64 `json:"user_id"`
-	Name   string `json:"name"`
-	Role   string `json:"role"`
-	// As on createAPIKeyRequest: absent is the default, 0 is never.
-	ExpiresInDays *int   `json:"expires_in_days"`
-	CSRFToken     string `json:"csrf_token"`
 }
 
 type setKeyBoardsRequest struct {
@@ -58,13 +53,34 @@ type setKeyBoardsRequest struct {
 	CSRFToken   string   `json:"csrf_token"`
 }
 
+// renameAPIKeyRequest's Expect is the name the caller thinks it is replacing. The
+// frontend sends it, so an undo cannot overwrite a rename made elsewhere.
+type renameAPIKeyRequest struct {
+	Name      string  `json:"name"`
+	Expect    *string `json:"expect"`
+	CSRFToken string  `json:"csrf_token"`
+}
+
+// apiKeyExpiryRequest's ExpiresInDays counts from now, and 0 means never, as when
+// minting. Here it is required: there is no default to fall back on.
+type apiKeyExpiryRequest struct {
+	ExpiresInDays *int   `json:"expires_in_days"`
+	CSRFToken     string `json:"csrf_token"`
+}
+
+// createUserAPIKeyRequest is createAPIKeyRequest plus whose key it is.
+type createUserAPIKeyRequest struct {
+	createAPIKeyRequest
+	UserID uint64 `json:"user_id"`
+}
+
 // RequireAPIKeys hides the key-management endpoints when the feature is
 // switched off, so an app with no programmatic callers can close the surface
 // entirely. The Authorization header is ignored in that state too -- that part
 // is enforced in server/security, not here, because it has to hold for every
 // route rather than only these.
 func ( handlers *Handlers ) RequireAPIKeys( c fiber.Ctx ) ( err error ) {
-	if handlers.Config.APIKeysEnabled == false {
+	if handlers.cfg().APIKeysEnabled == false {
 		err = notFound( c , "api keys are disabled on this server" )
 		return
 	}
@@ -101,20 +117,36 @@ func apiKeyRow( key *models.APIKey , display_name string ) ( row fiber.Map ) {
 	if key.RevokedAt != nil {
 		row[ "revoked_at" ] = key.RevokedAt
 	}
-	if display_name != "" {
-		row[ "display_name" ] = display_name
-	}
 	if key.CreatedBy != 0 {
 		row[ "created_by" ] = key.CreatedBy
+	}
+	if display_name != "" {
+		row[ "display_name" ] = display_name
 	}
 	return
 }
 
+// ownKeyRow is apiKeyRow for the key's own holder, who may see which boards
+// it is limited to.
 func ownKeyRow( key *models.APIKey ) ( row fiber.Map ) {
 	row = apiKeyRow( key , "" )
 	ids := key.BoardIDs
 	if ids == nil { ids = []uint64{} }
 	row[ "board_ids" ] = ids
+	return
+}
+
+// onlyLiveKeys is ?live=true, for hiding keys that no longer work. The lists
+// keep them otherwise: a key that used to exist is part of the answer.
+func onlyLiveKeys( c fiber.Ctx , rows []fiber.Map ) ( kept []fiber.Map ) {
+	kept = rows
+	if c.Query( "live" ) != "true" { return }
+	kept = []fiber.Map{}
+	for _ , row := range rows {
+		if row[ "live" ] == true {
+			kept = append( kept , row )
+		}
+	}
 	return
 }
 
@@ -125,20 +157,49 @@ func ( handlers *Handlers ) ListMyAPIKeys( c fiber.Ctx ) ( err error ) {
 	user := security.UserFrom( c )
 	keys , list_err := models.ListAPIKeysForUser( handlers.Store , user.ID )
 	if list_err != nil {
-		err = serverError( c )
+		err = serverError( c , list_err )
 		return
+	}
+	// Most people have no key someone else made, so the names are only loaded
+	// when one is there to be named.
+	names := map[ uint64 ]string{}
+	for _ , key := range keys {
+		if key.CreatedBy == 0 { continue }
+		if names , list_err = handlers.displayNames(); list_err != nil {
+			err = serverError( c , list_err )
+			return
+		}
+		break
 	}
 	rows := []fiber.Map{}
 	for _ , key := range keys {
 		row := ownKeyRow( key )
-		// Left out once that admin's account is gone; the page says "an admin".
-		if key.CreatedBy != 0 {
-			if maker , get_err := models.GetUser( handlers.Store , key.CreatedBy ); get_err == nil { row[ "created_by_name" ] = maker.DisplayName }
-		}
+		nameCreator( row , key , names )
 		rows = append( rows , row )
 	}
-	err = c.JSON( rows )
+	rows = onlyLiveKeys( c , matchRows( rows , c.Query( "q" ) , "name" ) )
+	err = sendSorted( c , "keys" , rows , "name" , "role" , "last_used_at" , "expires_at" , "created_at" )
 	return
+}
+
+// displayNames is every account's name by id: one pass rather than a GetUser
+// per key, since a bucket read per row is the shape that quietly becomes slow.
+func ( handlers *Handlers ) displayNames() ( names map[ uint64 ]string , err error ) {
+	users , err := models.ListUsers( handlers.Store )
+	if err != nil { return }
+	names = map[ uint64 ]string{}
+	for _ , user := range users {
+		names[ user.ID ] = user.DisplayName
+	}
+	return
+}
+
+// nameCreator says who made a key on its owner's behalf. An admin deleted
+// since has no name, and the page shows their id instead.
+func nameCreator( row fiber.Map , key *models.APIKey , names map[ uint64 ]string ) {
+	if name := names[ key.CreatedBy ]; key.CreatedBy != 0 && name != "" {
+		row[ "created_by_name" ] = name
+	}
 }
 
 // CreateMyAPIKey mints a key for the signed-in user and returns the credential
@@ -172,14 +233,14 @@ func ( handlers *Handlers ) CreateMyAPIKey( c fiber.Ctx ) ( err error ) {
 		return
 	}
 
-	ttl , ok := models.APIKeyTTLFromDays( body.ExpiresInDays , handlers.Config.APIKeyTTL )
+	ttl , ok := models.APIKeyTTLFromDays( body.ExpiresInDays , handlers.cfg().APIKeyTTL )
 	if ok == false {
 		err = badRequest( c , "expires_in_days must be 0 (never) or up to 3650" )
 		return
 	}
 
 	user := security.UserFrom( c )
-	credential , key , issue_err := models.IssueAPIKey( handlers.Store , user.ID , body.Name , role , ttl , body.BoardAccess , body.BoardIDs )
+	credential , key , issue_err := models.IssueAPIKeyLimited( handlers.Store , user.ID , body.Name , role , ttl , body.BoardAccess , body.BoardIDs )
 	if issue_err != nil {
 		switch {
 		case errors.Is( issue_err , models.ErrAPIKeyRole ):
@@ -194,7 +255,7 @@ func ( handlers *Handlers ) CreateMyAPIKey( c fiber.Ctx ) ( err error ) {
 			// into this handler fails as a refusal rather than a 500.
 			err = forbidden( c , "this account is disabled" )
 		default:
-			err = serverError( c )
+			err = serverError( c , issue_err )
 		}
 		return
 	}
@@ -202,23 +263,30 @@ func ( handlers *Handlers ) CreateMyAPIKey( c fiber.Ctx ) ( err error ) {
 	// The credential appears here and nowhere else, ever.
 	row := ownKeyRow( key )
 	row[ "credential" ] = credential
+	handlers.audit( c , logs.KindAdmin , "api key created" , fiber.Map{ "key_id": key.ID , "name": key.Name , "role": key.Role } )
 	err = c.Status( fiber.StatusCreated ).JSON( row )
 	return
 }
 
-// CreateAPIKeyForUser is an admin making a key that acts as someone else: it
-// is that person in every way, so it reaches what they reach and no more. The
-// key is theirs, in their own list with the admin's name on it, where they can
-// limit or revoke it. Limits on who it can be for are in the model, with the
-// others.
+// CreateAPIKeyForUser mints a key that acts as another account, for setting up
+// someone's integration for them. It needs a browser session, like every route
+// that makes a credential: the admin_keys group in routes.go adds it, so a
+// leaked admin key cannot mint itself a way in as somebody else.
+//
+// Who may mint for whom is models.IssueAPIKeyFor's to say. The key records who
+// made it, and shows that to the person it acts as.
 func ( handlers *Handlers ) CreateAPIKeyForUser( c fiber.Ctx ) ( err error ) {
-	var body adminCreateAPIKeyRequest
+	var body createUserAPIKeyRequest
 	if c.Bind().JSON( &body ) != nil {
 		err = badRequest( c , "malformed request body" )
 		return
 	}
 	if handlers.Guard.CheckCSRF( c , body.CSRFToken ) == false {
 		err = forbidden( c , "invalid csrf token" )
+		return
+	}
+	if body.UserID == 0 {
+		err = badRequest( c , "user_id is required" )
 		return
 	}
 	if models.ValidAPIKeyName( body.Name ) == false {
@@ -233,38 +301,41 @@ func ( handlers *Handlers ) CreateAPIKeyForUser( c fiber.Ctx ) ( err error ) {
 		err = badRequest( c , "role must be admin or user" )
 		return
 	}
-	ttl , ok := models.APIKeyTTLFromDays( body.ExpiresInDays , handlers.Config.APIKeyTTL )
+	ttl , ok := models.APIKeyTTLFromDays( body.ExpiresInDays , handlers.cfg().APIKeyTTL )
 	if ok == false {
 		err = badRequest( c , "expires_in_days must be 0 (never) or up to 3650" )
 		return
 	}
-	if _ , get_err := models.GetUser( handlers.Store , body.UserID ); get_err != nil {
-		err = notFound( c , "no such user" )
-		return
-	}
 
-	admin := security.UserFrom( c )
-	credential , key , issue_err := models.IssueAPIKeyFor( handlers.Store , admin.ID , body.UserID , body.Name , role , ttl )
+	actor := security.UserFrom( c )
+	credential , key , issue_err := models.IssueAPIKeyFor( handlers.Store , actor.ID , body.UserID , body.Name , role , ttl )
 	if issue_err != nil {
 		switch {
-		case errors.Is( issue_err , models.ErrAPIKeyOwner ):
-			err = forbidden( c , "only the owner can make the owner's API keys" )
+		case errors.Is( issue_err , db.ErrNotFound ):
+			err = notFound( c , "no such user" )
+		case errors.Is( issue_err , models.ErrOwnerProtected ):
+			err = forbidden( c , "a key for the owner can only be made by the owner, or from a shell" )
+		case errors.Is( issue_err , models.ErrOwnerRequired ):
+			err = forbidden( c , "only the owner can create a key for an admin" )
 		case errors.Is( issue_err , models.ErrAPIKeyRole ):
-			err = forbidden( c , "this account cannot hold an admin key" )
+			err = forbidden( c , "a key cannot have more permission than the account it belongs to" )
 		case errors.Is( issue_err , models.ErrAPIKeyLimit ):
-			err = badRequest( c , "this account already has the maximum number of live API keys" )
+			err = badRequest( c , "that account already has the maximum number of live API keys" )
 		case errors.Is( issue_err , models.ErrAPIKeyDisabled ):
-			err = forbidden( c , "this account is disabled" )
+			err = forbidden( c , "that account is disabled" )
 		default:
-			err = serverError( c )
+			err = serverError( c , issue_err )
 		}
 		return
 	}
 
-	// As in CreateMyAPIKey, the credential appears here and nowhere else.
-	row := apiKeyRow( key , "" )
-	row[ "created_by_name" ] = admin.DisplayName
+	// The credential appears here and nowhere else, ever. The key is theirs,
+	// in their own list with this admin's name on it, where they can limit or
+	// revoke it.
+	row := ownKeyRow( key )
+	row[ "created_by_name" ] = actor.DisplayName
 	row[ "credential" ] = credential
+	handlers.audit( c , logs.KindAdmin , "api key created" , fiber.Map{ "key_id": key.ID , "name": key.Name , "role": key.Role , "user_id": key.UserID , "created_by": actor.ID } )
 	err = c.Status( fiber.StatusCreated ).JSON( row )
 	return
 }
@@ -294,6 +365,7 @@ func ( handlers *Handlers ) SetMyAPIKeyBoards( c fiber.Ctx ) ( err error ) {
 	set_err := models.SetAPIKeyBoards( handlers.Store , key.ID , body.BoardAccess , body.BoardIDs )
 	switch {
 	case set_err == nil:
+		handlers.audit( c , logs.KindAdmin , "api key boards changed" , fiber.Map{ "key_id": key.ID , "board_access": body.BoardAccess } )
 		err = c.JSON( fiber.Map{ "ok": true } )
 	case errors.Is( set_err , models.ErrAPIKeyBoards ):
 		err = badRequest( c , keyBoardsMessage )
@@ -302,8 +374,118 @@ func ( handlers *Handlers ) SetMyAPIKeyBoards( c fiber.Ctx ) ( err error ) {
 	case errors.Is( set_err , db.ErrNotFound ):
 		err = notFound( c , "no such api key" )
 	default:
-		err = serverError( c )
+		err = serverError( c , set_err )
 	}
+	return
+}
+
+// RenameMyAPIKey renames one of your own keys. Someone else's is "no such api
+// key", for the same reason as in RevokeMyAPIKey.
+func ( handlers *Handlers ) RenameMyAPIKey( c fiber.Ctx ) ( err error ) {
+	err = handlers.renameKey( c , true )
+	return
+}
+
+// RenameAnyAPIKey is an admin renaming anyone's key. A name changes nothing about
+// what a key can do, so unlike its expiry this needs no ladder.
+func ( handlers *Handlers ) RenameAnyAPIKey( c fiber.Ctx ) ( err error ) {
+	err = handlers.renameKey( c , false )
+	return
+}
+
+func ( handlers *Handlers ) renameKey( c fiber.Ctx , own_only bool ) ( err error ) {
+	var body renameAPIKeyRequest
+	if c.Bind().JSON( &body ) != nil {
+		err = badRequest( c , "malformed request body" )
+		return
+	}
+	if handlers.Guard.CheckCSRF( c , body.CSRFToken ) == false {
+		err = forbidden( c , "invalid csrf token" )
+		return
+	}
+	if models.ValidAPIKeyName( body.Name ) == false {
+		err = badRequest( c , "name must be 1-80 characters" )
+		return
+	}
+
+	key , get_err := models.GetAPIKey( handlers.Store , c.Params( "key_id" ) )
+	if get_err != nil || ( own_only && key.UserID != security.UserFrom( c ).ID ) {
+		err = notFound( c , "no such api key" )
+		return
+	}
+	rename_err := models.RenameAPIKey( handlers.Store , key.ID , body.Name , body.Expect )
+	var refusal *models.RenameConflictError
+	switch {
+	case errors.As( rename_err , &refusal ):
+		err = conflict( c , refusal.Error() , fiber.Map{ "name": refusal.Current } )
+		return
+	case errors.Is( rename_err , db.ErrNotFound ):
+		err = notFound( c , "no such api key" )
+		return
+	case rename_err != nil:
+		err = serverError( c , rename_err )
+		return
+	}
+	name := strings.TrimSpace( body.Name )
+	handlers.audit( c , logs.KindAdmin , "api key renamed" , fiber.Map{ "key_id": key.ID , "name": name } )
+	err = c.JSON( fiber.Map{ "ok": true , "name": name } )
+	return
+}
+
+// SetMyAPIKeyExpiry changes when one of your own keys expires. The session this
+// group requires is what stops a leaked key from extending itself.
+func ( handlers *Handlers ) SetMyAPIKeyExpiry( c fiber.Ctx ) ( err error ) {
+	err = handlers.setKeyExpiry( c , true )
+	return
+}
+
+// SetAnyAPIKeyExpiry is the same for an admin. Whose keys they may change is
+// models.SetAPIKeyExpiry's to say.
+func ( handlers *Handlers ) SetAnyAPIKeyExpiry( c fiber.Ctx ) ( err error ) {
+	err = handlers.setKeyExpiry( c , false )
+	return
+}
+
+func ( handlers *Handlers ) setKeyExpiry( c fiber.Ctx , own_only bool ) ( err error ) {
+	var body apiKeyExpiryRequest
+	if c.Bind().JSON( &body ) != nil {
+		err = badRequest( c , "malformed request body" )
+		return
+	}
+	if handlers.Guard.CheckCSRF( c , body.CSRFToken ) == false {
+		err = forbidden( c , "invalid csrf token" )
+		return
+	}
+	ttl , ok := models.APIKeyTTLFromDays( body.ExpiresInDays , 0 )
+	if body.ExpiresInDays == nil || ok == false {
+		err = badRequest( c , "expires_in_days must be 0 (never) or up to 3650" )
+		return
+	}
+
+	actor := security.UserFrom( c )
+	found , get_err := models.GetAPIKey( handlers.Store , c.Params( "key_id" ) )
+	if get_err != nil || ( own_only && found.UserID != actor.ID ) {
+		err = notFound( c , "no such api key" )
+		return
+	}
+	key , set_err := models.SetAPIKeyExpiry( handlers.Store , found.ID , actor.ID , ttl )
+	if set_err != nil {
+		switch {
+		case errors.Is( set_err , db.ErrNotFound ):
+			err = notFound( c , "no such api key" )
+		case errors.Is( set_err , models.ErrAPIKeyDead ):
+			err = badRequest( c , "only a live key can have its expiry changed -- create a new one instead" )
+		case errors.Is( set_err , models.ErrOwnerProtected ):
+			err = forbidden( c , "only the owner can change when the owner's keys expire" )
+		case errors.Is( set_err , models.ErrOwnerRequired ):
+			err = forbidden( c , "only the owner can change when an admin's keys expire" )
+		default:
+			err = serverError( c , set_err )
+		}
+		return
+	}
+	handlers.audit( c , logs.KindAdmin , "api key expiry changed" , fiber.Map{ "key_id": key.ID , "expires_in_days": *body.ExpiresInDays } )
+	err = c.JSON( apiKeyRow( key , "" ) )
 	return
 }
 
@@ -323,20 +505,22 @@ func ( handlers *Handlers ) RevokeMyAPIKey( c fiber.Ctx ) ( err error ) {
 
 	user := security.UserFrom( c )
 	key , get_err := models.GetAPIKey( handlers.Store , c.Params( "key_id" ) )
-	if get_err != nil || key.UserID != user.ID {
+	if get_err != nil || key.Deleted() || key.UserID != user.ID {
 		err = notFound( c , "no such api key" )
 		return
 	}
-	if models.RevokeAPIKey( handlers.Store , key.ID ) != nil {
-		err = serverError( c )
+	if revoke_err := models.RevokeAPIKey( handlers.Store , key.ID ); revoke_err != nil {
+		err = serverError( c , revoke_err )
 		return
 	}
+	handlers.audit( c , logs.KindAdmin , "api key revoked" , fiber.Map{ "key_id": c.Params( "key_id" ) } )
 	err = c.JSON( fiber.Map{ "ok": true } )
 	return
 }
 
-// DeleteMyAPIKey removes one of your own keys outright -- live or already
-// dead. Someone else's key is "no such api key", for the same reason as in
+// DeleteMyAPIKey deletes one of your own keys -- live or already dead. It
+// stops working at once, and RestoreMyAPIKey can bring it back for a few
+// minutes. Someone else's key is "no such api key", for the same reason as in
 // RevokeMyAPIKey.
 func ( handlers *Handlers ) DeleteMyAPIKey( c fiber.Ctx ) ( err error ) {
 	var body csrfOnlyRequest
@@ -355,23 +539,73 @@ func ( handlers *Handlers ) DeleteMyAPIKey( c fiber.Ctx ) ( err error ) {
 		err = notFound( c , "no such api key" )
 		return
 	}
-	if delete_err := models.DeleteAPIKey( handlers.Store , key.ID ); delete_err != nil {
+	if delete_err := models.DeleteAPIKey( handlers.Store , key.ID , user.ID ); delete_err != nil {
 		err = deleteKeyError( c , delete_err )
 		return
 	}
+	handlers.audit( c , logs.KindAdmin , "api key deleted" , fiber.Map{ "key_id": c.Params( "key_id" ) } )
 	err = c.JSON( fiber.Map{ "ok": true } )
 	return
 }
 
-// deleteKeyError maps a DeleteAPIKey failure. A key that vanished between the
-// lookup and the delete -- deleted by its owner and an admin at once -- is
-// reported as missing, not as a server fault.
+// RestoreMyAPIKey undoes DeleteMyAPIKey, within models.RestoreWindow. A key
+// an admin deleted is the admin's to restore, not its owner's.
+func ( handlers *Handlers ) RestoreMyAPIKey( c fiber.Ctx ) ( err error ) {
+	var body csrfOnlyRequest
+	if c.Bind().JSON( &body ) != nil {
+		err = badRequest( c , "malformed request body" )
+		return
+	}
+	if handlers.Guard.CheckCSRF( c , body.CSRFToken ) == false {
+		err = forbidden( c , "invalid csrf token" )
+		return
+	}
+
+	user := security.UserFrom( c )
+	key , get_err := models.GetAPIKey( handlers.Store , c.Params( "key_id" ) )
+	if get_err != nil || key.UserID != user.ID {
+		err = notFound( c , "no such api key" )
+		return
+	}
+	err = handlers.restoreKey( c , key.ID , user )
+	return
+}
+
+// RestoreAnyAPIKey undoes a delete, any key's, within models.RestoreWindow.
+func ( handlers *Handlers ) RestoreAnyAPIKey( c fiber.Ctx ) ( err error ) {
+	var body csrfOnlyRequest
+	if c.Bind().JSON( &body ) != nil {
+		err = badRequest( c , "malformed request body" )
+		return
+	}
+	if handlers.Guard.CheckCSRF( c , body.CSRFToken ) == false {
+		err = forbidden( c , "invalid csrf token" )
+		return
+	}
+	err = handlers.restoreKey( c , c.Params( "key_id" ) , security.UserFrom( c ) )
+	return
+}
+
+func ( handlers *Handlers ) restoreKey( c fiber.Ctx , key_id string , actor *models.User ) ( err error ) {
+	key , restore_err := models.RestoreAPIKey( handlers.Store , key_id , actor.ID , actor.IsAdmin() )
+	if restore_err != nil {
+		err = restoreRefused( c , restore_err )
+		return
+	}
+	handlers.audit( c , logs.KindAdmin , "api key restored" , fiber.Map{ "key_id": key_id } )
+	err = c.JSON( apiKeyRow( key , "" ) )
+	return
+}
+
+// deleteKeyError maps a DeleteAPIKey failure. A key that is already deleted,
+// or vanished between the lookup and the delete -- deleted by its owner and
+// an admin at once -- is reported as missing, not as a server fault.
 func deleteKeyError( c fiber.Ctx , delete_err error ) ( err error ) {
 	if errors.Is( delete_err , db.ErrNotFound ) {
 		err = notFound( c , "no such api key" )
 		return
 	}
-	err = serverError( c )
+	err = serverError( c , delete_err )
 	return
 }
 
@@ -381,29 +615,23 @@ func deleteKeyError( c fiber.Ctx , delete_err error ) ( err error ) {
 func ( handlers *Handlers ) ListAllAPIKeys( c fiber.Ctx ) ( err error ) {
 	keys , list_err := models.ListAPIKeys( handlers.Store )
 	if list_err != nil {
-		err = serverError( c )
+		err = serverError( c , list_err )
 		return
 	}
-	users , users_err := models.ListUsers( handlers.Store )
-	if users_err != nil {
-		err = serverError( c )
+	names , names_err := handlers.displayNames()
+	if names_err != nil {
+		err = serverError( c , names_err )
 		return
-	}
-
-	// One pass to build the lookup rather than a GetUser per key: a bucket
-	// read per row is the shape that quietly becomes slow.
-	names := map[ uint64 ]string{}
-	for _ , user := range users {
-		names[ user.ID ] = user.DisplayName
 	}
 
 	rows := []fiber.Map{}
 	for _ , key := range keys {
 		row := apiKeyRow( key , names[ key.UserID ] )
-		if maker := names[ key.CreatedBy ]; maker != "" { row[ "created_by_name" ] = maker }
+		nameCreator( row , key , names )
 		rows = append( rows , row )
 	}
-	err = c.JSON( rows )
+	rows = onlyLiveKeys( c , matchRows( rows , c.Query( "q" ) , "name" , "display_name" ) )
+	err = sendSorted( c , "keys" , rows , "display_name" , "name" , "role" , "last_used_at" , "expires_at" , "created_at" )
 	return
 }
 
@@ -426,16 +654,18 @@ func ( handlers *Handlers ) RevokeAnyAPIKey( c fiber.Ctx ) ( err error ) {
 		err = notFound( c , "no such api key" )
 		return
 	}
-	if models.RevokeAPIKey( handlers.Store , key.ID ) != nil {
-		err = serverError( c )
+	if revoke_err := models.RevokeAPIKey( handlers.Store , key.ID ); revoke_err != nil {
+		err = serverError( c , revoke_err )
 		return
 	}
+	handlers.audit( c , logs.KindAdmin , "api key revoked" , fiber.Map{ "key_id": c.Params( "key_id" ) } )
 	err = c.JSON( fiber.Map{ "ok": true } )
 	return
 }
 
-// DeleteAnyAPIKey is RevokeAnyAPIKey without the record left behind: the key
-// stops working and disappears from every listing, its owner's included.
+// DeleteAnyAPIKey stops the key working and takes it off every listing, its
+// owner's included. Unlike RevokeAnyAPIKey it can be undone, by
+// RestoreAnyAPIKey.
 func ( handlers *Handlers ) DeleteAnyAPIKey( c fiber.Ctx ) ( err error ) {
 	var body csrfOnlyRequest
 	if c.Bind().JSON( &body ) != nil {
@@ -447,10 +677,11 @@ func ( handlers *Handlers ) DeleteAnyAPIKey( c fiber.Ctx ) ( err error ) {
 		return
 	}
 
-	if delete_err := models.DeleteAPIKey( handlers.Store , c.Params( "key_id" ) ); delete_err != nil {
+	if delete_err := models.DeleteAPIKey( handlers.Store , c.Params( "key_id" ) , security.UserFrom( c ).ID ); delete_err != nil {
 		err = deleteKeyError( c , delete_err )
 		return
 	}
+	handlers.audit( c , logs.KindAdmin , "api key deleted" , fiber.Map{ "key_id": c.Params( "key_id" ) } )
 	err = c.JSON( fiber.Map{ "ok": true } )
 	return
 }

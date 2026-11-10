@@ -7,6 +7,7 @@ import (
 
 	fiber "github.com/gofiber/fiber/v3"
 
+	logs "todoboard/server/logs"
 	models "todoboard/server/models"
 	security "todoboard/server/security"
 )
@@ -48,17 +49,39 @@ func ( handlers *Handlers ) ListMySessions( c fiber.Ctx ) ( err error ) {
 	actor := security.ActorFrom( c )
 	sessions , list_err := models.ListSessionsForUser( handlers.Store , actor.User.ID )
 	if list_err != nil {
-		err = serverError( c )
+		err = serverError( c , list_err )
 		return
 	}
 	rows := []fiber.Map{}
 	for _ , session := range sessions {
 		rows = append( rows , sessionRow( session , actor.Session.ID ) )
 	}
-	err = c.JSON( fiber.Map{ "sessions": rows } )
+	owner_id , owner_err := models.OwnerID( handlers.Store )
+	if owner_err != nil {
+		err = serverError( c , owner_err )
+		return
+	}
+	if actor.User.ID == owner_id {
+		if name_err := handlers.nameSessionRows( rows ); name_err != nil {
+			err = serverError( c , name_err )
+			return
+		}
+	}
+	err = sendPage( c , "sessions" , rows )
 	return
 }
 
+// nameSessionRows adds what the owner calls each address. Names are the owner's
+// own notes about people, so they go to the owner and nobody else.
+func ( handlers *Handlers ) nameSessionRows( rows []fiber.Map ) ( err error ) {
+	namer , err := models.LoadIPNamer( handlers.Store )
+	if err != nil { return }
+	for _ , row := range rows {
+		ip , _ := row[ "ip" ].( string )
+		if name := namer.Name( ip ); name != "" { row[ "ip_name" ] = name }
+	}
+	return
+}
 
 // sessionsTarget reads whose sessions an admin route is asking about. Nobody but
 // the owner reaches the owner's, the same rule as revoking the owner's access.
@@ -74,7 +97,7 @@ func ( handlers *Handlers ) sessionsTarget( c fiber.Ctx ) ( user_id uint64 , by_
 	}
 	owner_id , owner_err := models.OwnerID( handlers.Store )
 	if owner_err != nil {
-		refused = &refusal{ status: fiber.StatusInternalServerError , message: "internal error" }
+		refused = &refusal{ status: fiber.StatusInternalServerError , message: "internal error" , cause: owner_err }
 		return
 	}
 	by_owner = security.UserFrom( c ).ID == owner_id
@@ -95,7 +118,7 @@ func ( handlers *Handlers ) ListUserSessions( c fiber.Ctx ) ( err error ) {
 	}
 	sessions , list_err := models.ListSessionsForUser( handlers.Store , user_id )
 	if list_err != nil {
-		err = serverError( c )
+		err = serverError( c , list_err )
 		return
 	}
 	rows := []fiber.Map{}
@@ -104,7 +127,13 @@ func ( handlers *Handlers ) ListUserSessions( c fiber.Ctx ) ( err error ) {
 		if by_owner == false { delete( row , "ip" ) }
 		rows = append( rows , row )
 	}
-	err = c.JSON( fiber.Map{ "sessions": rows } )
+	if by_owner {
+		if name_err := handlers.nameSessionRows( rows ); name_err != nil {
+			err = serverError( c , name_err )
+			return
+		}
+	}
+	err = sendPage( c , "sessions" , rows )
 	return
 }
 
@@ -135,8 +164,9 @@ func ( handlers *Handlers ) RevokeUserSession( c fiber.Ctx ) ( err error ) {
 	case errors.Is( revoke_err , models.ErrSessionNotFound ):
 		err = notFound( c , "not found" )
 	case revoke_err != nil:
-		err = serverError( c )
+		err = serverError( c , revoke_err )
 	default:
+		handlers.audit( c , logs.KindAdmin , "session revoked" , fiber.Map{ "user_id": user_id } )
 		err = c.JSON( fiber.Map{ "ok": true } )
 	}
 	return
@@ -167,9 +197,10 @@ func ( handlers *Handlers ) LabelMySession( c fiber.Ctx ) ( err error ) {
 	case errors.Is( label_err , models.ErrSessionNotFound ):
 		err = notFound( c , "not found" )
 	case label_err != nil:
-		err = serverError( c )
+		err = serverError( c , label_err )
 	default:
 		// Not the label: it is the person's own words about where they are.
+		handlers.audit( c , logs.KindAuth , "session_labelled" , nil )
 		err = c.JSON( fiber.Map{ "ok": true , "label": strings.TrimSpace( body.Label ) } )
 	}
 	return
@@ -200,8 +231,9 @@ func ( handlers *Handlers ) RevokeMySession( c fiber.Ctx ) ( err error ) {
 	case errors.Is( revoke_err , models.ErrSessionNotFound ):
 		err = notFound( c , "not found" )
 	case revoke_err != nil:
-		err = serverError( c )
+		err = serverError( c , revoke_err )
 	default:
+		handlers.audit( c , logs.KindAuth , "session_revoked" , nil )
 		err = c.JSON( fiber.Map{ "ok": true } )
 	}
 	return
@@ -222,9 +254,10 @@ func ( handlers *Handlers ) RevokeMyOtherSessions( c fiber.Ctx ) ( err error ) {
 	actor := security.ActorFrom( c )
 	removed , revoke_err := models.RevokeOtherSessions( handlers.Store , actor.User.ID , actor.Session.ID )
 	if revoke_err != nil {
-		err = serverError( c )
+		err = serverError( c , revoke_err )
 		return
 	}
+	handlers.audit( c , logs.KindAuth , "sessions_revoked" , fiber.Map{ "removed": removed } )
 	err = c.JSON( fiber.Map{ "ok": true , "removed": removed } )
 	return
 }

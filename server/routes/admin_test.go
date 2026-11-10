@@ -137,7 +137,7 @@ func TestWhoMayChangeWhoseRole( t *testing.T ) {
 
 func TestAnAdminKeyCannotChangeAnAccount( t *testing.T ) {
 	fixture := newAuthFixture( t )
-	key , _ , err := models.IssueAPIKey( fixture.store , fixture.owner.ID , "ops" , models.RoleAdmin , time.Hour , models.BoardAccessAll , nil )
+	key , _ , err := models.IssueAPIKey( fixture.store , fixture.owner.ID , "ops" , models.RoleAdmin , time.Hour )
 	if err != nil { t.Fatal( err ) }
 	for _ , verb := range []string{ "rename" , "role" } {
 		request , _ := http.NewRequest( http.MethodPost , userPath( fixture.alice , verb ) , strings.NewReader( `{"display_name":"x","role":"admin"}` ) )

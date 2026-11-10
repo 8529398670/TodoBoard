@@ -6,6 +6,7 @@ import (
 	time "time"
 
 	access "todoboard/server/access"
+	config "todoboard/server/config"
 	language "todoboard/server/language"
 	models "todoboard/server/models"
 	sheet "todoboard/server/sheet"
@@ -28,7 +29,7 @@ func newExportFixture( t *testing.T ) ( fixture *exportFixture ) {
 	base := newMCPFixture( t )
 	fixture = &exportFixture{
 		mcpFixture: base ,
-		handlers:   New( base.store , base.cfg , nil , lang , nil , nil , "test" ) ,
+		handlers:   New( base.store , config.NewStaticHolder( base.cfg ) , nil , lang , nil , "test" ) ,
 		principal:  &access.Principal{ UserID: base.member.ID , Name: "Member" } ,
 	}
 	return

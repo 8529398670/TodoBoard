@@ -5,7 +5,9 @@ import (
 
 	fiber "github.com/gofiber/fiber/v3"
 
+	logs "todoboard/server/logs"
 	models "todoboard/server/models"
+	security "todoboard/server/security"
 )
 
 // Joining through an invite link (see models/invite_link.go; managing links
@@ -30,6 +32,12 @@ type joinRequest struct {
 // so a chat app's link preview cannot use up a place.
 func ( handlers *Handlers ) ShowJoinPage( c fiber.Ctx ) ( err error ) {
 	c.Set( fiber.HeaderReferrerPolicy , "no-referrer" )
+	// A person with an old link gets the styled page, not RequireInviteLinks's
+	// JSON. The referrer rule above still applies: the path holds the secret.
+	if handlers.inviteLinksOn() == false {
+		err = handlers.Static.NotFound( c )
+		return
+	}
 	err = handlers.Static.ServeIndex( c )
 	return
 }
@@ -75,7 +83,7 @@ func ( handlers *Handlers ) JoinMatch( c fiber.Ctx ) ( err error ) {
 	}
 	matches , match_err := models.InviteMatches( handlers.Store , link , body.DisplayName )
 	if match_err != nil {
-		err = serverError( c )
+		err = serverError( c , match_err )
 		return
 	}
 	rows := []fiber.Map{}
@@ -110,12 +118,13 @@ func ( handlers *Handlers ) JoinClaim( c fiber.Ctx ) ( err error ) {
 		ok := user.CheckPin( body.Pin )
 		handlers.Pins.Record( user.ID , ok )
 		if ok == false {
+			handlers.auditAs( c , handlers.logUser( user.ID , "anon" ) , logs.KindAuth , logs.LevelWarn , "wrong pin on an invite link" , fiber.Map{ "link_id": link.ID } )
 			code := "pin_wrong"
 			if body.Pin == "" { code = "pin_needed" }
 			err = forbidden( c , code )
 			return
 		}
-	} else if user.PasswordUsable( handlers.Config.PasswordsEnabled ) {
+	} else if user.PasswordUsable( handlers.cfg().PasswordsEnabled ) {
 		err = forbidden( c , "use_password" )
 		return
 	}
@@ -129,9 +138,12 @@ func ( handlers *Handlers ) JoinClaim( c fiber.Ctx ) ( err error ) {
 		err = notFound( c , "no_such_account" )
 		return
 	case claim_err != nil:
-		err = serverError( c )
+		err = serverError( c , claim_err )
 		return
 	}
+	message := "signed back in through an invite link"
+	if signed.Challenge != "" { message = "invite link accepted, waiting for a code" }
+	handlers.auditAs( c , handlers.logUser( user.ID , security.MethodSession ) , logs.KindAuth , logs.LevelInfo , message , fiber.Map{ "link_id": link.ID } )
 	err = handlers.signInResponse( c , signed , fiber.Map{ "ok": true , "display_name": user.DisplayName } , fiber.StatusOK )
 	return
 }
@@ -147,7 +159,7 @@ func ( handlers *Handlers ) JoinCreate( c fiber.Ctx ) ( err error ) {
 		return
 	}
 
-	session_credential , user , join_err := models.JoinInviteLink( handlers.Store , body.Credential , body.DisplayName , handlers.Config.SessionTTL )
+	session_credential , user , join_err := models.JoinInviteLink( handlers.Store , body.Credential , body.DisplayName , handlers.cfg().SessionTTL )
 	switch {
 	case errors.Is( join_err , models.ErrInviteLinkInvalid ):
 		err = notFound( c , "invite_link_invalid" )
@@ -156,9 +168,10 @@ func ( handlers *Handlers ) JoinCreate( c fiber.Ctx ) ( err error ) {
 		err = c.Status( fiber.StatusConflict ).JSON( fiber.Map{ "error": "invite_link_full" } )
 		return
 	case join_err != nil:
-		err = serverError( c )
+		err = serverError( c , join_err )
 		return
 	}
+	handlers.auditAs( c , handlers.logUser( user.ID , security.MethodSession ) , logs.KindAuth , logs.LevelInfo , "joined through an invite link" , fiber.Map{ "link_id": link.ID } )
 	signed := &models.SignIn{ UserID: user.ID , SessionCredential: session_credential }
 	err = handlers.signInResponse( c , signed , fiber.Map{ "ok": true , "display_name": user.DisplayName } , fiber.StatusCreated )
 	return

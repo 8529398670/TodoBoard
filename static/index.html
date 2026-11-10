@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="color-scheme" content="light" />
   <title data-i18n="app.title">&nbsp;</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
@@ -21,6 +21,7 @@
   <link rel="stylesheet" href="/css/board.css" />
 </head>
 <body>
+  <a id="skip-link" href="#main" class="visually-hidden-focusable" data-i18n="nav.skip"></a>
   <!--
     No text is hardcoded here. Every visible string carries a data-i18n key
     that server/language resolves from language.yaml at runtime, so the copy
@@ -32,7 +33,7 @@
     Headings use .h4 rather than .card-title: board.css sizes .card-title for
     the cards on a board.
   -->
-  <nav class="navbar app-navbar border-bottom sticky-top">
+  <nav class="navbar app-navbar border-bottom sticky-top" data-i18n-attr="aria-label:nav.top_label">
     <div class="container-fluid gap-2">
       <!-- Opens the sidebar on a phone; folds it away and back on a wide
            screen (Nav.toggleSidebar). -->
@@ -67,7 +68,7 @@
                 data-i18n-attr="aria-label:nav.close"></button>
       </div>
       <div class="offcanvas-body">
-        <nav id="sidebar-nav" class="nav nav-pills flex-column w-100 gap-1">
+        <nav id="sidebar-nav" class="nav nav-pills flex-column w-100 gap-1" data-i18n-attr="aria-label:nav.sidebar_label">
           <a class="nav-link" href="#boards" data-nav="boards"><i class="bi bi-kanban" aria-hidden="true"></i><span data-i18n="nav.boards"></span></a>
 
           <div class="sidebar-group">
@@ -79,6 +80,8 @@
             <a class="nav-link" href="#backup" data-nav="backup"><i class="bi bi-archive" aria-hidden="true"></i><span data-i18n="nav.backup"></span></a>
             <a class="nav-link" href="#pin" data-nav="pin"><i class="bi bi-key" aria-hidden="true"></i><span data-i18n="nav.pin"></span></a>
             <a class="nav-link" href="#api-keys" data-nav="api-keys"><i class="bi bi-code-square" aria-hidden="true"></i><span data-i18n="nav.api_keys"></span></a>
+            <!-- Only while app.show_about is on; see about.js. -->
+            <a class="nav-link" href="#about" data-nav="about"><i class="bi bi-info-circle" aria-hidden="true"></i><span data-i18n="nav.about"></span></a>
           </div>
 
           <div id="sidebar-admin" class="sidebar-group" hidden>
@@ -86,13 +89,30 @@
             <a class="nav-link" href="#users" data-nav="users"><i class="bi bi-people" aria-hidden="true"></i><span data-i18n="nav.users"></span></a>
             <a class="nav-link" href="#invite-links" data-nav="invite-links"><i class="bi bi-link-45deg" aria-hidden="true"></i><span data-i18n="nav.invite_links"></span></a>
             <a class="nav-link" href="#all-keys" data-nav="all-keys"><i class="bi bi-shield-lock" aria-hidden="true"></i><span data-i18n="nav.all_keys"></span></a>
+            <!-- The owner's alone: each screen's init checks is_owner. -->
+            <a class="nav-link" href="#logs" data-nav="logs"><i class="bi bi-journal-text" aria-hidden="true"></i><span data-i18n="nav.logs"></span></a>
+            <a class="nav-link" href="#jobs" data-nav="jobs"><i class="bi bi-clock-history" aria-hidden="true"></i><span data-i18n="nav.jobs"></span></a>
+            <a class="nav-link" href="#server-settings" data-nav="server-settings"><i class="bi bi-sliders" aria-hidden="true"></i><span data-i18n="nav.server_settings"></span></a>
           </div>
+          <p id="sidebar-version" class="sidebar-version" hidden></p>
         </nav>
       </div>
     </aside>
 
-    <main hidden id="main" class="app-main">
+    <main hidden id="main" class="app-main" tabindex="-1">
+      <p id="maintenance-banner" class="alert alert-warning" role="status" hidden></p>
+      <!-- server.announcement, until dismissed. See App.showAnnouncement. -->
+      <div id="announcement-banner" class="alert alert-info alert-dismissible" role="status" hidden>
+        <span id="announcement-text"></span>
+        <button id="announcement-dismiss" type="button" class="btn-close" data-i18n-attr="aria-label:nav.close"></button>
+      </div>
       <p id="error-banner" class="alert alert-danger" role="alert" hidden></p>
+
+      <!-- While the signed-in screens fetch what they show. See App.renderSignedIn. -->
+      <div id="app-loading" class="app-loading" role="status" hidden>
+        <span class="spinner-border" aria-hidden="true"></span>
+        <span class="visually-hidden" data-i18n="ui.loading"></span>
+      </div>
 
       <section id="signed-out" class="card" hidden>
         <div class="card-body">
@@ -100,6 +120,7 @@
           <p data-i18n="signed_out.body"></p>
           <p id="invalid-link" class="alert alert-warning mb-0" data-i18n="signed_out.invalid_link" hidden></p>
           <p id="sign-in-expired" class="alert alert-warning mb-0" data-i18n="signed_out.sign_in_expired" hidden></p>
+          <p id="session-ended" class="alert alert-warning mb-0" data-i18n="signed_out.session_ended" hidden></p>
           <!-- Only while the owner has auth.passwords on; see password.js. -->
           <div id="password-login" class="mt-3" hidden>
             <hr />
@@ -392,7 +413,7 @@
               <h3 class="h6" data-i18n="sessions.heading"></h3>
               <p class="text-body-secondary" data-i18n="sessions.description"></p>
               <div class="table-responsive">
-                <table id="sessions-table" class="table table-hover align-middle">
+                <table id="sessions-table" class="table table-hover align-middle" data-empty="sessions.empty">
                   <thead>
                     <tr>
                       <th scope="col" data-i18n="sessions.table_device"></th>
@@ -473,10 +494,15 @@
           select is revealed only for an admin (see keys.js) because a key can
           never carry more permission than the account that owns it.
         -->
-        <section class="card view" data-view="api-keys" id="api-keys-panel" hidden>
+        <section class="view view-stack" data-view="api-keys" id="api-keys-panel" hidden>
+          <div class="card">
           <div class="card-body">
             <h2 class="h4 mb-3" data-i18n="api_keys.heading"></h2>
             <p class="text-body-secondary" data-i18n="api_keys.description"></p>
+            <p id="key-spec-line" class="small" hidden>
+              <span data-i18n="api_keys.spec_text"></span>
+              <a id="key-spec-link" target="_blank" rel="noopener noreferrer" data-i18n="api_keys.spec_link"></a>
+            </p>
 
             <form id="create-key-form" class="row g-3 align-items-end" autocomplete="off">
               <div class="col-md">
@@ -515,22 +541,123 @@
               </div>
             </div>
 
-            <div class="table-responsive mt-4">
-              <table id="keys-table" class="table table-hover align-middle">
+            <div class="mt-4" role="search">
+              <label for="keys-search" class="visually-hidden" data-i18n="api_keys.search_label"></label>
+              <input id="keys-search" class="form-control" type="search" autocomplete="off"
+                     data-i18n-attr="placeholder:api_keys.search_label" />
+            </div>
+            <div class="form-check mt-2">
+              <input id="keys-live-only" class="form-check-input" type="checkbox" />
+              <label for="keys-live-only" class="form-check-label" data-i18n="api_keys.live_only_label"></label>
+            </div>
+
+            <div class="table-responsive mt-3">
+              <table id="keys-table" class="table table-hover align-middle" data-empty="api_keys.empty">
                 <thead>
                   <tr>
-                    <th data-i18n="api_keys.table_name"></th>
-                    <th data-i18n="api_keys.table_role"></th>
-                    <th data-i18n="api_keys.table_boards"></th>
-                    <th data-i18n="api_keys.table_status"></th>
-                    <th data-i18n="api_keys.table_last_used"></th>
-                    <th data-i18n="api_keys.table_expires"></th>
-                    <th data-i18n="api_keys.table_actions"></th>
+                    <th scope="col" data-sort="name"><button type="button" class="th-sort" data-i18n="api_keys.table_name"></button></th>
+                    <th scope="col" data-sort="role"><button type="button" class="th-sort" data-i18n="api_keys.table_role"></button></th>
+                    <th scope="col" data-i18n="api_keys.table_boards"></th>
+                    <th scope="col" data-i18n="api_keys.table_status"></th>
+                    <th scope="col" data-sort="last_used_at"><button type="button" class="th-sort" data-i18n="api_keys.table_last_used"></button></th>
+                    <th scope="col" data-sort="expires_at"><button type="button" class="th-sort" data-i18n="api_keys.table_expires"></button></th>
+                    <th scope="col" data-i18n="api_keys.table_actions"></th>
                   </tr>
                 </thead>
                 <tbody></tbody>
               </table>
             </div>
+          </div>
+          </div>
+
+          <!--
+            MCP: the API keys again, set up for an agent. Pick the client, make
+            a key, and the setup to paste comes back with the key already in
+            it. Nothing here the API keys card cannot do; it saves the reading.
+            See mcp.js.
+          -->
+          <div class="card" id="mcp-panel" hidden>
+            <div class="card-body">
+              <h2 class="h4 mb-3" data-i18n="mcp.heading"></h2>
+              <p class="text-body-secondary" data-i18n="mcp.description"></p>
+              <p id="mcp-spec-line" class="small" hidden>
+                <span data-i18n="mcp.spec_text"></span>
+                <a id="mcp-spec-link" target="_blank" rel="noopener noreferrer" data-i18n="mcp.spec_link"></a>
+              </p>
+
+              <p class="mb-1 small fw-semibold" data-i18n="mcp.endpoint_label"></p>
+              <div class="link-box mb-3">
+                <code id="mcp-endpoint"></code>
+                <button id="mcp-endpoint-copy" type="button" class="btn btn-sm btn-outline-secondary" data-i18n="mcp.copy_button"></button>
+              </div>
+
+              <fieldset class="mb-3">
+                <legend class="form-label fs-6 mb-2" data-i18n="mcp.client_label"></legend>
+                <div id="mcp-clients" class="mcp-clients" role="radiogroup">
+                  <input type="radio" class="btn-check" name="mcp-client" id="mcp-client-claude_code" value="claude_code" checked />
+                  <label class="btn btn-sm btn-outline-primary" for="mcp-client-claude_code" data-i18n="mcp.client_claude_code"></label>
+                  <input type="radio" class="btn-check" name="mcp-client" id="mcp-client-claude_desktop" value="claude_desktop" />
+                  <label class="btn btn-sm btn-outline-primary" for="mcp-client-claude_desktop" data-i18n="mcp.client_claude_desktop"></label>
+                  <input type="radio" class="btn-check" name="mcp-client" id="mcp-client-json" value="json" />
+                  <label class="btn btn-sm btn-outline-primary" for="mcp-client-json" data-i18n="mcp.client_json"></label>
+                </div>
+              </fieldset>
+
+              <form id="mcp-key-form" class="row g-3 align-items-end" autocomplete="off">
+                <div class="col-md">
+                  <label for="mcp-key-name" class="form-label" data-i18n="mcp.name_label"></label>
+                  <input id="mcp-key-name" class="form-control" name="name" maxlength="80" required />
+                </div>
+                <div class="col-md" id="mcp-key-role-field" hidden>
+                  <label for="mcp-key-role" class="form-label" data-i18n="api_keys.role_label"></label>
+                  <select id="mcp-key-role" class="form-select" name="role">
+                    <option value="user" data-i18n="api_keys.role_user"></option>
+                    <option value="admin" data-i18n="api_keys.role_admin"></option>
+                  </select>
+                </div>
+                <div class="col-md">
+                  <label for="mcp-key-days" class="form-label" data-i18n="api_keys.days_label"></label>
+                  <input id="mcp-key-days" class="form-control" name="expires_in_days" type="number" min="0" max="3650" inputmode="numeric"
+                         data-i18n-attr="placeholder:api_keys.days_placeholder" />
+                </div>
+                <div class="col-md-auto">
+                  <button type="submit" class="btn btn-primary" data-i18n="mcp.create_button"></button>
+                </div>
+              </form>
+
+              <!-- Its close button forgets the key, putting the placeholder back
+                   in the setup; see Mcp.forget. -->
+              <div id="mcp-key-notice" class="alert alert-info alert-dismissible mt-3 mb-0" hidden>
+                <button id="mcp-key-forget" type="button" class="btn-close" data-i18n-attr="aria-label:mcp.forget_label"></button>
+                <span id="mcp-key-notice-text"></span>
+              </div>
+
+              <p id="mcp-hint" class="small text-body-secondary mt-3 mb-1"></p>
+              <div class="link-box">
+                <pre class="mcp-snippet"><code id="mcp-snippet"></code></pre>
+                <button id="mcp-snippet-copy" type="button" class="btn btn-sm btn-outline-secondary" data-i18n="mcp.copy_button"></button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- What this app is and where it comes from: app.description, the
+             version, app.repo and the API reference. Shown only when
+             app.show_about is on. See about.js. -->
+        <section class="card view" data-view="about" id="about-panel" hidden>
+          <div class="card-body">
+            <h2 class="h4 mb-3" data-i18n="about.heading"></h2>
+            <p id="about-description" class="card-text" hidden></p>
+            <dl class="about-facts">
+              <dt data-i18n="about.version"></dt>
+              <dd id="about-version"></dd>
+              <dt id="about-source-term" data-i18n="about.source" hidden></dt>
+              <dd id="about-source-detail" hidden><a id="about-source" target="_blank" rel="noopener noreferrer"></a></dd>
+              <dt id="about-api-term" data-i18n="about.api_reference" hidden></dt>
+              <dd id="about-api-detail" hidden><a id="about-api" target="_blank" rel="noopener noreferrer" data-i18n="about.api_link"></a></dd>
+              <dt id="about-mcp-term" data-i18n="about.mcp_reference" hidden></dt>
+              <dd id="about-mcp-detail" hidden><a id="about-mcp" target="_blank" rel="noopener noreferrer" data-i18n="about.mcp_link"></a></dd>
+            </dl>
           </div>
         </section>
 
@@ -558,8 +685,9 @@
               </div>
               <div class="col-md">
                 <label for="new-expires" class="form-label" data-i18n="login_links.expires_label"></label>
-                <select id="new-expires" class="form-select" name="expires_in_minutes"></select>
+                <select id="new-expires" class="form-select" name="expires_in_minutes" aria-describedby="new-expires-help"></select>
               </div>
+              <div id="new-expires-help" class="col-12 form-text mt-1 order-last" data-i18n="login_links.expires_help"></div>
               <div class="col-md-auto">
                 <button type="submit" class="btn btn-primary" data-i18n="admin.create_button"></button>
               </div>
@@ -571,7 +699,9 @@
               <div class="link-box">
                 <code id="login-link-value"></code>
                 <button id="copy-link-button" class="btn btn-sm btn-outline-secondary" data-i18n="admin.copy_button"></button>
+                <button id="login-link-qr-button" class="btn btn-sm btn-outline-secondary" data-i18n="ui.qr_button"></button>
               </div>
+              <canvas id="login-link-qr" class="link-qr" role="img" data-i18n-attr="aria-label:ui.qr_label" hidden></canvas>
             </div>
 
             <div id="admin-key-box" class="alert alert-info mt-3" hidden>
@@ -582,14 +712,21 @@
               </div>
             </div>
 
-            <div class="table-responsive mt-4">
-              <table id="users-table" class="table table-hover align-middle">
+            <div class="mt-4" role="search">
+              <label for="users-search" class="visually-hidden" data-i18n="admin.search_label"></label>
+              <input id="users-search" class="form-control" type="search" autocomplete="off"
+                     data-i18n-attr="placeholder:admin.search_label" />
+            </div>
+
+            <div class="table-responsive mt-3">
+              <table id="users-table" class="table table-hover align-middle" data-empty="admin.empty">
                 <thead>
                   <tr>
-                    <th data-i18n="admin.table_name"></th>
-                    <th data-i18n="admin.table_role"></th>
-                    <th data-i18n="admin.table_status"></th>
-                    <th data-i18n="admin.table_actions"></th>
+                    <th scope="col" data-sort="display_name"><button type="button" class="th-sort" data-i18n="admin.table_name"></button></th>
+                    <th scope="col" data-sort="role"><button type="button" class="th-sort" data-i18n="admin.table_role"></button></th>
+                    <th scope="col" data-sort="disabled"><button type="button" class="th-sort" data-i18n="admin.table_status"></button></th>
+                    <th scope="col" data-sort="created_at"><button type="button" class="th-sort" data-i18n="admin.table_created"></button></th>
+                    <th scope="col" data-i18n="admin.table_actions"></th>
                   </tr>
                 </thead>
                 <tbody></tbody>
@@ -603,9 +740,8 @@
                 <h3 id="user-sessions-heading" class="h6 mb-0"></h3>
                 <button type="button" id="user-sessions-close" class="btn-close" data-i18n-attr="aria-label:ui.close,title:ui.close"></button>
               </div>
-              <p id="user-sessions-empty" class="text-body-secondary" data-i18n="sessions.user_empty" hidden></p>
               <div class="table-responsive">
-                <table id="user-sessions-table" class="table table-hover align-middle">
+                <table id="user-sessions-table" class="table table-hover align-middle" data-empty="sessions.user_empty">
                   <thead>
                     <tr>
                       <th scope="col" data-i18n="sessions.table_device"></th>
@@ -652,18 +788,26 @@
               <div class="link-box">
                 <code id="invite-link-value"></code>
                 <button id="copy-invite-button" class="btn btn-sm btn-outline-secondary" data-i18n="invite_links.copy_button"></button>
+                <button id="invite-link-qr-button" class="btn btn-sm btn-outline-secondary" data-i18n="ui.qr_button"></button>
               </div>
+              <canvas id="invite-link-qr" class="link-qr" role="img" data-i18n-attr="aria-label:ui.qr_label" hidden></canvas>
             </div>
 
-            <div class="table-responsive mt-4">
-              <table id="invite-links-table" class="table table-hover align-middle">
+            <div class="mt-4" role="search">
+              <label for="invites-search" class="visually-hidden" data-i18n="invite_links.search_label"></label>
+              <input id="invites-search" class="form-control" type="search" autocomplete="off"
+                     data-i18n-attr="placeholder:invite_links.search_label" />
+            </div>
+
+            <div class="table-responsive mt-3">
+              <table id="invite-links-table" class="table table-hover align-middle" data-empty="invite_links.empty">
                 <thead>
                   <tr>
-                    <th data-i18n="invite_links.table_label"></th>
-                    <th data-i18n="invite_links.table_joined"></th>
-                    <th data-i18n="invite_links.table_status"></th>
-                    <th data-i18n="invite_links.table_expires"></th>
-                    <th data-i18n="invite_links.table_actions"></th>
+                    <th scope="col" data-sort="label"><button type="button" class="th-sort" data-i18n="invite_links.table_label"></button></th>
+                    <th scope="col" data-sort="used"><button type="button" class="th-sort" data-i18n="invite_links.table_joined"></button></th>
+                    <th scope="col" data-i18n="invite_links.table_status"></th>
+                    <th scope="col" data-sort="expires_at"><button type="button" class="th-sort" data-i18n="invite_links.table_expires"></button></th>
+                    <th scope="col" data-i18n="invite_links.table_actions"></th>
                   </tr>
                 </thead>
                 <tbody></tbody>
@@ -679,17 +823,28 @@
             <h2 class="h4 mb-3" data-i18n="admin_keys.heading"></h2>
             <p class="text-body-secondary" data-i18n="admin_keys.description"></p>
 
-            <div class="table-responsive">
-              <table id="admin-keys-table" class="table table-hover align-middle">
+            <div role="search">
+              <label for="admin-keys-search" class="visually-hidden" data-i18n="api_keys.all_search_label"></label>
+              <input id="admin-keys-search" class="form-control" type="search" autocomplete="off"
+                     data-i18n-attr="placeholder:api_keys.all_search_label" />
+            </div>
+            <div class="form-check mt-2">
+              <input id="admin-keys-live-only" class="form-check-input" type="checkbox" />
+              <label for="admin-keys-live-only" class="form-check-label" data-i18n="api_keys.live_only_label"></label>
+            </div>
+
+            <div class="table-responsive mt-3">
+              <table id="admin-keys-table" class="table table-hover align-middle" data-empty="api_keys.all_empty">
                 <thead>
                   <tr>
-                    <th data-i18n="admin_keys.table_owner"></th>
-                    <th data-i18n="api_keys.table_name"></th>
-                    <th data-i18n="api_keys.table_role"></th>
-                    <th data-i18n="api_keys.table_boards"></th>
-                    <th data-i18n="api_keys.table_status"></th>
-                    <th data-i18n="api_keys.table_last_used"></th>
-                    <th data-i18n="api_keys.table_actions"></th>
+                    <th scope="col" data-sort="display_name"><button type="button" class="th-sort" data-i18n="admin_keys.table_owner"></button></th>
+                    <th scope="col" data-sort="name"><button type="button" class="th-sort" data-i18n="api_keys.table_name"></button></th>
+                    <th scope="col" data-sort="role"><button type="button" class="th-sort" data-i18n="api_keys.table_role"></button></th>
+                    <th scope="col" data-i18n="api_keys.table_boards"></th>
+                    <th scope="col" data-i18n="api_keys.table_status"></th>
+                    <th scope="col" data-sort="last_used_at"><button type="button" class="th-sort" data-i18n="api_keys.table_last_used"></button></th>
+                    <th scope="col" data-sort="expires_at"><button type="button" class="th-sort" data-i18n="api_keys.table_expires"></button></th>
+                    <th scope="col" data-i18n="api_keys.table_actions"></th>
                   </tr>
                 </thead>
                 <tbody></tbody>
@@ -697,14 +852,175 @@
             </div>
           </div>
         </section>
+
+        <!-- The activity log, owner only; see logs.js. data-no-track keeps
+             reading the log from writing to it (track.js). -->
+        <section class="card view" data-view="logs" id="logs-panel" data-no-track hidden>
+          <div class="card-body">
+            <h2 class="h4 mb-3" data-i18n="logs.heading"></h2>
+            <p class="text-body-secondary" data-i18n="logs.description"></p>
+
+            <form id="logs-search-form" class="row g-2 align-items-end" role="search" autocomplete="off">
+              <div class="col-md">
+                <label for="logs-query" class="form-label" data-i18n="logs.search_label"></label>
+                <input id="logs-query" class="form-control" type="search" name="q" maxlength="200"
+                       data-i18n-attr="placeholder:logs.search_placeholder" />
+              </div>
+              <div class="col-md-auto row-actions">
+                <button type="button" id="logs-live" class="btn btn-outline-secondary" aria-pressed="false">
+                  <i class="bi bi-broadcast" aria-hidden="true"></i> <span data-i18n="logs.live_button"></span>
+                </button>
+                <button type="button" id="logs-prune" class="btn btn-outline-secondary" data-i18n="logs.prune_button"></button>
+              </div>
+            </form>
+            <p class="form-text" data-i18n="logs.search_help"></p>
+            <div id="logs-kinds" class="row-actions mb-3" role="group" data-i18n-attr="aria-label:logs.kinds_label"></div>
+
+            <!-- What the owner calls addresses. See Logs.refreshNames. -->
+            <details class="ip-names mb-3">
+              <summary id="ip-names-summary" class="ip-names-summary"></summary>
+              <div class="table-responsive mt-2">
+                <table id="ip-names-table" class="table table-hover align-middle" data-empty="logs.ip_names_empty">
+                  <thead>
+                    <tr>
+                      <th scope="col" data-i18n="logs.table_ip_name"></th>
+                      <th scope="col" data-i18n="logs.table_ip_target"></th>
+                      <th scope="col" data-i18n="logs.table_ip_actions"></th>
+                    </tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+              <button id="ip-names-add" type="button" class="btn btn-sm btn-outline-secondary" data-i18n="logs.ip_names_add"></button>
+            </details>
+
+            <p id="logs-settings" class="small text-body-secondary"></p>
+
+            <!-- One day at a time; the calendar picks which. See logs.js. -->
+            <div class="log-calendar" role="group" data-i18n-attr="aria-label:logs.calendar_label">
+              <div class="log-cal-head">
+                <button type="button" id="logs-cal-prev" class="btn btn-sm btn-outline-secondary" data-i18n-attr="aria-label:logs.prev_month,title:logs.prev_month">
+                  <i class="bi bi-chevron-left" aria-hidden="true"></i>
+                </button>
+                <span id="logs-cal-title" class="log-cal-title" aria-live="polite"></span>
+                <button type="button" id="logs-cal-next" class="btn btn-sm btn-outline-secondary" data-i18n-attr="aria-label:logs.next_month,title:logs.next_month">
+                  <i class="bi bi-chevron-right" aria-hidden="true"></i>
+                </button>
+                <button type="button" id="logs-cal-today" class="btn btn-sm btn-outline-secondary ms-auto" data-i18n="logs.today_button"></button>
+              </div>
+              <div id="logs-cal-grid" class="log-cal-grid"></div>
+            </div>
+            <p id="logs-empty" class="text-body-secondary mb-0" hidden></p>
+            <div id="logs-day"></div>
+          </div>
+        </section>
+
+        <!-- Background jobs, owner only; see jobs.js. -->
+        <section class="card view" data-view="jobs" id="jobs-panel" hidden>
+          <div class="card-body">
+            <h2 class="h4 mb-3" data-i18n="jobs.heading"></h2>
+            <p class="text-body-secondary" data-i18n="jobs.description"></p>
+            <div class="table-responsive">
+              <table id="jobs-table" class="table table-hover align-middle mb-0" data-empty="jobs.empty">
+                <thead>
+                  <tr>
+                    <th scope="col" data-i18n="jobs.table_name"></th>
+                    <th scope="col" data-i18n="jobs.table_status"></th>
+                    <th scope="col" data-i18n="jobs.table_last"></th>
+                    <th scope="col" data-i18n="jobs.table_next"></th>
+                    <th scope="col" data-i18n="jobs.table_note"></th>
+                    <th scope="col" data-i18n="jobs.table_actions"></th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- Owner only: config.yaml, one field per setting. See js/settings.js.
+             Not the personal Settings screen (#settings) above. -->
+        <section class="card view" data-view="server-settings" id="settings-panel" hidden>
+          <div class="card-body">
+            <h2 class="h4 mb-3" data-i18n="settings.heading"></h2>
+            <p class="text-body-secondary" data-i18n="settings.description"></p>
+            <p class="small text-body-secondary mb-1"><code id="settings-file"></code></p>
+            <p id="settings-secret" class="small text-body-secondary"></p>
+
+            <div id="settings-invalid" class="alert alert-danger settings-help" role="alert" hidden></div>
+            <div id="settings-stale" class="alert alert-warning" role="alert" data-i18n="settings.stale" hidden></div>
+            <div id="settings-read-only" class="alert alert-secondary" role="status" data-i18n="settings.read_only" hidden></div>
+
+            <!-- Outside the form, so Enter in the filter is not a save. -->
+            <div class="settings-tools" role="search">
+              <div class="d-flex align-items-center gap-2">
+                <label for="settings-filter" class="visually-hidden" data-i18n="settings.filter_label"></label>
+                <input id="settings-filter" class="form-control" type="search" autocomplete="off"
+                       data-i18n-attr="placeholder:settings.filter_label" />
+                <span id="settings-filter-status" class="small text-body-secondary text-nowrap" role="status"></span>
+              </div>
+              <nav id="settings-jump" class="settings-jump" data-i18n-attr="aria-label:settings.jump_label"></nav>
+            </div>
+
+            <form id="settings-form" autocomplete="off" novalidate>
+              <div id="settings-sections"></div>
+              <div id="settings-problems" class="alert alert-danger settings-help" role="alert" hidden></div>
+              <div id="settings-changed" class="alert alert-warning d-flex align-items-center gap-2" role="alert" hidden>
+                <span class="me-auto" data-i18n="settings.changed_on_disk"></span>
+              </div>
+              <div class="settings-actions row-actions">
+                <button type="submit" id="settings-save" class="btn btn-primary" data-i18n="settings.save_button" disabled></button>
+                <button type="button" id="settings-reload" class="btn btn-outline-secondary" data-i18n="settings.reload_button"></button>
+                <span id="settings-unsaved" class="small text-body-secondary"></span>
+              </div>
+            </form>
+          </div>
+        </section>
       </section>
     </main>
   </div>
 
-  <!-- "Saved.", "Copied.": see Dom.toast. -->
+  <!-- "Saved.", "Copied.", "API key deleted · Undo": see Dom.toast. -->
   <div class="toast-container position-fixed bottom-0 end-0 p-3">
-    <div id="toast" class="toast border-0" role="status" aria-live="polite" aria-atomic="true" data-bs-delay="4000">
-      <div id="toast-body" class="toast-body"></div>
+    <div id="toast" class="toast border-0" role="status" aria-live="polite" aria-atomic="true">
+      <div id="toast-body" class="toast-body d-flex align-items-center gap-2">
+        <span id="toast-text" class="me-auto"></span>
+        <button id="toast-action" type="button" class="btn btn-sm btn-light" hidden></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Asks before anything that cannot be taken back: see Dom.confirm. -->
+  <div id="confirm-modal" class="modal fade" tabindex="-1" aria-labelledby="confirm-text" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div id="confirm-text" class="modal-body"></div>
+        <div class="modal-footer">
+          <button id="confirm-cancel" type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" data-i18n="ui.cancel"></button>
+          <button id="confirm-ok" type="button" class="btn btn-danger" data-i18n="ui.confirm"></button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- A small form in a dialog: see Dom.form, which fills it in. -->
+  <div id="form-modal" class="modal fade" tabindex="-1" aria-labelledby="form-modal-title" aria-hidden="true" data-bs-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <form id="form-modal-form" autocomplete="off">
+          <div class="modal-header">
+            <h2 id="form-modal-title" class="modal-title fs-5"></h2>
+          </div>
+          <div class="modal-body">
+            <div id="form-modal-fields" class="vstack gap-3"></div>
+            <div id="form-modal-problem" class="alert alert-danger mt-3 mb-0" role="alert" hidden></div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" data-i18n="ui.cancel"></button>
+            <button id="form-modal-save" type="submit" class="btn btn-primary"></button>
+          </div>
+        </form>
+      </div>
     </div>
   </div>
 
@@ -732,9 +1048,13 @@
   <script src="/vendor/katex/contrib/mhchem.min.js"></script>
   <script src="/js/dom.js"></script>
   <script src="/js/i18n.js"></script>
+  <script src="/js/undo.js"></script>
   <script src="/js/api.js"></script>
+  <script src="/js/track.js"></script>
   <script src="/js/nav.js"></script>
+  <script src="/js/pager.js"></script>
   <script src="/js/keys.js"></script>
+  <script src="/js/mcp.js"></script>
   <script src="/js/join.js"></script>
   <script src="/js/pin.js"></script>
   <script src="/vendor/qrcode.js"></script>
@@ -744,7 +1064,11 @@
   <script src="/js/password.js"></script>
   <script src="/js/two_factor.js"></script>
   <script src="/js/sessions.js"></script>
+  <script src="/js/about.js"></script>
   <script src="/js/invites.js"></script>
+  <script src="/js/logs.js"></script>
+  <script src="/js/jobs.js"></script>
+  <script src="/js/settings.js"></script>
   <script src="/js/ui.js"></script>
   <script src="/js/color_picker.js"></script>
   <script src="/js/theme_editor.js"></script>
@@ -754,6 +1078,7 @@
   <script src="/js/push_client.js"></script>
   <script src="/js/notify_settings.js"></script>
   <script src="/js/user_settings.js"></script>
+  <script src="/js/fresh.js"></script>
   <script src="/js/app.js"></script>
 </body>
 </html>

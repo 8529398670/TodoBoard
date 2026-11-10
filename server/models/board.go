@@ -105,7 +105,7 @@ type Board struct {
 	Labels      []*Label          `json:"labels"`
 	DefaultView string            `json:"default_view"`
 	Color       string            `json:"color"`
-	Theme       *Theme            `json:"theme"`
+	Theme       *DisplayTheme            `json:"theme"`
 	// Shopping: product links from any shop are looked up on every column
 	// (List.Shopping does one column).
 	Shopping    bool              `json:"shopping"`
@@ -397,7 +397,7 @@ type BoardSettings struct {
 	Layout      *string  `json:"layout"`
 	Numbering   *string  `json:"numbering"`
 	ListTitles  []string `json:"list_titles"`
-	Theme       *Theme   `json:"theme"`
+	Theme       *DisplayTheme   `json:"theme"`
 	ClearTheme  bool     `json:"clear_theme"`
 	Shopping    *bool    `json:"shopping"`
 	ShowRank    *bool    `json:"show_rank"`

@@ -1,0 +1,10 @@
+# Written by the skill that scaffolded this app; `webserver-upgrade` reads and
+# updates it. Commit it: it is how an update knows where this app started.
+skill: go-webserver
+commit: 981a796d96ee966ac34f7e6c5003cc022289d431
+project_name: "TodoBoard"
+slug: todoboard
+module_path: todoboard
+port: 8080
+features: [api_keys, mcp, two_factor, invite_links]
+skipped: [account-cards, backups, busy-buttons, desktop-layout, dismiss-boxes, edit-webhooks, editable-themes, files, keyboard-shortcuts, metrics, rename-files, row-menu, steady-scroll, theme-buttons, theme-layers, webhooks]

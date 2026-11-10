@@ -30,35 +30,35 @@ type cardTransferRequest struct {
 // board), or for a mirrored copy on the card it mirrors.
 func ( handlers *Handlers ) cardTransfer( principal *access.Principal , board *models.Board , card *models.Card , body *cardTransferRequest , send bool ) ( result *models.Card , target *models.Board , refused *refusal ) {
 	if principal.Share != nil {
-		refused = &refusal{ fiber.StatusForbidden , "forbidden" }
+		refused = refuse( fiber.StatusForbidden , "forbidden" )
 		return
 	}
 	target , refused = handlers.loadBoard( principal , body.Board )
 	if refused != nil { return }
 	list := target.List( body.ListID )
 	if list == nil || list.Archived {
-		refused = &refusal{ fiber.StatusNotFound , "list_not_found" }
+		refused = refuse( fiber.StatusNotFound , "list_not_found" )
 		return
 	}
 	if access.List( principal , target , body.ListID ) < access.Edit {
-		refused = &refusal{ fiber.StatusForbidden , "forbidden" }
+		refused = refuse( fiber.StatusForbidden , "forbidden" )
 		return
 	}
 	place := models.TransferPlace{ BoardID: target.ID , ListID: body.ListID , Top: body.Top , Position: body.Position }
 	var model_err error
 	if send {
 		if target.ID == board.ID || access.Board( principal , board ) < access.Edit {
-			refused = &refusal{ fiber.StatusForbidden , "forbidden" }
+			refused = refuse( fiber.StatusForbidden , "forbidden" )
 			return
 		}
 		result , model_err = models.SendCard( handlers.Store , board.ID , card.ID , place , principal.Name )
 	} else {
 		if models.ValidMirrorMode( body.Mirror ) == false {
-			refused = &refusal{ fiber.StatusBadRequest , "invalid_input" }
+			refused = refuse( fiber.StatusBadRequest , "invalid_input" )
 			return
 		}
 		if body.Mirror != models.MirrorNone && access.Card( principal , board , card ) < access.Edit {
-			refused = &refusal{ fiber.StatusForbidden , "forbidden" }
+			refused = refuse( fiber.StatusForbidden , "forbidden" )
 			return
 		}
 		result , model_err = models.CopyCard( handlers.Store , board.ID , card.ID , place , body.Mirror , principal.UserID , principal.Name )
@@ -199,6 +199,7 @@ func ( handlers *Handlers ) registerTransferTools( server *mcp.Server ) {
 
 	server.Register( &mcp.Tool{
 		Name:        "send_card",
+		Route:       "POST /api/boards/{board_id}/cards/{card_id}/send",
 		Title:       "Send a card to another board",
 		Description: "Move a card to another board, whole: it keeps its link, comments and picture. Labels are matched by name there (made if missing), assignees kept only if they are on that board, and per-person shares dropped. Needs edit rights on both boards.",
 		InputSchema: transferSchema( false ),
@@ -207,6 +208,7 @@ func ( handlers *Handlers ) registerTransferTools( server *mcp.Server ) {
 
 	server.Register( &mcp.Tool{
 		Name:        "copy_card",
+		Route:       "POST /api/boards/{board_id}/cards/{card_id}/copy",
 		Title:       "Copy a card to a board",
 		Description: "Copy a card onto any board (its own included) with its content, comments and picture, optionally kept in step with the original (mirror). Needs edit rights where the copy goes, and on the card for a mirror.",
 		InputSchema: transferSchema( true ),
@@ -215,6 +217,7 @@ func ( handlers *Handlers ) registerTransferTools( server *mcp.Server ) {
 
 	server.Register( &mcp.Tool{
 		Name:        "list_card_links",
+		Route:       "GET /api/boards/{board_id}/cards/{card_id}/links",
 		Title:       "List a card's mirrors",
 		Description: "The cards this one is kept in step with: each link's id, mode (one_way / two_way), direction (out: this card's changes flow there; in: this card follows that one; both), and the other card.",
 		ReadOnly:    true,
@@ -239,6 +242,7 @@ func ( handlers *Handlers ) registerTransferTools( server *mcp.Server ) {
 
 	server.Register( &mcp.Tool{
 		Name:        "unlink_card",
+		Route:       "POST /api/boards/{board_id}/cards/{card_id}/links/{link_id}/delete",
 		Title:       "Stop mirroring a card",
 		Description: "End one of a card's mirror links (link_id from list_card_links). Both cards stay as they are.",
 		InputSchema: objectSchema( fiber.Map{ "board": boardRefSchema , "card_id": cardIDSchema , "link_id": fiber.Map{ "type": "integer" , "minimum": 1 } } , "board" , "card_id" , "link_id" ),

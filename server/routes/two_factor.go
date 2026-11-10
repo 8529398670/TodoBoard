@@ -5,6 +5,7 @@ import (
 
 	fiber "github.com/gofiber/fiber/v3"
 
+	logs "todoboard/server/logs"
 	models "todoboard/server/models"
 	security "todoboard/server/security"
 )
@@ -31,7 +32,7 @@ type codeRequest struct {
 // off. Finishing a sign-in is not behind this: one already under way may as
 // well end.
 func ( handlers *Handlers ) RequireTwoFactor( c fiber.Ctx ) ( err error ) {
-	if handlers.Config.TwoFactorEnabled == false {
+	if handlers.cfg().TwoFactorEnabled == false {
 		err = notFound( c , "not found" )
 		return
 	}
@@ -62,21 +63,25 @@ func ( handlers *Handlers ) FinishSignIn( c fiber.Ctx ) ( err error ) {
 		return
 	}
 
-	cfg := handlers.Config
-	signed , _ , finish_err := models.FinishChallenge( handlers.Store , body.Challenge , body.Code , cfg.SessionTTL , cfg.SecretKey )
+	cfg := handlers.cfg()
+	signed , method , finish_err := models.FinishChallenge( handlers.Store , body.Challenge , body.Code , cfg.SessionTTL , cfg.SecretKey )
 	switch {
 	case errors.Is( finish_err , models.ErrChallengeInvalid ):
 		err = badRequest( c , "challenge_invalid" )
 		return
 	case errors.Is( finish_err , models.ErrWrongCode ):
 		handlers.Codes.Record( user_id , false )
+		handlers.auditAs( c , handlers.logUser( user_id , "anon" ) , logs.KindAuth , logs.LevelWarn , "wrong two-factor code" , nil )
 		err = forbidden( c , "two_factor_wrong" )
 		return
 	case finish_err != nil:
-		err = serverError( c )
+		err = serverError( c , finish_err )
 		return
 	}
 	handlers.Codes.Record( user_id , true )
+	message := "signed in with a two-factor code"
+	if method == models.CodeMethodRecovery { message = "signed in with a recovery code" }
+	handlers.auditAs( c , handlers.logUser( user_id , security.MethodSession ) , logs.KindAuth , logs.LevelInfo , message , nil )
 	err = handlers.signInResponse( c , signed , fiber.Map{ "ok": true } , fiber.StatusOK )
 	return
 }
@@ -94,13 +99,13 @@ func ( handlers *Handlers ) StartTwoFactor( c fiber.Ctx ) ( err error ) {
 		err = forbidden( c , "invalid csrf token" )
 		return
 	}
-	secret , start_err := models.StartTwoFactorSetup( handlers.Store , security.UserFrom( c ).ID , handlers.Config.SecretKey )
+	secret , start_err := models.StartTwoFactorSetup( handlers.Store , security.UserFrom( c ).ID , handlers.cfg().SecretKey )
 	if errors.Is( start_err , models.ErrTwoFactorOn ) {
 		err = conflict( c , "two_factor_on" , nil )
 		return
 	}
 	if start_err != nil {
-		err = serverError( c )
+		err = serverError( c , start_err )
 		return
 	}
 	err = c.JSON( fiber.Map{ "secret": secret } )
@@ -124,7 +129,7 @@ func ( handlers *Handlers ) ConfirmTwoFactor( c fiber.Ctx ) ( err error ) {
 		err = tooMany( c , "two_factor_locked" )
 		return
 	}
-	codes , confirm_err := models.ConfirmTwoFactorSetup( handlers.Store , user_id , body.Code , handlers.Config.SecretKey )
+	codes , confirm_err := models.ConfirmTwoFactorSetup( handlers.Store , user_id , body.Code , handlers.cfg().SecretKey )
 	switch {
 	case errors.Is( confirm_err , models.ErrTwoFactorOn ):
 		err = conflict( c , "two_factor_on" , nil )
@@ -134,10 +139,11 @@ func ( handlers *Handlers ) ConfirmTwoFactor( c fiber.Ctx ) ( err error ) {
 		err = forbidden( c , "two_factor_wrong" )
 		return
 	case confirm_err != nil:
-		err = serverError( c )
+		err = serverError( c , confirm_err )
 		return
 	}
 	handlers.Codes.Record( user_id , true )
+	handlers.audit( c , logs.KindAuth , "two-factor sign-in turned on" , nil )
 	err = c.JSON( fiber.Map{ "recovery_codes": codes } )
 	return
 }
@@ -157,7 +163,7 @@ func ( handlers *Handlers ) DisableTwoFactor( c fiber.Ctx ) ( err error ) {
 		err = tooMany( c , "two_factor_locked" )
 		return
 	}
-	disable_err := models.DisableTwoFactor( handlers.Store , user_id , body.Code , handlers.Config.SecretKey )
+	disable_err := models.DisableTwoFactor( handlers.Store , user_id , body.Code , handlers.cfg().SecretKey )
 	switch {
 	case errors.Is( disable_err , models.ErrTwoFactorOff ):
 		err = conflict( c , "two_factor_off" , nil )
@@ -167,10 +173,11 @@ func ( handlers *Handlers ) DisableTwoFactor( c fiber.Ctx ) ( err error ) {
 		err = forbidden( c , "two_factor_wrong" )
 		return
 	case disable_err != nil:
-		err = serverError( c )
+		err = serverError( c , disable_err )
 		return
 	}
 	handlers.Codes.Record( user_id , true )
+	handlers.audit( c , logs.KindAuth , "two-factor sign-in turned off" , nil )
 	err = c.JSON( fiber.Map{ "ok": true } )
 	return
 }

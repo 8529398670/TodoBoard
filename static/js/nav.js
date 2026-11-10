@@ -30,7 +30,16 @@ const Nav = {
     Dom.show( Dom.get( "sidebar" ) , true );
     Dom.show( Dom.get( "sidebar-toggle" ) , true );
 
+    // Moving between screens is not an undo step: Back and Forward already
+    // are that, and an undo that only changed the screen would get in the way
+    // of undoing what was done on it.
     window.addEventListener( "hashchange" , () => this.render() );
+    this.render();
+  },
+
+  // Undo uses this to go back to the screen an action happened on.
+  show( name ) {
+    window.location.hash = "#" + name;
     this.render();
   },
 
@@ -48,6 +57,7 @@ const Nav = {
 
   render() {
     const name = this.current();
+    Track.nav( name );
     Dom.all( ".view" ).forEach( function ( view ) {
       view.classList.toggle( "view-active" , view.getAttribute( "data-view" ) === name );
     } );
@@ -58,18 +68,50 @@ const Nav = {
       else link.removeAttribute( "aria-current" );
     } );
     window.scrollTo( 0 , 0 );
+    this.announce( name );
+  },
+
+  // Changing screen reloads nothing, so nothing tells a screen reader or the
+  // browser's tab that anything happened. The title names the screen (as the
+  // sidebar does, since some screens open with a form's heading), and the
+  // focus moves to its first heading, except on load, when it belongs to the
+  // page.
+  announce( name ) {
+    const heading = document.querySelector( '.view[data-view="' + name + '"] h2' );
+    if ( !heading ) return;
+    const link = document.querySelector( '#sidebar-nav [data-nav="' + name + '"]' );
+    const screen = link && link.textContent.trim() ? link.textContent.trim() : heading.textContent;
+    const title = I18n.get( "nav.page_title" );
+    if ( title !== "" ) document.title = title.replace( "{screen}" , () => screen ).replace( "{app}" , () => I18n.get( "app.title" ) );
+    const moved = this.shown !== undefined && this.shown !== name;
+    this.shown = name;
+    if ( !moved ) return;
+    heading.setAttribute( "tabindex" , "-1" );
+    heading.focus( { preventScroll: true } );
   },
 
   wide() {
     return window.matchMedia( "(min-width: 992px)" ).matches;
   },
 
+  // The menu button: on a wide screen it folds the sidebar column away and
+  // back; on a phone it slides the panel in and out. Only the folding is
+  // undoable: the phone panel is gone again as soon as a screen is picked.
   toggleSidebar() {
     if ( !this.wide() ) {
       bootstrap.Offcanvas.getOrCreateInstance( Dom.get( "sidebar" ) ).toggle();
       return;
     }
     const collapsed = !document.documentElement.classList.contains( "sidebar-collapsed" );
+    Undo.run( {
+      label: I18n.get( "undo.sidebar" ),
+      screen: null,
+      do: () => this.saveCollapsed( collapsed ),
+      undo: () => this.saveCollapsed( !collapsed ),
+    } );
+  },
+
+  saveCollapsed( collapsed ) {
     this.setCollapsed( collapsed );
     try { window.localStorage.setItem( "sidebar_collapsed" , collapsed ? "1" : "0" ); } catch ( error ) { /* this page only */ }
   },

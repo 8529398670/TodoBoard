@@ -2,25 +2,10 @@ package models
 
 import (
 	errors "errors"
-	filepath "path/filepath"
 	testing "testing"
 	time "time"
 
-	config "todoboard/server/config"
-	db "todoboard/server/db"
 )
-
-// testStore opens a throwaway database. The Config is built by hand rather
-// than through config.Load, which would find and maybe write a real
-// config.yaml.
-func testStore( t *testing.T ) ( store *db.Store ) {
-	t.Helper()
-	cfg := &config.Config{ DatabasePath: filepath.Join( t.TempDir() , "test.db" ) }
-	store , err := db.Open( cfg )
-	if err != nil { t.Fatal( err ) }
-	t.Cleanup( func() { store.Close() } )
-	return
-}
 
 func TestNameCloseness( t *testing.T ) {
 	type pair struct {
@@ -129,11 +114,11 @@ func TestPin( t *testing.T ) {
 		t.Fatalf( "clearing the pin did not work" )
 	}
 
-	guard := NewPinGuard()
-	for range PinMaxFailures {
+	guard := NewAttemptGuard[ uint64 ]( AttemptMaxFailures )
+	for range AttemptMaxFailures {
 		guard.Record( user.ID , false )
 	}
 	if guard.Locked( user.ID ) == false {
-		t.Fatalf( "%d wrong PINs did not lock" , PinMaxFailures )
+		t.Fatalf( "%d wrong PINs did not lock" , AttemptMaxFailures )
 	}
 }

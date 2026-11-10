@@ -83,7 +83,7 @@ type UserPrefs struct {
 
 	// Theme is the person's own look everywhere; nil is plain light.
 	// OwnThemeOnBoards keeps it on boards that have a theme of their own.
-	Theme            *Theme `json:"theme"`
+	Theme            *DisplayTheme `json:"theme"`
 	OwnThemeOnBoards bool   `json:"own_theme_on_boards"`
 
 	// LabelColors are the person's own label colours, offered next to the

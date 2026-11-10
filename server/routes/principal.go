@@ -90,23 +90,10 @@ func paramID( c fiber.Ctx , name string ) ( id uint64 , ok bool ) {
 	return
 }
 
-// refusal is a rule saying no, apart from how it is delivered: an HTTP
-// handler sends it as a status and an error body, an MCP tool hands it to the
-// model as a tool error. The checks below return one so both doors refuse
+// refusal (admin.go) is a rule saying no, apart from how it is delivered: an
+// HTTP handler sends it as a status and an error body, an MCP tool hands it to
+// the model as a tool error. The checks below return one so both doors refuse
 // for the same reasons in the same words.
-type refusal struct {
-	status  int
-	message string
-}
-
-func ( refused *refusal ) send( c fiber.Ctx ) ( err error ) {
-	if refused.status >= 500 {
-		err = serverError( c )
-		return
-	}
-	err = c.Status( refused.status ).JSON( fiber.Map{ "error": refused.message } )
-	return
-}
 
 // boardFor loads :board_id and refuses with 404 unless the principal can at
 // least see some of it.
@@ -130,16 +117,16 @@ func ( handlers *Handlers ) loadBoard( principal *access.Principal , ref string 
 		board_id = models.BoardIDForSlug( handlers.Store , ref )
 	}
 	if board_id == 0 || principal == nil {
-		refused = &refusal{ fiber.StatusNotFound , "board_not_found" }
+		refused = refuse( fiber.StatusNotFound , "board_not_found" )
 		return
 	}
 	loaded , get_err := models.GetBoard( handlers.Store , board_id )
 	if get_err != nil {
-		refused = &refusal{ fiber.StatusNotFound , "board_not_found" }
+		refused = refuse( fiber.StatusNotFound , "board_not_found" )
 		return
 	}
 	if access.Board( principal , loaded ) == access.None && handlers.canSeeAnyCard( principal , loaded ) == false {
-		refused = &refusal{ fiber.StatusNotFound , "board_not_found" }
+		refused = refuse( fiber.StatusNotFound , "board_not_found" )
 		return
 	}
 	board = loaded
@@ -180,7 +167,7 @@ func ( handlers *Handlers ) loadBoardAt( principal *access.Principal , ref strin
 	if refused != nil { return }
 	if access.Board( principal , board ) < minimum {
 		board = nil
-		refused = &refusal{ fiber.StatusForbidden , "forbidden" }
+		refused = refuse( fiber.StatusForbidden , "forbidden" )
 	}
 	return
 }
@@ -202,17 +189,17 @@ func ( handlers *Handlers ) requireCard( c fiber.Ctx , minimum access.Level ) ( 
 // loadCard is requireCard on an already-loaded board, without the request.
 func ( handlers *Handlers ) loadCard( principal *access.Principal , board *models.Board , card_id uint64 , minimum access.Level ) ( card *models.Card , refused *refusal ) {
 	if card_id == 0 {
-		refused = &refusal{ fiber.StatusNotFound , "card_not_found" }
+		refused = refuse( fiber.StatusNotFound , "card_not_found" )
 		return
 	}
 	loaded , get_err := models.GetCard( handlers.Store , board.ID , card_id )
 	level := access.Card( principal , board , loaded )
 	if get_err != nil || level == access.None {
-		refused = &refusal{ fiber.StatusNotFound , "card_not_found" }
+		refused = refuse( fiber.StatusNotFound , "card_not_found" )
 		return
 	}
 	if level < minimum {
-		refused = &refusal{ fiber.StatusForbidden , "forbidden" }
+		refused = refuse( fiber.StatusForbidden , "forbidden" )
 		return
 	}
 	card = loaded
@@ -239,43 +226,43 @@ func modelError( c fiber.Ctx , model_err error ) ( err error ) {
 func modelRefusal( model_err error ) ( refused *refusal ) {
 	switch {
 	case errors.Is( model_err , models.ErrBadInput ):
-		refused = &refusal{ fiber.StatusBadRequest , "invalid_input" }
+		refused = refuse( fiber.StatusBadRequest , "invalid_input" )
 	case errors.Is( model_err , models.ErrStale ):
-		refused = &refusal{ fiber.StatusConflict , "card_stale" }
+		refused = refuse( fiber.StatusConflict , "card_stale" )
 	case errors.Is( model_err , models.ErrBoardTextStale ):
-		refused = &refusal{ fiber.StatusConflict , "board_text_stale" }
+		refused = refuse( fiber.StatusConflict , "board_text_stale" )
 	case errors.Is( model_err , models.ErrPurposeOff ):
-		refused = &refusal{ fiber.StatusConflict , "purpose_off" }
+		refused = refuse( fiber.StatusConflict , "purpose_off" )
 	case errors.Is( model_err , models.ErrBoardNotFound ):
-		refused = &refusal{ fiber.StatusNotFound , "board_not_found" }
+		refused = refuse( fiber.StatusNotFound , "board_not_found" )
 	case errors.Is( model_err , models.ErrCardNotFound ):
-		refused = &refusal{ fiber.StatusNotFound , "card_not_found" }
+		refused = refuse( fiber.StatusNotFound , "card_not_found" )
 	case errors.Is( model_err , models.ErrListNotFound ):
-		refused = &refusal{ fiber.StatusNotFound , "list_not_found" }
+		refused = refuse( fiber.StatusNotFound , "list_not_found" )
 	case errors.Is( model_err , models.ErrLabelNotFound ):
-		refused = &refusal{ fiber.StatusNotFound , "label_not_found" }
+		refused = refuse( fiber.StatusNotFound , "label_not_found" )
 	case errors.Is( model_err , models.ErrMirrored ):
-		refused = &refusal{ fiber.StatusConflict , "card_mirrored" }
+		refused = refuse( fiber.StatusConflict , "card_mirrored" )
 	case errors.Is( model_err , models.ErrLinkNotFound ):
-		refused = &refusal{ fiber.StatusNotFound , "link_not_found" }
+		refused = refuse( fiber.StatusNotFound , "link_not_found" )
 	case errors.Is( model_err , models.ErrItemNotFound ):
-		refused = &refusal{ fiber.StatusNotFound , "item_not_found" }
+		refused = refuse( fiber.StatusNotFound , "item_not_found" )
 	case errors.Is( model_err , models.ErrQuickShareOff ):
-		refused = &refusal{ fiber.StatusForbidden , "quick_share_off" }
+		refused = refuse( fiber.StatusForbidden , "quick_share_off" )
 	case errors.Is( model_err , models.ErrCardArchived ):
-		refused = &refusal{ fiber.StatusBadRequest , "card_archived" }
+		refused = refuse( fiber.StatusBadRequest , "card_archived" )
 	case errors.Is( model_err , models.ErrShareLinkNotFound ):
-		refused = &refusal{ fiber.StatusNotFound , "share_link_not_found" }
+		refused = refuse( fiber.StatusNotFound , "share_link_not_found" )
 	case errors.Is( model_err , models.ErrNotInTrash ):
-		refused = &refusal{ fiber.StatusNotFound , "card_not_found" }
+		refused = refuse( fiber.StatusNotFound , "card_not_found" )
 	case errors.Is( model_err , models.ErrFolderNotFound ):
-		refused = &refusal{ fiber.StatusNotFound , "folder_not_found" }
+		refused = refuse( fiber.StatusNotFound , "folder_not_found" )
 	case errors.Is( model_err , models.ErrFolderDepth ):
-		refused = &refusal{ fiber.StatusBadRequest , "folder_too_deep" }
+		refused = refuse( fiber.StatusBadRequest , "folder_too_deep" )
 	case errors.Is( model_err , db.ErrNotFound ):
-		refused = &refusal{ fiber.StatusNotFound , "not_found" }
+		refused = refuse( fiber.StatusNotFound , "not_found" )
 	default:
-		refused = &refusal{ fiber.StatusInternalServerError , "internal error" }
+		refused = refuse( fiber.StatusInternalServerError , "internal error" )
 	}
 	return
 }

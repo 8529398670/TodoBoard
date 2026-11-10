@@ -6,7 +6,9 @@ import (
 
 	fiber "github.com/gofiber/fiber/v3"
 
+	logs "todoboard/server/logs"
 	models "todoboard/server/models"
+	security "todoboard/server/security"
 )
 
 type loginRequest struct {
@@ -35,11 +37,13 @@ func ( handlers *Handlers ) ShowLoginPage( c fiber.Ctx ) ( err error ) {
 	return
 }
 
-// signInRules is what decides how a sign-in ends, from the configuration.
+// signInRules is what decides how a sign-in ends, from the running
+// configuration.
 func ( handlers *Handlers ) signInRules() ( rules models.SignInRules ) {
+	cfg := handlers.cfg()
 	rules = models.SignInRules{
-		SessionTTL: handlers.Config.SessionTTL,
-		TwoFactor:  handlers.Config.TwoFactorEnabled,
+		SessionTTL: cfg.SessionTTL,
+		TwoFactor:  cfg.TwoFactorEnabled,
 	}
 	return
 }
@@ -55,25 +59,18 @@ func ( handlers *Handlers ) signInResponse( c fiber.Ctx , signed *models.SignIn 
 	}
 	handlers.destroyCookieSession( c )
 	if cookie_err := handlers.Guard.SetSessionCookie( c , signed.SessionCredential ); cookie_err != nil {
-		err = serverError( c )
+		err = serverError( c , cookie_err )
 		return
 	}
-	models.RecordSessionDevice( handlers.Store , signed.SessionCredential , c.IP() , truncate( c.Get( fiber.HeaderUserAgent ) , models.SessionUserAgentMax ) )
+	models.RecordSessionDevice( handlers.Store , signed.SessionCredential , c.IP() , logs.Truncate( c.Get( fiber.HeaderUserAgent ) , models.SessionUserAgentMax ) )
 	err = c.Status( status ).JSON( payload )
 	return
 }
 
-// truncate cuts text to at most limit bytes without splitting a character.
-func truncate( text string , limit int ) ( result string ) {
-	result = text
-	if len( result ) <= limit { return }
-	result = strings.ToValidUTF8( result[ :limit ] , "" )
-	return
-}
-
 // RedeemLoginLink signs in with a login link. Redeeming a valid link is the
-// login; there is nothing to phish out of a user beyond the link itself. An
-// account with two-factor on goes on to give a code (see two_factor.go).
+// login; there is nothing to phish out of a user beyond the link itself, which
+// dies on first use. An account with two-factor on goes on to give a code (see
+// two_factor.go).
 //
 // It is the one state-changing route with no CSRF token -- there is no
 // session yet to hold one -- so it is guarded differently. A forged login
@@ -101,13 +98,17 @@ func ( handlers *Handlers ) RedeemLoginLink( c fiber.Ctx ) ( err error ) {
 		// account all get the same answer. Telling them apart would let
 		// someone probe which links are real.
 		if errors.Is( redeem_err , models.ErrLoginTokenInvalid ) {
+			handlers.auditAs( c , logs.Anonymous() , logs.KindAuth , logs.LevelWarn , "login link refused" , nil )
 			err = badRequest( c , "invalid login link" )
 			return
 		}
-		err = serverError( c )
+		err = serverError( c , redeem_err )
 		return
 	}
 
+	message := "signed in with a login link"
+	if signed.Challenge != "" { message = "login link accepted, waiting for a code" }
+	handlers.auditAs( c , handlers.logUser( signed.UserID , security.MethodSession ) , logs.KindAuth , logs.LevelInfo , message , nil )
 	err = handlers.signInResponse( c , signed , fiber.Map{ "ok": true } , fiber.StatusOK )
 	return
 }
@@ -126,7 +127,7 @@ func sameOriginJSON( c fiber.Ctx ) ( ok bool ) {
 // if any. Deleting the record rather than only the cookie is what matters: a
 // copy of the cookie taken earlier is then dead too.
 func ( handlers *Handlers ) destroyCookieSession( c fiber.Ctx ) {
-	raw := c.Cookies( handlers.Config.CookieName )
+	raw := c.Cookies( handlers.cfg().CookieName )
 	if raw == "" { return }
 	if credential , decrypt_err := handlers.Guard.DecryptCookie( raw ); decrypt_err == nil {
 		models.DestroySession( handlers.Store , credential )
