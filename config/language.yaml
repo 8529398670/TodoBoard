@@ -1192,8 +1192,7 @@ theme:
   preview_button: "Button"
   preview_face: "A card"
   preview_face_other: "Another card"
-  preset_light: "Light"
-  preset_dark: "Dark"
+  preset_default: "Default"
   preset_ocean: "Ocean"
   preset_forest: "Forest"
   preset_sepia: "Sepia"
@@ -1203,7 +1202,6 @@ theme:
   preset_midnight: "Midnight"
   preset_slate: "Slate"
   preset_cerise: "Cerise"
-  preset_wsu_dark: "WSU dark"
   # The one theme an account had before theme lists, until a list is saved.
   mine_name: "My theme"
   boards_heading: "Boards"
