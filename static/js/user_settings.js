@@ -1,13 +1,13 @@
-// Your own settings, all on the Account page: theme, how dates and times
-// read, and whether cards are numbered by default. They are the account's,
-// so they follow the person to every device. A guest on a share link has no
-// account page, so the board page opens the theme (kept in this browser) and
-// times for them in a panel (open).
+// Your own settings on the Settings screen: how dates and times read, and
+// whether cards are numbered by default. They are the account's, so they
+// follow the person to every device. Themes have their own screen,
+// Appearance (themes_editor.js). A guest on a share link has no account, so
+// the board page opens a theme pick (kept in this browser) and times for them
+// in a panel (open).
 const UserSettings = {
   // The Account page card, folded to the line summary() writes.
   render( root , me ) {
     Dom.clear( root );
-    root.appendChild( this.appearance( me ) );
     root.appendChild( this.time( me ) );
     root.appendChild( this.cards( me ) );
     root.appendChild( this.labelColors( me ) );
@@ -20,11 +20,9 @@ const UserSettings = {
     const line = Dom.get( "user-settings-summary" );
     if ( !line ) return;
     const display = me.display || {};
-    const theme = display.theme || { mode: "light" };
-    const preset = ThemeEditor.presets.find( function ( item ) { return ThemeEditor.same( theme , item.theme ); } );
     const clock = display.hour12 === true ? "user_settings.summary_12" : display.hour12 === false ? "user_settings.summary_24" : "user_settings.summary_clock_auto";
     Dom.text( line , I18n.fill( "user_settings.summary" , {
-      theme: preset ? T( "theme.preset_" + preset.key ) : T( "user_settings.summary_custom" ),
+      theme: Theme.find( Theme.current ).name || T( "user_settings.summary_custom" ),
       zone: display.timezone || I18n.fill( "user_settings.timezone_browser" , { zone: Dates.browserZone() } ),
       clock: T( clock ),
     } ) );
@@ -38,27 +36,13 @@ const UserSettings = {
     } );
   },
 
-  // The person's own theme. Signed in, it is the account's and saved to the
-  // server; a guest's stays in this browser.
-  appearance( me ) {
+  // A guest's theme: one of the built-in ones, kept in this browser. Signed
+  // in, themes are on the Appearance screen.
+  appearance() {
     const section = Dom.el( "section" , { class: "panel-section" } );
     section.appendChild( Dom.el( "h3" , { text: T( "user_settings.appearance_heading" ) } ) );
-    const signedIn = !!( me && me.authenticated );
-    section.appendChild( ThemeEditor.render( Theme.user , function ( theme ) {
-      if ( !signedIn ) {
-        Theme.setUser( theme , false );
-        return;
-      }
-      UserSettings.save( me , theme ? { theme: theme } : { clear_theme: true } );
-    } ) );
-    if ( signedIn ) {
-      section.appendChild( Ui.checkbox( "user_settings.own_theme_on_boards" , me.display && me.display.own_theme_on_boards , function ( checked ) {
-        UserSettings.save( me , { own_theme_on_boards: checked } );
-      } ) );
-      section.appendChild( Dom.el( "p" , { class: "muted small-print" , text: T( "user_settings.own_theme_hint" ) } ) );
-    } else {
-      section.appendChild( Dom.el( "p" , { class: "muted small-print" , text: T( "user_settings.guest_theme_hint" ) } ) );
-    }
+    section.appendChild( ThemeEditor.guestPicks() );
+    section.appendChild( Dom.el( "p" , { class: "muted small-print mt-2" , text: T( "user_settings.guest_theme_hint" ) } ) );
     return section;
   },
 
@@ -80,7 +64,7 @@ const UserSettings = {
       const saved = await Api.post( "/api/account/display" , body );
       me.display = saved;
       Dates.configure( saved );
-      Theme.setUser( saved.theme , saved.own_theme_on_boards );
+      Theme.setOwnOnBoards( saved.own_theme_on_boards );
       this.summarize( me );
       Ui.toast( T( "user_settings.saved" ) , "ok" );
     } catch ( error ) {

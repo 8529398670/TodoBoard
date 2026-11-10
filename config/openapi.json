@@ -2425,6 +2425,168 @@
         }
       }
     },
+    "/api/admin/theme-defaults": {
+      "get": {
+        "summary": "The themes everyone without their own list sees",
+        "operationId": "get_api_admin_theme_defaults",
+        "tags": [
+          "Admin"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "x-required-role": "admin",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "themes": {
+                      "oneOf": [
+                        {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/Theme"
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "description": "null while the built-in themes apply."
+                    }
+                  },
+                  "required": [
+                    "themes"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "404": {
+            "$ref": "#/components/responses/E404"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "503": {
+            "$ref": "#/components/responses/E503"
+          }
+        }
+      },
+      "post": {
+        "summary": "Replace the default themes",
+        "operationId": "post_api_admin_theme_defaults",
+        "tags": [
+          "Admin"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "x-required-role": "admin",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "themes": {
+                    "oneOf": [
+                      {
+                        "type": "array",
+                        "items": {
+                          "$ref": "#/components/schemas/Theme"
+                        }
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "1 to 40 themes. null goes back to the built-in ones."
+                  },
+                  "csrf_token": {
+                    "type": "string",
+                    "description": "From GET /api/me. Browser sessions only."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "themes": {
+                      "oneOf": [
+                        {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/Theme"
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "themes"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "404": {
+            "$ref": "#/components/responses/E404"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "503": {
+            "$ref": "#/components/responses/E503"
+          }
+        }
+      }
+    },
     "/api/admin/users": {
       "get": {
         "summary": "Every account",
@@ -6401,6 +6563,194 @@
           }
         },
         "x-mcp-http": "How the page looks or is laid out for this person; nothing an agent works with."
+      }
+    },
+    "/api/account/themes": {
+      "post": {
+        "summary": "Replace your own themes",
+        "operationId": "post_api_account_themes",
+        "tags": [
+          "Account"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "themes": {
+                    "oneOf": [
+                      {
+                        "type": "array",
+                        "items": {
+                          "$ref": "#/components/schemas/Theme"
+                        }
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Your whole list, 1 to 40 themes. null goes back to following the app's defaults."
+                  },
+                  "theme_id": {
+                    "type": "string",
+                    "description": "The theme you use."
+                  },
+                  "csrf_token": {
+                    "type": "string",
+                    "description": "From GET /api/me. Browser sessions only."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "themes": {
+                      "oneOf": [
+                        {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/Theme"
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "description": "What you now see; null while the built-in themes apply."
+                    },
+                    "themes_custom": {
+                      "type": "boolean"
+                    },
+                    "theme_id": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "themes",
+                    "themes_custom",
+                    "theme_id"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "503": {
+            "$ref": "#/components/responses/E503"
+          }
+        }
+      }
+    },
+    "/api/account/theme": {
+      "post": {
+        "summary": "Pick which theme you use",
+        "operationId": "post_api_account_theme",
+        "tags": [
+          "Account"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "theme_id": {
+                    "type": "string",
+                    "description": "A theme's id. Empty for the first in the list."
+                  },
+                  "csrf_token": {
+                    "type": "string",
+                    "description": "From GET /api/me. Browser sessions only."
+                  }
+                },
+                "required": [
+                  "theme_id"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "theme_id": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "theme_id"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "503": {
+            "$ref": "#/components/responses/E503"
+          }
+        }
       }
     },
     "/api/backup": {
@@ -16378,6 +16728,28 @@
           },
           "display": {
             "$ref": "#/components/schemas/Display"
+          },
+          "themes": {
+            "oneOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Your themes (see the Theme schema): your own list, else the app's defaults, else null for the built-in ones."
+          },
+          "themes_custom": {
+            "type": "boolean",
+            "description": "Whether you have your own list rather than following the defaults."
+          },
+          "theme_id": {
+            "type": "string",
+            "description": "The theme you use. Empty: the first."
           }
         },
         "required": [
@@ -18499,6 +18871,10 @@
             "type": "string",
             "description": "A hex colour, or empty."
           },
+          "second": {
+            "type": "string",
+            "description": "The second color: headings, the active nav item, info. A hex colour, or empty."
+          },
           "background": {
             "type": "string",
             "description": "A hex colour, or empty."
@@ -18514,6 +18890,51 @@
           "card": {
             "type": "string",
             "description": "A hex colour, or empty."
+          },
+          "overrides": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Worked-out colors replaced by name: text, accent, accentFg, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, column (a board's columns), face (a board's card faces), and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back."
+          },
+          "button": {
+            "type": "object",
+            "description": "How the theme's buttons look. A choice left out is the default (rounded, normal, raised, normal).",
+            "properties": {
+              "shape": {
+                "type": "string",
+                "enum": [
+                  "square",
+                  "soft",
+                  "rounded",
+                  "pill"
+                ]
+              },
+              "weight": {
+                "type": "string",
+                "enum": [
+                  "normal",
+                  "medium",
+                  "bold"
+                ]
+              },
+              "depth": {
+                "type": "string",
+                "enum": [
+                  "flat",
+                  "raised",
+                  "glossy"
+                ]
+              },
+              "case": {
+                "type": "string",
+                "enum": [
+                  "normal",
+                  "upper"
+                ]
+              }
+            }
           }
         },
         "required": [
@@ -18523,6 +18944,96 @@
           "surface",
           "column",
           "card"
+        ],
+        "description": "A board's own theme, or the one theme an account had before theme lists. A Theme without id and name; every color is #rrggbb or empty, filled in from the mode. column and card are the board column and card face colors from before overrides; today's editor sends them as the column and face overrides."
+      },
+      "Theme": {
+        "type": "object",
+        "description": "A color scheme on the Appearance screen. Colors are #rrggbb. Anything not given is worked out by static/js/theme.js at readable contrast.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Lower-case letters, digits, - and _, up to 32."
+          },
+          "name": {
+            "type": "string",
+            "description": "1 to 60 characters."
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "light",
+              "dark"
+            ]
+          },
+          "accent": {
+            "type": "string",
+            "description": "The main color: what you can press."
+          },
+          "second": {
+            "type": "string",
+            "description": "Says where you are: active nav item, headings, info."
+          },
+          "background": {
+            "type": "string",
+            "description": "The page. Left out: the mode's own."
+          },
+          "surface": {
+            "type": "string",
+            "description": "Cards. Left out: the mode's own."
+          },
+          "overrides": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Worked-out colors replaced by name: text, accent, accentFg, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, column (a board's columns), face (a board's card faces), and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back."
+          },
+          "button": {
+            "type": "object",
+            "description": "How the theme's buttons look. A choice left out is the default (rounded, normal, raised, normal).",
+            "properties": {
+              "shape": {
+                "type": "string",
+                "enum": [
+                  "square",
+                  "soft",
+                  "rounded",
+                  "pill"
+                ]
+              },
+              "weight": {
+                "type": "string",
+                "enum": [
+                  "normal",
+                  "medium",
+                  "bold"
+                ]
+              },
+              "depth": {
+                "type": "string",
+                "enum": [
+                  "flat",
+                  "raised",
+                  "glossy"
+                ]
+              },
+              "case": {
+                "type": "string",
+                "enum": [
+                  "normal",
+                  "upper"
+                ]
+              }
+            }
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "mode",
+          "accent",
+          "second"
         ]
       }
     },

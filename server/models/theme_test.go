@@ -18,12 +18,30 @@ func TestThemeValidate( t *testing.T ) {
 		{ Background: "#fff" },
 		{ Card: "#12345g" },
 		{ Column: "url(x)" },
+		{ Second: "green" },
+		{ Overrides: map[string]string{ "nonsense": "#000000" } },
+		{ Overrides: map[string]string{ "face": "white" } },
+		{ Button: &ThemeButton{ Shape: "blob" } },
 	}
 	for _ , candidate := range bad {
 		if err := candidate.Validate(); errors.Is( err , ErrBadInput ) == false {
 			t.Errorf( "%+v should be refused, got %v" , candidate , err )
 		}
 	}
+}
+
+// A board theme from today's editor: a second color, overrides (the board's
+// own column and face among them) and a button style, all kept.
+func TestThemeValidateKeepsLayers( t *testing.T ) {
+	theme := &DisplayTheme{ Mode: ThemeDark , Accent: "#8C7CFF" , Second: "#ffb86b" ,
+		Overrides: map[string]string{ "column": "#13162A" , "face": "#1c2038" } , Button: &ThemeButton{ Shape: "Pill" } }
+	if err := theme.Validate(); err != nil { t.Fatal( err ) }
+	if theme.Accent != "#8c7cff" || theme.Overrides[ "column" ] != "#13162a" || theme.Button == nil || theme.Button.Shape != "pill" {
+		t.Errorf( "not kept, cleaned: %+v" , theme )
+	}
+	empty := &DisplayTheme{ Overrides: map[string]string{} , Button: &ThemeButton{} }
+	if err := empty.Validate(); err != nil { t.Fatal( err ) }
+	if empty.Overrides != nil || empty.Button != nil { t.Errorf( "empty overrides and button are not stored: %+v" , empty ) }
 }
 
 func TestBoardTheme( t *testing.T ) {

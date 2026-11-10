@@ -396,6 +396,114 @@
       "title": "Rename your account"
     },
     {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Replace your own themes"
+      },
+      "description": "Replace your whole list of color themes (1 to 40) and pick the one you use. themes: null goes back to following the app's defaults. A theme is the Theme schema in the API reference (config/openapi.json): id, name, mode light|dark, accent, second, and optional colors as #rrggbb. whoami shows the current list.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "theme_id": {
+            "type": "string"
+          },
+          "themes": {
+            "items": {
+              "type": "object"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "themes"
+        ],
+        "type": "object"
+      },
+      "name": "set_themes",
+      "route": "POST /api/account/themes",
+      "title": "Replace your own themes"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Pick your theme"
+      },
+      "description": "Switch to another theme from your list (or the defaults), by its id.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "theme_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "theme_id"
+        ],
+        "type": "object"
+      },
+      "name": "set_theme",
+      "route": "POST /api/account/theme",
+      "title": "Pick your theme"
+    },
+    {
+      "adminOnly": true,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true,
+        "title": "Default themes (admin)"
+      },
+      "description": "The theme list everyone without their own list sees. themes is null while the built-in ones apply.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "name": "admin_get_theme_defaults",
+      "route": "GET /api/admin/theme-defaults",
+      "title": "Default themes (admin)"
+    },
+    {
+      "adminOnly": true,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Replace the default themes (admin)"
+      },
+      "description": "Replace the theme list everyone without their own list sees, 1 to 40 themes in the Theme schema of the API reference. null puts the built-in themes back.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "themes": {
+            "items": {
+              "type": "object"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "themes"
+        ],
+        "type": "object"
+      },
+      "name": "admin_set_theme_defaults",
+      "route": "POST /api/admin/theme-defaults",
+      "title": "Replace the default themes (admin)"
+    },
+    {
       "adminOnly": true,
       "annotations": {
         "destructiveHint": false,

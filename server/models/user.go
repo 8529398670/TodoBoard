@@ -46,6 +46,10 @@ type User struct {
 	TOTPPending    string   `json:"totp_pending,omitempty"`
 	TOTPLastStep   uint64   `json:"totp_last_step,omitempty"`
 	RecoveryHashes []string `json:"recovery_hashes,omitempty"`
+	// Themes is this person's own list on the Appearance screen; nil follows
+	// the app's defaults. ThemeID is the one they use. See themes.go.
+	Themes  []Theme `json:"themes,omitempty"`
+	ThemeID string  `json:"theme_id,omitempty"`
 }
 
 func ( user *User ) Disabled() ( result bool ) {

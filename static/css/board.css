@@ -1,8 +1,8 @@
 /*
   Boards, cards, the three views, the card editor and the panels: what
   Bootstrap has no component for. Loaded after Bootstrap and style.css, on
-  the board page and the home page (which shares the tiles, folders, theme
-  editor and side panel).
+  the board page and the home page (which shares the tiles, folders and side
+  panel).
 
   Same rules as style.css: mobile-first (the base describes a phone, the
   min-width blocks add what a wider screen can afford), colours only through
@@ -25,8 +25,9 @@
   --c-purple: #7048c8; --c-purple-bg: #e8defb;
   --c-gray: #57606a;   --c-gray-bg: #e6e9ed;
 
-  --column-bg: #eef1f5;
-  --face-bg: #ffffff;
+  /* From the theme: theme.js works them out with the rest (style.css). */
+  --column-bg: var(--app-column);
+  --face-bg: var(--app-face);
   --face-shadow: 0 1px 2px rgba(16, 24, 40, 0.08);
   --board-accent: var(--accent);
   --danger: #b42318;
@@ -43,8 +44,8 @@
   --c-purple: #b59cf5; --c-purple-bg: #2f2352;
   --c-gray: #aab3bf;   --c-gray-bg: #2b3038;
 
-  --column-bg: #15181d;
-  --face-bg: #1d2127;
+  --column-bg: var(--app-column);
+  --face-bg: var(--app-face);
   --face-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
   --danger: #f2877f;
 }
@@ -768,7 +769,7 @@ p.due-chip { margin: 0.5rem 0; }
 .label-row select { width: auto; }
 
 /* ------------------------------------------------------------------ */
-/* colour pickers (color_picker.js) and the theme editor               */
+/* colour pickers (color_picker.js)                                   */
 /* ------------------------------------------------------------------ */
 
 .swatches { display: flex; flex-wrap: wrap; gap: 0.4rem; }
@@ -798,58 +799,6 @@ p.due-chip { margin: 0.5rem 0; }
 .color-hex { width: 7.5rem; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.9rem; padding: 0.4rem 0.6rem; }
 .color-hex.invalid { border-color: var(--danger); }
 .color-warning { flex-basis: 100%; margin: 0; color: var(--warn-fg); }
-
-.theme-editor { display: flex; flex-direction: column; gap: 0.9rem; margin-bottom: 0.75rem; }
-.segmented { display: flex; flex-wrap: wrap; gap: 0.4rem; }
-
-.theme-presets { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.5rem; max-width: 32rem; }
-.theme-preset {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 0.3rem;
-  min-height: 0;
-  padding: 0.35rem;
-  font-size: 0.8rem;
-  color: var(--fg);
-  background: transparent;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-}
-.theme-preset.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
-.theme-preset-swatch {
-  display: flex;
-  align-items: flex-end;
-  gap: 4px;
-  height: 2.5rem;
-  padding: 5px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
-}
-.theme-preset-column { flex: 1; height: 100%; border-radius: 4px; background: var(--column-bg); }
-.theme-preset-accent { width: 30%; height: 45%; border-radius: 4px; background: var(--accent); }
-
-.theme-colors { display: flex; flex-direction: column; gap: 0.75rem; }
-.theme-color-row { display: flex; flex-direction: column; gap: 0.35rem; }
-.theme-color-name { font-size: 0.85rem; font-weight: 600; color: var(--fg-muted); }
-
-.theme-preview {
-  display: flex;
-  flex-direction: column;
-  max-width: 22rem;
-  overflow: hidden;
-  color: var(--fg);
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-}
-.theme-preview-header { display: flex; justify-content: flex-end; padding: 8px; background: var(--card-bg); border-bottom: 1px solid var(--border); }
-.theme-preview-button { width: 3rem; height: 0.9rem; border-radius: 4px; background: var(--accent); }
-.theme-preview-body { display: flex; gap: 8px; padding: 10px; }
-.theme-preview-column { flex: 1; display: flex; flex-direction: column; gap: 6px; min-height: 5rem; padding: 6px; border-radius: 6px; background: var(--column-bg); }
-.theme-preview-card { display: block; padding: 8px; border-radius: 6px; background: var(--face-bg); box-shadow: var(--face-shadow); }
-.theme-preview-line { display: block; height: 6px; border-radius: 3px; background: var(--fg); opacity: 0.7; }
 
 /* ------------------------------------------------------------------ */
 /* export card: always light, whatever theme is on                     */

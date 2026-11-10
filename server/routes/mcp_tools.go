@@ -162,6 +162,90 @@ func ( handlers *Handlers ) registerMCPTools( server *mcp.Server ) {
 
 
 	server.Register( &mcp.Tool{
+		Name:        "set_themes",
+		Route:       "POST /api/account/themes",
+		Title:       "Replace your own themes",
+		Description: "Replace your whole list of color themes (1 to 40) and pick the one you use. themes: null goes back to following the app's defaults. A theme is the Theme schema in the API reference (config/openapi.json): id, name, mode light|dark, accent, second, and optional colors as #rrggbb. whoami shows the current list.",
+		InputSchema: fiber.Map{
+			"type": "object",
+			"properties": fiber.Map{
+				"themes":   fiber.Map{ "type": []string{ "array" , "null" } , "items": fiber.Map{ "type": "object" } },
+				"theme_id": fiber.Map{ "type": "string" },
+			},
+			"required":             []string{ "themes" },
+			"additionalProperties": false,
+		},
+		Call: func( call *mcp.Call ) ( result any , err error ) {
+			var args struct {
+				Themes  []models.Theme `json:"themes"`
+				ThemeID string         `json:"theme_id"`
+			}
+			if err = call.Bind( &args ); err != nil { return }
+			result , err = answer( handlers.setMyThemes( call.Ctx , args.Themes , args.ThemeID ) )
+			return
+		},
+	} )
+
+	server.Register( &mcp.Tool{
+		Name:        "set_theme",
+		Route:       "POST /api/account/theme",
+		Title:       "Pick your theme",
+		Description: "Switch to another theme from your list (or the defaults), by its id.",
+		InputSchema: fiber.Map{
+			"type":                 "object",
+			"properties":           fiber.Map{ "theme_id": fiber.Map{ "type": "string" } },
+			"required":             []string{ "theme_id" },
+			"additionalProperties": false,
+		},
+		Call: func( call *mcp.Call ) ( result any , err error ) {
+			var args struct {
+				ThemeID string `json:"theme_id"`
+			}
+			if err = call.Bind( &args ); err != nil { return }
+			result , err = answer( handlers.setMyTheme( call.Ctx , args.ThemeID ) )
+			return
+		},
+	} )
+
+	server.Register( &mcp.Tool{
+		Name:        "admin_get_theme_defaults",
+		Route:       "GET /api/admin/theme-defaults",
+		Title:       "Default themes (admin)",
+		Description: "The theme list everyone without their own list sees. themes is null while the built-in ones apply.",
+		ReadOnly:    true,
+		AdminOnly:   true,
+		Call: func( call *mcp.Call ) ( result any , err error ) {
+			if err = call.Bind( &struct{}{} ); err != nil { return }
+			result , err = answer( handlers.themeDefaults() )
+			return
+		},
+	} )
+
+	server.Register( &mcp.Tool{
+		Name:        "admin_set_theme_defaults",
+		Route:       "POST /api/admin/theme-defaults",
+		Title:       "Replace the default themes (admin)",
+		Description: "Replace the theme list everyone without their own list sees, 1 to 40 themes in the Theme schema of the API reference. null puts the built-in themes back.",
+		AdminOnly:   true,
+		InputSchema: fiber.Map{
+			"type": "object",
+			"properties": fiber.Map{
+				"themes": fiber.Map{ "type": []string{ "array" , "null" } , "items": fiber.Map{ "type": "object" } },
+			},
+			"required":             []string{ "themes" },
+			"additionalProperties": false,
+		},
+		Call: func( call *mcp.Call ) ( result any , err error ) {
+			var args struct {
+				Themes []models.Theme `json:"themes"`
+			}
+			if err = call.Bind( &args ); err != nil { return }
+			result , err = answer( handlers.setThemeDefaults( call.Ctx , args.Themes ) )
+			return
+		},
+	} )
+
+	server.Register( &mcp.Tool{
 		Name:        "admin_list_invite_links",
 		Route:       "GET /api/admin/invite-links",
 		Title:       "List invite links (admin)",

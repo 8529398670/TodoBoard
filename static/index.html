@@ -75,7 +75,8 @@
             <h3 class="sidebar-heading" data-i18n="nav.you_heading"></h3>
             <!-- Its title says who is signed in; see App.labelProfile. -->
             <a class="nav-link" href="#account" data-nav="account" id="profile-link"><i class="bi bi-person" aria-hidden="true"></i><span data-i18n="nav.account"></span></a>
-            <a class="nav-link" href="#settings" data-nav="settings"><i class="bi bi-palette" aria-hidden="true"></i><span data-i18n="nav.settings"></span></a>
+            <a class="nav-link" href="#appearance" data-nav="appearance"><i class="bi bi-palette" aria-hidden="true"></i><span data-i18n="nav.appearance"></span></a>
+            <a class="nav-link" href="#settings" data-nav="settings"><i class="bi bi-sliders2" aria-hidden="true"></i><span data-i18n="nav.settings"></span></a>
             <a class="nav-link" href="#notifications" data-nav="notifications"><i class="bi bi-bell" aria-hidden="true"></i><span data-i18n="nav.notifications"></span></a>
             <a class="nav-link" href="#backup" data-nav="backup"><i class="bi bi-archive" aria-hidden="true"></i><span data-i18n="nav.backup"></span></a>
             <a class="nav-link" href="#pin" data-nav="pin"><i class="bi bi-key" aria-hidden="true"></i><span data-i18n="nav.pin"></span></a>
@@ -435,8 +436,41 @@
           </div>
         </section>
 
-        <!-- Theme, dates and times, card numbering: every personal setting in
-             one place. See user_settings.js. -->
+        <!-- Your themes, and for admins the defaults everyone starts from.
+             Drawn by themes_editor.js; see theme.js for where they are kept.
+             A board's own theme is in its Board settings. -->
+        <section class="view view-stack" data-view="appearance" id="appearance">
+          <h2 class="h4 mb-0" data-i18n="theme.heading"></h2>
+          <ul class="nav nav-tabs" id="theme-tabs" role="tablist" hidden>
+            <li class="nav-item" role="presentation">
+              <button class="nav-link active" id="theme-tab-mine" type="button" role="tab" data-bs-toggle="tab"
+                      data-bs-target="#theme-pane-mine" aria-controls="theme-pane-mine" aria-selected="true" data-i18n="theme.tab_mine"></button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button class="nav-link" id="theme-tab-defaults" type="button" role="tab" data-bs-toggle="tab"
+                      data-bs-target="#theme-pane-defaults" aria-controls="theme-pane-defaults" aria-selected="false" data-i18n="theme.tab_defaults"></button>
+            </li>
+          </ul>
+          <div class="tab-content">
+            <div class="tab-pane show active" id="theme-pane-mine" role="tabpanel" aria-labelledby="theme-tab-mine">
+              <p class="text-body-secondary" data-i18n="theme.description"></p>
+              <div id="theme-editor-mine"></div>
+              <div class="card mt-3">
+                <div class="card-body">
+                  <h3 class="h6" data-i18n="theme.boards_heading"></h3>
+                  <div id="theme-own-on-boards"></div>
+                </div>
+              </div>
+            </div>
+            <div class="tab-pane" id="theme-pane-defaults" role="tabpanel" aria-labelledby="theme-tab-defaults">
+              <p class="text-body-secondary" data-i18n="theme.defaults_description"></p>
+              <div id="theme-editor-defaults"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Dates and times, card numbering, label colours: the personal
+             settings that are not the theme. See user_settings.js. -->
         <section class="card view" data-view="settings" id="display-settings">
           <div class="card-body">
             <h2 class="h4 mb-3" data-i18n="user_settings.account_heading"></h2>
@@ -1071,7 +1105,7 @@
   <script src="/js/settings.js"></script>
   <script src="/js/ui.js"></script>
   <script src="/js/color_picker.js"></script>
-  <script src="/js/theme_editor.js"></script>
+  <script src="/js/themes_editor.js"></script>
   <script src="/js/markdown.js"></script>
   <script src="/js/home.js"></script>
   <script src="/js/backup.js"></script>

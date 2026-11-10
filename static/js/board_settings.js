@@ -299,13 +299,13 @@ const BoardSettings = {
     return section;
   },
 
+  // The board's theme in the Appearance screen's editor, over this one theme.
   openTheme( ctx , back ) {
     Panel.open( "theme.board_heading" , ( body ) => {
       body.appendChild( Dom.el( "p" , { class: "muted small-print" , text: T( "theme.board_hint" ) } ) );
-      body.appendChild( ThemeEditor.render( ctx.board.theme , async function ( theme ) {
-        const result = await ctx.mutate( function () { return ctx.client.updateBoard( theme ? { theme: theme } : { clear_theme: true } ); } );
-        if ( result ) Ui.toast( T( "settings.saved" ) , "ok" );
-      } , { inherit: true , start: Theme.user } ) );
+      const root = Dom.el( "div" , { attrs: { id: "board-theme-editor" } } );
+      body.appendChild( root );
+      ThemeEditor.board( root , () => BoardPage.context() );
     } , back );
   },
 

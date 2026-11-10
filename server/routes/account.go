@@ -56,6 +56,9 @@ func ( handlers *Handlers ) meRow( actor *security.Actor ) ( payload fiber.Map ,
 	login_link , err := models.LiveLoginLink( handlers.Store , user.ID )
 	if err != nil { return }
 
+	themes , themes_custom , err := handlers.myThemes( user )
+	if err != nil { return }
+
 	display := fiber.Map{ "timezone": "" , "hour12": nil , "number_cards": false , "plain_icons": false , "done_on_top": false , "add_on_top": false , "theme": nil , "own_theme_on_boards": false , "swipe_columns": true , "folder_sort": "" , "label_colors": []models.SavedColor{} }
 	if prefs , prefs_err := models.GetUserPrefs( handlers.Store , user.ID ); prefs_err == nil {
 		display = displayPayload( prefs )
@@ -69,6 +72,9 @@ func ( handlers *Handlers ) meRow( actor *security.Actor ) ( payload fiber.Map ,
 		"account_role":     user.Role,
 		"is_owner":         user.ID == owner_id,
 		"login_link":       login_link,
+		"themes":           themes,
+		"themes_custom":    themes_custom,
+		"theme_id":         user.ThemeID,
 		"maintenance":      handlers.cfg().MaintenanceMode(),
 		"version":          handlers.Version,
 		"announcement":     handlers.cfg().Announcement,

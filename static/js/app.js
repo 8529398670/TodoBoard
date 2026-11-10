@@ -37,7 +37,7 @@ const App = {
     if ( me.authenticated ) {
       Dates.configure( me.display );
       LabelColors.set( me.display.label_colors );
-      Theme.setUser( me.display.theme , me.display.own_theme_on_boards );
+      Theme.load( me );
     }
     Dom.show( Dom.get( "main" ) , true );
 
@@ -237,6 +237,7 @@ const App = {
     UserSettings.render( Dom.get( "user-settings-root" ) , me );
     // Side by side: the wait is the slowest screen, not all of them added up.
     const loading = [];
+    loading.push( ThemeEditor.init( me ) );
     loading.push( NotifySettings.init( me ) );
     Pin.init( me );
     LoginLink.init( me );

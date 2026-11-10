@@ -7,4 +7,4 @@ slug: todoboard
 module_path: todoboard
 port: 8080
 features: [api_keys, mcp, two_factor, invite_links]
-skipped: [account-cards, backups, busy-buttons, desktop-layout, dismiss-boxes, edit-webhooks, editable-themes, files, keyboard-shortcuts, metrics, rename-files, row-menu, steady-scroll, theme-buttons, theme-layers, webhooks]
+skipped: [account-cards, backups, busy-buttons, desktop-layout, dismiss-boxes, edit-webhooks, files, keyboard-shortcuts, metrics, rename-files, row-menu, steady-scroll, webhooks]

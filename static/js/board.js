@@ -91,6 +91,8 @@ const BoardPage = {
     if ( token ) {
       this.client = await BoardApi.guest( token );
       this.me = { authenticated: false };
+      // No account: the built-in themes, picked in this browser.
+      Theme.loadGuest();
       Dom.show( Dom.get( "home-link" ) , false );
       // An edit link changes things, and a comment link signs what it
       // posts, so both are asked for a name -- a comment link only where
@@ -118,7 +120,7 @@ const BoardPage = {
     Dates.configure( this.me.display );
     LabelColors.set( this.me.display.label_colors );
     LabelColors.onChange = ( display ) => { this.me.display = display; };
-    Theme.setUser( this.me.display.theme , this.me.display.own_theme_on_boards );
+    Theme.load( this.me );
     this.client = BoardApi.member( /^\d+$/.test( match[ 1 ] ) ? Number( match[ 1 ] ) : match[ 1 ] );
   },
 

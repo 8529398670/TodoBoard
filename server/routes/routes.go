@@ -138,6 +138,8 @@ func ( handlers *Handlers ) Register( app *fiber.App ) {
 	account.Post( "/account/rename" , handlers.RenameAccount )
 	account.Post( "/account/display" , handlers.SaveDisplay )
 	account.Post( "/account/label-colors" , handlers.SaveLabelColors )
+	account.Post( "/account/themes" , handlers.SetMyThemes )
+	account.Post( "/account/theme" , handlers.SetMyTheme )
 	// A session only: a PIN lets its holder sign in through an invite link,
 	// so a key that could set one could turn itself into a session.
 	account.Post( "/account/pin" , handlers.RequireInviteLinks , handlers.Guard.RequireSession , handlers.SetPin )
@@ -261,6 +263,9 @@ func ( handlers *Handlers ) Register( app *fiber.App ) {
 	// admin can reverse; it must not be able to erase them. Who may delete
 	// whom (the owner rules) is enforced in models.DeleteUser.
 	admin := app.Group( "/api/admin" , handlers.Guard.RequireAdmin )
+	// The themes everyone starts from. Not a credential, so a key may.
+	admin.Get( "/theme-defaults" , handlers.GetThemeDefaults )
+	admin.Post( "/theme-defaults" , handlers.SetThemeDefaults )
 	admin.Get( "/users" , handlers.ListUsers )
 	admin.Post( "/users" , handlers.Guard.RequireSession , handlers.CreateUser )
 	admin.Post( "/users/:user_id/reissue-login" , handlers.Guard.RequireSession , handlers.ReissueLogin )

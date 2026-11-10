@@ -134,6 +134,11 @@ const Api = {
   createMyLoginLink( options ) { return this.post( "/api/account/login-link" , options ); },
   cancelMyLoginLink()          { return this.post( "/api/account/login-link/cancel" ); },
   logout()                     { return this.post( "/api/logout" ); },
+  // The Appearance screen: your own themes, and for admins the defaults.
+  setThemes( themes , id )     { return this.post( "/api/account/themes" , { themes: themes , theme_id: id } ); },
+  setTheme( id )               { return this.post( "/api/account/theme" , { theme_id: id } ); },
+  themeDefaults()              { return this.request( "/api/admin/theme-defaults" ); },
+  setThemeDefaults( themes )   { return this.post( "/api/admin/theme-defaults" , { themes: themes } ); },
   // Everyone who can be handed work, every page of them: the share panel's
   // pickers want the whole list. An older server answered a bare array.
   async listTeam() {
