@@ -299,7 +299,7 @@ const Theme = {
   },
 
   // A DisplayTheme (a board's, or an account's from before theme lists) as a
-  // theme. Its colors may be missing: the mode's built-in fills them, and the
+  // theme, with any colors it keeps for the other mode. Its colors may be missing: the mode's built-in fills them, and the
   // second color is the main one, as those themes had only one. column and
   // card, from before overrides, become the column and face overrides.
   fromDisplay( display , id , name ) {
@@ -318,6 +318,18 @@ const Theme = {
     if ( color( display.column ) && !theme.overrides.column ) theme.overrides.column = color( display.column );
     if ( color( display.card ) && !theme.overrides.face ) theme.overrides.face = color( display.card );
     if ( display.button && typeof display.button === "object" ) theme.button = Object.assign( {} , display.button );
+    // The colors kept for the other mode, so the Light/Dark switch swaps them in.
+    const other = mode === "light" ? "dark" : "light";
+    const kept = display[ other ];
+    if ( kept && typeof kept === "object" && color( kept.accent ) && color( kept.second ) ) {
+      const colors = { accent: color( kept.accent ) , second: color( kept.second ) , overrides: {} };
+      if ( color( kept.background ) ) colors.background = color( kept.background );
+      if ( color( kept.surface ) ) colors.surface = color( kept.surface );
+      Object.keys( kept.overrides || {} ).forEach( ( field ) => {
+        if ( color( kept.overrides[ field ] ) ) colors.overrides[ field ] = color( kept.overrides[ field ] );
+      } );
+      theme[ other ] = colors;
+    }
     return theme;
   },
 
@@ -327,6 +339,16 @@ const Theme = {
       background: theme.background || "" , surface: theme.surface || "" , column: "" , card: "" };
     if ( Object.keys( theme.overrides || {} ).length > 0 ) display.overrides = Object.assign( {} , theme.overrides );
     if ( theme.button ) display.button = Object.assign( {} , theme.button );
+    // The other mode's colors, kept (Light/Dark switches back to them).
+    const other = theme.mode === "light" ? "dark" : "light";
+    const kept = theme[ other ];
+    if ( kept && this.isColor( kept.accent ) && this.isColor( kept.second ) ) {
+      const colors = { accent: kept.accent , second: kept.second };
+      if ( kept.background ) colors.background = kept.background;
+      if ( kept.surface ) colors.surface = kept.surface;
+      if ( Object.keys( kept.overrides || {} ).length > 0 ) colors.overrides = Object.assign( {} , kept.overrides );
+      display[ other ] = colors;
+    }
     return display;
   },
 

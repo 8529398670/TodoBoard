@@ -44,6 +44,21 @@ func TestThemeValidateKeepsLayers( t *testing.T ) {
 	if empty.Overrides != nil || empty.Button != nil { t.Errorf( "empty overrides and button are not stored: %+v" , empty ) }
 }
 
+// A board theme keeps its colors for the mode not in use, cleaned, and drops
+// any for the mode it is in.
+func TestThemeValidateKeepsOtherMode( t *testing.T ) {
+	theme := &DisplayTheme{ Mode: ThemeLight , Accent: "#1f5fd6" , Second: "#0b7a75" ,
+		Light: &ThemeColors{ Accent: "#000000" , Second: "#000000" },
+		Dark:  &ThemeColors{ Accent: "#FFB81C" , Second: "#ffd100" , Background: "#000000" , Overrides: map[string]string{ "face": "#0B3D2E" } } }
+	if err := theme.Validate(); err != nil { t.Fatal( err ) }
+	if theme.Light != nil { t.Errorf( "a light theme's light is kept: %+v" , theme.Light ) }
+	if theme.Dark == nil || theme.Dark.Accent != "#ffb81c" || theme.Dark.Overrides[ "face" ] != "#0b3d2e" {
+		t.Errorf( "dark not kept, cleaned: %+v" , theme.Dark )
+	}
+	bad := &DisplayTheme{ Mode: ThemeDark , Accent: "#1f5fd6" , Light: &ThemeColors{ Accent: "blue" , Second: "#000000" } }
+	if errors.Is( bad.Validate() , ErrBadInput ) == false { t.Error( "a bad kept color is refused" ) }
+}
+
 func TestBoardTheme( t *testing.T ) {
 	store := testStore( t )
 	owner , _ := CreateUser( store , "Owner" , RoleAdmin )
