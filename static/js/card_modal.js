@@ -327,6 +327,7 @@ const CardModal = {
     const canMove = ctx.canEdit;
     const body = Dom.get( "card-dialog-body" );
     const scrollTop = body.scrollTop;
+    QuickAdd.remember( body );
     Dom.clear( body );
 
     body.appendChild( this.header( card , synced ) );

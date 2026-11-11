@@ -413,6 +413,7 @@ const BoardPage = {
     // columns back where they were.
     if ( scroller ) this.scrollLeft = scroller.scrollLeft;
     const scrollTop = window.scrollY;
+    QuickAdd.remember( root );
     Dom.clear( root );
     Dom.clear( Dom.get( "stage-slot" ) );
     // On a calendar board the calendar is the board view: Todo and

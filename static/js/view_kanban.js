@@ -427,6 +427,22 @@ const QuickAdd = {
   // When each box's arrow was last pressed, by key. Kept here and not in the
   // button's closure, which a poll can replace between two clicks.
   lastFlip: {},
+  // Open boxes' unsent text and held picture, by key, kept so that a
+  // re-render -- coming back to the tab, or a poll seeing someone else's
+  // change -- reopens the new copy of the box with them instead of losing
+  // them. Gone once the box is cancelled.
+  drafts: {},
+  // The box that had the cursor when the board last re-rendered, and where
+  // in it: { key, start, end }. See remember().
+  focused: null,
+
+  // Called just before the board is cleared for a re-render: notes which
+  // box, if any, has the cursor, so its new copy can take it back.
+  remember( root ) {
+    const active = document.activeElement;
+    const box = active && active.classList && active.classList.contains( "quick-add-input" ) && root.contains( active ) ? active.closest( "[data-quick-key]" ) : null;
+    this.focused = box ? { key: box.getAttribute( "data-quick-key" ) , start: active.selectionStart , end: active.selectionEnd } : null;
+  },
   // Two presses this close together are a double click. Timed by hand: phones
   // do not reliably send dblclick.
   doubleClickMs: 350,
@@ -538,17 +554,30 @@ const QuickAdd = {
       if ( !file ) return;
       const url = URL.createObjectURL( file );
       preview.appendChild( Dom.el( "img" , { attrs: { src: url , alt: "" } } ) );
-      preview.appendChild( Ui.closeButton( T( "board.image_remove" ) , function () { URL.revokeObjectURL( url ); holdImage( null ); input.focus(); } , "btn-close-small" ) );
+      preview.appendChild( Ui.closeButton( T( "board.image_remove" ) , function () { URL.revokeObjectURL( url ); holdImage( null ); draft(); input.focus(); } , "btn-close-small" ) );
     };
+    const draft = function () {
+      QuickAdd.drafts[ key ] = { text: input.value , image: image };
+    };
+    input.addEventListener( "input" , draft );
     if ( withImage ) {
       input.addEventListener( "paste" , function ( event ) {
         const file = CardBits.pastedImage( event );
         if ( !file || CardBits.pasteHasText( event ) ) return;
         event.preventDefault();
         holdImage( file );
+        draft();
       } );
     }
-    const cancel = Ui.button( "board.cancel" , function () { holdImage( null ); delete QuickAdd.flipped[ key ]; form.hidden = true; opener.hidden = false; } );
+    const cancel = Ui.button( "board.cancel" , function () {
+      input.value = "";
+      Ui.autoGrow( input );
+      holdImage( null );
+      delete QuickAdd.flipped[ key ];
+      delete QuickAdd.drafts[ key ];
+      form.hidden = true;
+      opener.hidden = false;
+    } );
     form.appendChild( preview );
     form.appendChild( input );
     form.appendChild( Dom.el( "div" , { class: "row-actions" , children: [
@@ -559,6 +588,7 @@ const QuickAdd = {
       if ( !QuickAdd.reopening ) delete QuickAdd.flipped[ key ];
       opener.hidden = true;
       form.hidden = false;
+      if ( !QuickAdd.drafts[ key ] ) draft();
       input.focus();
     } );
     form.addEventListener( "submit" , async function ( event ) {
@@ -568,6 +598,7 @@ const QuickAdd = {
       if ( !value && !held ) return;
       input.value = "";
       holdImage( null );
+      draft();
       Ui.autoGrow( input );
       await submit( value , held );
       const fresh = document.querySelector( "[data-quick-key=\"" + key + "\"] .quick-add-open" );
@@ -587,6 +618,25 @@ const QuickAdd = {
     } );
     wrap.appendChild( opener );
     wrap.appendChild( form );
+    // This box was open, maybe half typed, in the copy a re-render just
+    // replaced: open it again as it was.
+    const saved = QuickAdd.drafts[ key ];
+    if ( saved ) {
+      opener.hidden = true;
+      form.hidden = false;
+      input.value = saved.text;
+      if ( saved.image ) holdImage( saved.image );
+      const focus = QuickAdd.focused && QuickAdd.focused.key === key ? QuickAdd.focused : null;
+      if ( focus ) QuickAdd.focused = null;
+      // Sized and focused once it is in the page.
+      window.requestAnimationFrame( function () {
+        if ( !input.isConnected ) return;
+        Ui.autoGrow( input );
+        if ( !focus ) return;
+        input.focus( { preventScroll: true } );
+        if ( typeof focus.start === "number" ) input.setSelectionRange( focus.start , focus.end );
+      } );
+    }
     return wrap;
   },
 };
