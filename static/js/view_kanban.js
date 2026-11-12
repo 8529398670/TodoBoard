@@ -298,13 +298,14 @@ const KanbanView = {
       event.stopPropagation();
       handle.setPointerCapture( event.pointerId );
       startX = event.clientX;
-      startWidth = width = column.getBoundingClientRect().width;
+      // Screen pixels to the board's own: the board may be zoomed.
+      startWidth = width = column.getBoundingClientRect().width / ctx.zoom();
       column.classList.add( "is-resizing" );
       ctx.setDragging( true );
     } );
     handle.addEventListener( "pointermove" , function ( event ) {
       if ( !handle.hasPointerCapture( event.pointerId ) ) return;
-      width = Math.min( 800 , Math.max( 200 , startWidth + event.clientX - startX ) );
+      width = Math.min( 800 , Math.max( 200 , startWidth + ( event.clientX - startX ) / ctx.zoom() ) );
       column.style.setProperty( "--col-w" , width + "px" );
     } );
     const finish = function ( event ) {

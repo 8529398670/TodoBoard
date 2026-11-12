@@ -328,7 +328,8 @@ const TimelineView = {
       ctx.setDragging( true );
 
       const onMove = function ( moveEvent ) {
-        const dx = moveEvent.clientX - originX;
+        // In the board's own pixels: the board may be zoomed.
+        const dx = ( moveEvent.clientX - originX ) / ctx.zoom();
         if ( Math.abs( dx ) > 4 ) moved = true;
         steps = Math.round( dx / step.px );
         const shift = steps * step.px;
@@ -465,7 +466,7 @@ const TimelineView = {
         const target = document.elementFromPoint( upEvent.clientX , upEvent.clientY );
         const track = target ? target.closest( ".timeline-track" ) : null;
         if ( !track ) return;
-        const x = upEvent.clientX - track.getBoundingClientRect().left;
+        const x = ( upEvent.clientX - track.getBoundingClientRect().left ) / ctx.zoom();
         let due;
         if ( geo.zoom === "hour" ) {
           const minutes = Math.round( x / geo.perMinute / this.SNAP_MINUTES ) * this.SNAP_MINUTES;

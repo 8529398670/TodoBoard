@@ -29,6 +29,16 @@ const BoardPage = {
   // poll would otherwise bring back whatever was read before it.
   collapsed: null,
   collapseSaving: Promise.resolve(),
+  // How big the board itself is drawn, 1 being normal: CSS zoom on
+  // #board-root, so the navbar and dialogs keep their size. Per board, in
+  // this browser; null until the first load reads it.
+  zoom: null,
+  // Each press multiplies or divides by ZOOM_FACTOR. No fixed list of
+  // levels; only a floor (0 would draw nothing) and a ceiling (browsers stop
+  // drawing sensibly beyond a few thousand percent).
+  ZOOM_FACTOR: 1.1,
+  ZOOM_MIN: 0.01,
+  ZOOM_MAX: 50,
 
   views() {
     return { kanban: KanbanView , todo: TodoView , timeline: TimelineView , calendar: CalendarView };
@@ -64,6 +74,7 @@ const BoardPage = {
     History.bindKeys();
     Stages.bind();
     CalendarView.bindKeys();
+    this.bindZoomKeys();
     Dom.get( "undo-button" ).addEventListener( "click" , () => History.undo() );
     Dom.get( "redo-button" ).addEventListener( "click" , () => History.redo() );
 
@@ -174,6 +185,7 @@ const BoardPage = {
       this.showSlug();
     }
     if ( !this.collapsed ) this.collapsed = this.savedCollapsed();
+    if ( this.zoom === null ) this.applyZoom( this.savedZoom() );
     if ( !this.viewChosen ) {
       this.viewChosen = true;
       let saved = "";
@@ -208,6 +220,61 @@ const BoardPage = {
     if ( !this.data || this.client.isGuest || !card.uid ) return "";
     const list = this.data.board.lists.find( ( item ) => item.id === card.list_id );
     return this.boardPath() + "/" + Ui.columnSlug( list ? list.title : "" ) + "/" + card.uid;
+  },
+
+  // ---- zoom -----------------------------------------------------------
+
+  savedZoom() {
+    let saved = 1;
+    try { saved = Number( window.localStorage.getItem( "zoom:" + this.data.board.id ) ) || 1; } catch ( error ) { saved = 1; }
+    return this.clampZoom( saved );
+  },
+
+  // Within bounds, rounded so repeated steps do not drift, and back to
+  // exactly 1 when a step lands next to it.
+  clampZoom( level ) {
+    const clamped = Math.min( this.ZOOM_MAX , Math.max( this.ZOOM_MIN , level ) );
+    const rounded = Math.round( clamped * 10000 ) / 10000;
+    return Math.abs( rounded - 1 ) < 0.005 ? 1 : rounded;
+  },
+
+  applyZoom( level ) {
+    this.zoom = level;
+    Dom.get( "board-root" ).style.zoom = level === 1 ? "" : String( level );
+  },
+
+  setZoom( level ) {
+    if ( !this.data || level === this.zoom ) return;
+    this.applyZoom( level );
+    try {
+      if ( level === 1 ) window.localStorage.removeItem( "zoom:" + this.data.board.id );
+      else window.localStorage.setItem( "zoom:" + this.data.board.id , String( level ) );
+    } catch ( error ) { /* this tab only */ }
+    Ui.toast( I18n.fill( "board.zoom_toast" , { percent: Math.round( level * 100 ) } ) , "ok" );
+  },
+
+  // Ctrl+Shift+= / ⇧⌘= zooms the board in, Ctrl+Shift+- / ⇧⌘- out, and
+  // Ctrl+Shift+0 / ⇧⌘0 back to normal. Matched by key position (code), as
+  // Shift changes the character (by the character only where no code is
+  // given). Not while typing or with a dialog open.
+  bindZoomKeys() {
+    document.addEventListener( "keydown" , ( event ) => {
+      if ( !( event.ctrlKey || event.metaKey ) || !event.shiftKey || event.altKey ) return;
+      const code = event.code;
+      const key = event.key;
+      let step = null;
+      if ( code === "Equal" || code === "NumpadAdd" || ( !code && ( key === "+" || key === "=" ) ) ) step = 1;
+      else if ( code === "Minus" || code === "NumpadSubtract" || ( !code && ( key === "-" || key === "_" ) ) ) step = -1;
+      else if ( code === "Digit0" || code === "Numpad0" || ( !code && ( key === "0" || key === ")" ) ) ) step = 0;
+      if ( step === null ) return;
+      const target = event.target;
+      if ( target && target.closest && target.closest( "input, textarea, select, [contenteditable]:not([contenteditable=\"false\"])" ) ) return;
+      if ( document.querySelector( "dialog[open]" ) ) return;
+      event.preventDefault();
+      const current = this.zoom || 1;
+      const next = step === 0 ? 1 : this.clampZoom( step > 0 ? current * this.ZOOM_FACTOR : current / this.ZOOM_FACTOR );
+      this.setZoom( next );
+    } );
   },
 
   // What every view, panel, and the card editor is handed.
@@ -252,6 +319,9 @@ const BoardPage = {
       showPath() { page.showSlug(); },
       reload() { return page.load(); },
       setDragging( flag ) { page.dragging = flag; },
+      // The board's zoom factor. Pointer distances are screen pixels, the
+      // board's own lengths are before zoom: divide one by this to get the other.
+      zoom() { return page.zoom || 1; },
       // A three-column board shows its first three open lists and nothing
       // else; the rest are kept, and come back when the layout is changed.
       // Someone shown a single column sees just that column either way.

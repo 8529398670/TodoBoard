@@ -706,6 +706,8 @@ board:
   card_menu_bottom: "Send to bottom"
   undo_hint: "Undo (Ctrl+Z / ⌘Z)"
   redo_hint: "Redo (Ctrl+Y / ⇧⌘Z)"
+  # Shown when Ctrl+Shift+= / - / 0 (⇧⌘ on a Mac) zooms the board. {percent} is the new size.
+  zoom_toast: "Board zoom {percent}% (Ctrl+Shift+0 / ⇧⌘0 resets)"
   number_label: "Position {n} -- type a number and press Enter to move"
   stage_todo: "To do"
   stage_doing: "Doing"
