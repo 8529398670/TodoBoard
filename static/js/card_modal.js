@@ -656,7 +656,8 @@ const CardModal = {
   // a Buy button. Filled in by the server a few seconds after the link
   // appears (Amazon anywhere, any shop on a shopping board or column); an
   // editor can look it up again or take it off. A card with a link but no
-  // product offers to look it up by hand.
+  // product offers to look it up by hand, on shopping boards and in
+  // shopping columns only.
   productSection( card , canEdit ) {
     const product = card.product;
     const section = Dom.el( "section" , { class: "card-section card-product" } );
@@ -673,7 +674,7 @@ const CardModal = {
       await this.ctx.reload();
     };
     if ( !product ) {
-      if ( !canEdit || !/https?:\/\//i.test( card.title + " " + card.description ) ) return null;
+      if ( !canEdit || !this.ctx.isShopping( card ) || !/https?:\/\//i.test( card.title + " " + card.description ) ) return null;
       const button = Ui.button( "product.look_up" , () => refresh( button ) );
       section.appendChild( button );
       return section;
