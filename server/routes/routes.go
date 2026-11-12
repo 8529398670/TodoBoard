@@ -194,6 +194,7 @@ func ( handlers *Handlers ) Register( app *fiber.App ) {
 	boards.Post( "/:board_id/my-view" , handlers.SetMyBoardView )
 	boards.Post( "/:board_id/my-view/collapsed" , handlers.SetMyCollapsedLists )
 	boards.Post( "/:board_id/delete" , handlers.Guard.RequireSession , handlers.DeleteBoard )
+	boards.Post( "/:board_id/duplicate" , handlers.Guard.RefuseOnlyBoardsKey , handlers.DuplicateBoard )
 	boards.Post( "/:board_id/members" , handlers.SetBoardMember )
 	boards.Post( "/:board_id/cards/:card_id/share-user" , handlers.ShareCardWithUser )
 	// Between boards, so for people on boards rather than share links.

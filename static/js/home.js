@@ -141,7 +141,7 @@ const Home = {
       .sort( function ( a , b ) { return new Date( b.updated_at ) - new Date( a.updated_at ); } )
       .slice( 0 , this.recentCount )
       .forEach( ( board ) => {
-        const wrap = this.tile( board , false );
+        const wrap = this.tile( board );
         wrap.querySelector( ".board-tile" ).appendChild( Dom.el( "span" , {
           class: "board-tile-when muted",
           text: I18n.fill( "home.edited_ago" , { when: this.ago( board.updated_at ) } ),
@@ -269,17 +269,53 @@ const Home = {
     section.querySelector( ":scope > .folder-body" ).hidden = !open;
   },
 
-  // filable: one of my own boards, which gets the move-to-folder menu.
-  tile( board , filable ) {
+  // menu false: no options button (boards shared with me, in their own grid).
+  tile( board , menu ) {
     const wrap = Dom.el( "div" , { class: "board-tile-wrap" , attrs: { "data-board-id": board.id } } );
     const tile = Dom.el( "a" , { class: "board-tile color-" + ( board.color || "none" ) , attrs: { href: "/b/" + ( board.slug || board.id ) } } );
     const title = Dom.el( "span" , { class: "board-tile-title" } );
     Markdown.renderInline( board.title , title );
     tile.appendChild( title );
     wrap.appendChild( tile );
-    if ( filable === false ) return wrap;
-    wrap.appendChild( Ui.iconButton( "three-dots" , T( "home.board_menu" ) , () => this.moveBoard( board ) , "tile-menu" ) );
+    if ( menu === false ) return wrap;
+    wrap.appendChild( Ui.iconButton( "three-dots" , T( "home.board_menu" ) , ( event ) => ContextMenu.open( event , this.boardMenu( board ) ) , "tile-menu" ) );
     return wrap;
+  },
+
+  // The tile's options. Filing and deleting are for my own boards; any board
+  // I can open, I can copy into one of my own.
+  boardMenu( board ) {
+    const mine = board.role === "owner";
+    const items = [];
+    if ( mine ) items.push( { key: "home.move_menu" , action: () => this.moveBoard( board ) } );
+    items.push( { key: "home.duplicate" , action: () => this.duplicateBoard( board ) } );
+    if ( mine ) items.push( { key: "home.delete_board" , danger: true , action: () => this.deleteBoard( board ) } );
+    return items;
+  },
+
+  // The copy stays here on the home page, beside the original.
+  async duplicateBoard( board ) {
+    try {
+      await Api.post( "/api/boards/" + board.id + "/duplicate" , { title: I18n.fill( "home.duplicate_title" , { name: board.title.slice( 0 , 110 ) } ) } );
+    } catch ( error ) {
+      Ui.error( error );
+      return;
+    }
+    Ui.toast( T( "home.duplicated" ) , "ok" );
+    await this.refresh();
+  },
+
+  // For good, for everyone on it: asked first.
+  async deleteBoard( board ) {
+    if ( !window.confirm( I18n.fill( "settings.delete_board_confirm" , { name: board.title } ) ) ) return;
+    try {
+      await Api.post( "/api/boards/" + board.id + "/delete" );
+    } catch ( error ) {
+      Ui.error( error );
+      return;
+    }
+    Ui.toast( T( "home.deleted" ) , "ok" );
+    await this.refresh();
   },
 
   // Tiles drag between folders. Order inside a folder is most recently

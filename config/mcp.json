@@ -884,6 +884,41 @@
         "destructiveHint": false,
         "openWorldHint": false,
         "readOnlyHint": false,
+        "title": "Duplicate a board"
+      },
+      "description": "A new board owned by you, copied from one you can open: its settings, notes, labels, columns, and the cards you can see with their checklists. Comments, card pictures, members and share links are not copied. Returns the copy's id and slug.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "board": {
+            "description": "The board's id or URL slug, from list_boards.",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "title": {
+            "description": "The copy's title.",
+            "maxLength": 120,
+            "type": "string"
+          }
+        },
+        "required": [
+          "board",
+          "title"
+        ],
+        "type": "object"
+      },
+      "name": "duplicate_board",
+      "route": "POST /api/boards/{board_id}/duplicate",
+      "title": "Duplicate a board"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
         "title": "Add a column"
       },
       "description": "Add a column (list) to a board. Needs edit rights on the whole board.",

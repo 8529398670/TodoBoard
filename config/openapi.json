@@ -9360,6 +9360,106 @@
         }
       }
     },
+    "/api/boards/{board_id}/duplicate": {
+      "post": {
+        "summary": "Duplicate a board",
+        "operationId": "post_api_boards_board_id_duplicate",
+        "tags": [
+          "Boards"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "description": "A new board owned by the caller, holding what they can see of this one: settings, notes, labels, lists, and cards with their checklists. Comments, card pictures, members and share links are not copied. Refused to an API key held to a list of boards.",
+        "x-board-access": "view",
+        "parameters": [
+          {
+            "name": "board_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "The board's number or URL slug."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "description": "The copy's title."
+                  },
+                  "csrf_token": {
+                    "type": "string",
+                    "description": "From GET /api/me. Browser sessions only."
+                  }
+                },
+                "required": [
+                  "title"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "integer"
+                    },
+                    "slug": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "slug"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "404": {
+            "$ref": "#/components/responses/E404"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          }
+        }
+      }
+    },
     "/api/boards/{board_id}/export": {
       "get": {
         "summary": "The board as a spreadsheet",

@@ -342,6 +342,38 @@ func ( handlers *Handlers ) registerBoardTools( server *mcp.Server ) {
 	} )
 
 	server.Register( &mcp.Tool{
+		Name:        "duplicate_board",
+		Route:       "POST /api/boards/{board_id}/duplicate",
+		Title:       "Duplicate a board",
+		Description: "A new board owned by you, copied from one you can open: its settings, notes, labels, columns, and the cards you can see with their checklists. Comments, card pictures, members and share links are not copied. Returns the copy's id and slug.",
+		InputSchema: objectSchema( fiber.Map{
+			"board": boardRefSchema,
+			"title": fiber.Map{ "type": "string" , "maxLength": 120 , "description": "The copy's title." },
+		} , "board" , "title" ),
+		Call: func( call *mcp.Call ) ( result any , err error ) {
+			var args struct {
+				Board boardRef `json:"board"`
+				Title string   `json:"title"`
+			}
+			if err = call.Bind( &args ); err != nil { return }
+			if call.Actor.APIKey.OnlyBoards() {
+				err = refusalError( refuse( fiber.StatusForbidden , security.KeyBoardsRefusal ) )
+				return
+			}
+			principal := mcpPrincipal( call )
+			board , refused := handlers.loadBoardAt( principal , string( args.Board ) , access.View )
+			var copied *models.Board
+			if refused == nil { copied , refused = handlers.duplicateBoard( principal , board , args.Title ) }
+			if refused != nil {
+				err = refusalError( refused )
+				return
+			}
+			result = fiber.Map{ "id": copied.ID , "slug": copied.Slug }
+			return
+		},
+	} )
+
+	server.Register( &mcp.Tool{
 		Name:        "create_list",
 		Route:       "POST /api/boards/{board_id}/lists",
 		Title:       "Add a column",

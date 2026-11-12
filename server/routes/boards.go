@@ -416,6 +416,64 @@ func ( handlers *Handlers ) boardTextActivity( principal *access.Principal , bef
 	if before.Purpose != after.Purpose { handlers.activity( principal , after.ID , "board_purpose" , nil ) }
 }
 
+type duplicateBoardRequest struct {
+	Title string `json:"title"`
+}
+
+// duplicateChunk is how many cards go into the copy per transaction, kept
+// under the import limit in server/models/snapshot.go.
+const duplicateChunk = 1000
+
+// DuplicateBoard answers POST /api/boards/:board_id/duplicate: a new board,
+// owned by the caller, holding what they can see of this one -- the same
+// things a backup carries (settings, notes, labels, lists, cards and their
+// checklists), so no comments, pictures, members or share links.
+func ( handlers *Handlers ) DuplicateBoard( c fiber.Ctx ) ( err error ) {
+	principal , board , err := handlers.requireBoard( c , access.View )
+	if board == nil { return }
+	var body duplicateBoardRequest
+	if ok , bind_err := bindBody( c , &body ); ok == false { return bind_err }
+	copied , refused := handlers.duplicateBoard( principal , board , body.Title )
+	if refused != nil {
+		err = refused.send( c )
+		return
+	}
+	err = c.JSON( fiber.Map{ "id": copied.ID , "slug": copied.Slug } )
+	return
+}
+
+// duplicateBoard is shared with the MCP duplicate_board tool. It is the
+// backup import run straight from a snapshot; a copy that fails partway is
+// removed again.
+func ( handlers *Handlers ) duplicateBoard( principal *access.Principal , board *models.Board , title string ) ( copied *models.Board , refused *refusal ) {
+	cards , list_err := models.ListCards( handlers.Store , board.ID )
+	if list_err != nil {
+		refused = internalFailure( list_err )
+		return
+	}
+	visible := func( card *models.Card ) bool { return access.Card( principal , board , card ) != access.None }
+	snap := models.SnapshotBoard( board , cards , visible , access.ListOnly( principal , board ) , handlers.personNamer() )
+	snap.Title = title
+	snap.Slug = ""
+	copied , lists , import_err := models.ImportBoardSkeleton( handlers.Store , principal.UserID , snap )
+	if import_err != nil {
+		refused = modelRefusal( import_err )
+		return
+	}
+	for index , list := range snap.Lists {
+		for start := 0 ; start < len( list.Cards ) ; start += duplicateChunk {
+			end := min( start + duplicateChunk , len( list.Cards ) )
+			if _ , cards_err := models.ImportCards( handlers.Store , copied.ID , lists[ index ] , snap.Labels , list.Cards[ start:end ] , principal.UserID , principal.Name ) ; cards_err != nil {
+				models.DeleteBoard( handlers.Store , copied.ID )
+				copied = nil
+				refused = modelRefusal( cards_err )
+				return
+			}
+		}
+	}
+	return
+}
+
 // DeleteBoard needs the owner and a browser session: it cannot be undone,
 // so a leaked API key must not be able to do it.
 func ( handlers *Handlers ) DeleteBoard( c fiber.Ctx ) ( err error ) {
