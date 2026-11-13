@@ -428,6 +428,9 @@ progress { accent-color: var(--app-second); }
    screen can be several cards, so .view is a column of them. */
 .view:not(.view-active) { display: none; }
 .view-stack { display: flex; flex-direction: column; gap: var(--gap); }
+/* The Appearance screen is a list beside a live preview and color grid,
+   so it takes the whole width rather than the settings forms' 72rem. */
+.app-main:has(.view-active[data-view="appearance"]) { max-width: none; }
 
 /* Signed out, the lone card stays a readable width. */
 #signed-out, #login-confirm, #join { width: 100%; max-width: 40rem; margin: 0 auto; }
