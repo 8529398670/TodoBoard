@@ -665,6 +665,8 @@ home:
   folder_parent_label: "Inside"
   folder_parent_none: "Top level"
   folder_menu: "Folder options"
+  folder_new_board_heading: "New board in this folder"
+  folder_edit_heading: "Rename or move"
   folder_count: "{n}"
   unfiled: "Unfiled"
   open_symbol: "▾"

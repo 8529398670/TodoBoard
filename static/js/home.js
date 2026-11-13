@@ -454,9 +454,11 @@ const Home = {
     } ) );
   },
 
-  // New folder (folder null), or rename / move / delete one.
+  // New folder (folder null), or an existing one's options: start a board
+  // in it, rename / move it, delete it.
   editFolder( folder ) {
     Panel.open( "home.folder_title" , ( body ) => {
+      if ( folder ) body.appendChild( this.newBoardSection( folder ) );
       const form = Dom.el( "form" , { attrs: { autocomplete: "off" } } );
       const name = Dom.el( "input" , { class: "form-control" , attrs: { maxlength: "80" , required: "" , placeholder: T( "home.folder_name_placeholder" ) } } );
       name.value = folder ? folder.name : "";
@@ -481,7 +483,14 @@ const Home = {
         }
         await this.refresh();
       } );
-      body.appendChild( form );
+      if ( folder ) {
+        const section = Dom.el( "section" , { class: "panel-section" } );
+        section.appendChild( Dom.el( "h3" , { text: T( "home.folder_edit_heading" ) } ) );
+        section.appendChild( form );
+        body.appendChild( section );
+      } else {
+        body.appendChild( form );
+      }
       if ( folder ) {
         body.appendChild( Ui.button( "home.delete_folder" , async () => {
           if ( !window.confirm( I18n.fill( "home.delete_folder_confirm" , { name: folder.name } ) ) ) return;
@@ -495,8 +504,29 @@ const Home = {
           await this.refresh();
         } , "secondary small danger" ) );
       }
-      window.setTimeout( function () { name.focus(); } , 0 );
+      if ( !folder ) window.setTimeout( function () { name.focus(); } , 0 );
     } );
+  },
+
+  // The folder menu's quick start: a board that opens already filed here.
+  newBoardSection( folder ) {
+    const section = Dom.el( "section" , { class: "panel-section" } );
+    section.appendChild( Dom.el( "h3" , { text: T( "home.folder_new_board_heading" ) } ) );
+    const form = Dom.el( "form" , { attrs: { autocomplete: "off" } } );
+    const title = Dom.el( "input" , { class: "form-control" , attrs: { maxlength: "120" , required: "" } } );
+    form.appendChild( Ui.field( "home.board_title_label" , title ) );
+    form.appendChild( Dom.el( "button" , { class: "btn btn-primary" , text: T( "home.create_button" ) , attrs: { type: "submit" } } ) );
+    form.addEventListener( "submit" , async ( event ) => {
+      event.preventDefault();
+      try {
+        await this.createBoard( title.value , folder.id );
+      } catch ( error ) {
+        Ui.error( error );
+      }
+    } );
+    section.appendChild( form );
+    window.setTimeout( function () { title.focus(); } , 0 );
+    return section;
   },
 
   // The keyboard and touch way to file a board.
@@ -519,13 +549,19 @@ const Home = {
 
   async onCreate( event ) {
     event.preventDefault();
-    const input = Dom.get( "new-board-title" );
-    const lists = T( "home.default_lists" ).split( "," ).map( function ( name ) { return name.trim(); } ).filter( Boolean );
     try {
-      const created = await Api.post( "/api/boards" , { title: input.value.trim() , lists: lists } );
-      window.location.href = "/b/" + ( created.slug || created.id );
+      await this.createBoard( Dom.get( "new-board-title" ).value , 0 );
     } catch ( error ) {
       App.showError( error.message );
     }
+  },
+
+  // Makes a board with the default lists, files it in folderId (0 for none)
+  // and opens it.
+  async createBoard( title , folderId ) {
+    const lists = T( "home.default_lists" ).split( "," ).map( function ( name ) { return name.trim(); } ).filter( Boolean );
+    const created = await Api.post( "/api/boards" , { title: title.trim() , lists: lists } );
+    if ( folderId ) await Api.post( "/api/boards/" + created.id + "/folder" , { folder_id: folderId } );
+    window.location.href = "/b/" + ( created.slug || created.id );
   },
 };
