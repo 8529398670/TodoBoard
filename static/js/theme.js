@@ -201,6 +201,8 @@ const Theme = {
     const copy = Object.assign( {} , theme );
     copy.overrides = Object.assign( {} , theme.overrides || {} );
     if ( theme.button ) copy.button = Object.assign( {} , theme.button );
+    // TodoBoard: the labels that come with the theme.
+    if ( Array.isArray( theme.labels ) ) copy.labels = theme.labels.map( ( label ) => Object.assign( {} , label ) );
     Object.keys( this.modes ).forEach( ( mode ) => {
       if ( theme[ mode ] ) copy[ mode ] = Object.assign( {} , theme[ mode ] , { overrides: Object.assign( {} , theme[ mode ].overrides || {} ) } );
     } );

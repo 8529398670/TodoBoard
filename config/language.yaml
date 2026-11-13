@@ -1223,6 +1223,17 @@ theme:
   board_own: "A theme for this board"
   board_start: "Start from one of your themes"
   board_start_pick: "Pick a theme…"
+  board_labels_added: "Theme saved. Labels from it: {added} added, {updated} recolored."
+  # A theme's own labels, added to a board when the theme is picked for it.
+  labels_heading: "Labels"
+  labels_help: "Labels that come with this theme. Picking it for a board in Board settings adds them to the board; a board label with the same name takes this color, and the board keeps its other labels."
+  labels_none: "No labels in this theme yet."
+  label_delete: "Delete label"
+  # Admins, on a theme in My themes.
+  to_defaults: "Save to defaults for everyone"
+  to_defaults_added: "\"{name}\" added to the defaults for everyone."
+  to_defaults_replaced: "\"{name}\" updated in the defaults for everyone."
+  to_defaults_full: "The defaults already have the most themes there can be (40)."
 
 color_picker:
   default: "Default"
@@ -1511,6 +1522,8 @@ undo:
   theme_reset: "colors reset"
   theme_defaults_mine: "back to the default themes"
   theme_defaults: "default themes change"
+  theme_labels: "theme labels change"
+  theme_to_defaults: "theme saved to the defaults"
 
 # The MCP card on Account (static/js/mcp.js): an API key set up for an agent.
 mcp:

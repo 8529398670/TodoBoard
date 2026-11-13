@@ -113,10 +113,19 @@ const ThemeEditor = {
   board( root , context ) {
     const self = this;
     const theme = () => { const board = context().board; return board.theme ? Theme.fromDisplay( board.theme , "board" , "" ) : null; };
-    const store = async ( display ) => {
+    // labels: a theme's own, when one is picked for the board; they are added
+    // to the board's labels (ThemeEditor.mergeLabels).
+    const store = async ( display , labels ) => {
       const ctx = context();
-      const result = await ctx.mutate( function () { return ctx.client.updateBoard( display ? { theme: display } : { clear_theme: true } ); } );
-      if ( result ) Ui.toast( I18n.get( "settings.saved" ) , "ok" );
+      let counts = null;
+      const result = await ctx.mutate( async function () {
+        const reply = await ctx.client.updateBoard( display ? { theme: display } : { clear_theme: true } );
+        if ( labels && labels.length ) counts = await self.mergeLabels( ctx , labels );
+        return reply;
+      } );
+      if ( result && counts && ( counts.added || counts.updated ) ) {
+        Ui.toast( I18n.get( "theme.board_labels_added" ).replace( "{added}" , counts.added ).replace( "{updated}" , counts.updated ) , "ok" );
+      } else if ( result ) Ui.toast( I18n.get( "settings.saved" ) , "ok" );
       editor.render();
     };
     // Whose theme the board shows, and a theme to start from: any in the
@@ -129,7 +138,8 @@ const ThemeEditor = {
         const input = Dom.el( "input" , { class: "btn-check" , attrs: { type: "radio" , name: root.id + "-own" , id: id , "data-focus": "own:" + pair[ 0 ] } } );
         input.checked = own === pair[ 0 ];
         input.addEventListener( "change" , function () {
-          store( pair[ 0 ] ? Theme.toDisplay( Theme.find( Theme.current ) ) : null );
+          const picked = Theme.find( Theme.current );
+          store( pair[ 0 ] ? Theme.toDisplay( picked ) : null , pair[ 0 ] ? picked.labels : null );
         } );
         group.appendChild( input );
         group.appendChild( Dom.el( "label" , { class: "btn btn-outline-secondary" , text: I18n.get( pair[ 1 ] ) , attrs: { for: id } } ) );
@@ -142,7 +152,9 @@ const ThemeEditor = {
           select.appendChild( Dom.el( "option" , { text: item.name , attrs: { value: item.id } } ) );
         } );
         select.addEventListener( "change" , function () {
-          if ( select.value ) store( Theme.toDisplay( Theme.find( select.value ) ) );
+          if ( !select.value ) return;
+          const picked = Theme.find( select.value );
+          store( Theme.toDisplay( picked ) , picked.labels );
         } );
         children.push( Dom.el( "div" , { children: [
           Dom.el( "label" , { class: "form-label" , text: I18n.get( "theme.board_start" ) , attrs: { for: root.id + "-start" } } ),
@@ -165,6 +177,54 @@ const ThemeEditor = {
     } );
     editor.render();
     return editor;
+  },
+
+  // Adds a theme's labels to a board: a board label with the same name (case
+  // aside) takes the theme's color, any other is made, up to the board's 50.
+  // Labels the theme does not have are left alone, so no card loses one.
+  // Each is an ordinary label call, so the board's Undo takes them back.
+  async mergeLabels( ctx , labels ) {
+    const counts = { added: 0 , updated: 0 };
+    const key = ( label ) => String( label.name || "" ).trim().toLowerCase() || "color:" + label.color;
+    const have = new Map( ctx.board.labels.map( ( label ) => [ key( label ) , label ] ) );
+    let total = ctx.board.labels.length;
+    for ( const label of labels ) {
+      const found = have.get( key( label ) );
+      if ( found ) {
+        if ( found.color !== label.color ) {
+          await ctx.client.updateLabel( found.id , { color: label.color } );
+          counts.updated += 1;
+        }
+        continue;
+      }
+      if ( total >= 50 ) break;
+      const made = await ctx.client.createLabel( label.name || "" , label.color );
+      have.set( key( label ) , made || label );
+      total += 1;
+      counts.added += 1;
+    }
+    return counts;
+  },
+
+  // Admins: a copy of one of their own themes into the defaults for everyone.
+  // A default with the same id (one they started from) is replaced in place;
+  // otherwise it goes on the end. Undoable like any change to the defaults.
+  async toDefaults( theme ) {
+    const list = ( this.defaults || Theme.builtIn.map( ( item ) => Theme.named( item ) ) ).map( ( item ) => Theme.copy( item ) );
+    const copy = Theme.copy( theme );
+    const at = list.findIndex( ( item ) => item.id === copy.id );
+    if ( at < 0 && list.length >= 40 ) {
+      Dom.toast( I18n.get( "theme.to_defaults_full" ) , "error" );
+      return;
+    }
+    if ( at >= 0 ) list[ at ] = copy;
+    else list.push( copy );
+    try {
+      await this.saveDefaults( list , { label: "undo.theme_to_defaults" } );
+      Dom.toast( I18n.get( at >= 0 ? "theme.to_defaults_replaced" : "theme.to_defaults_added" ).replace( "{name}" , () => theme.name ) , "success" );
+    } catch ( error ) {
+      Dom.toast( Dom.worded( error ) , "error" );
+    }
   },
 
   // A guest's themes on a share link: the built-in ones, as buttons, the one
@@ -305,6 +365,13 @@ const ThemeEditor = {
           copy.button = Object.assign( Theme.button( copy ) , { [ key ]: value } );
         } ) , undefined , { label: "undo.theme_button" , merge: "theme:" + theme.id + ":button:" + key } );
       },
+      // TodoBoard: the theme's whole list of labels, replaced.
+      labels( theme , labels , merge ) {
+        return save( edited( theme , ( copy ) => {
+          if ( labels.length ) copy.labels = labels;
+          else delete copy.labels;
+        } ) , undefined , { label: "undo.theme_labels" , merge: merge ? "theme:" + theme.id + ":labels:" + merge : undefined } );
+      },
       resetFine( theme ) {
         return save( edited( theme , ( copy ) => { copy.overrides = {}; } ) , undefined , { label: "undo.theme_reset" } );
       },
@@ -400,6 +467,55 @@ const ThemeEditor = {
         group.appendChild( Dom.el( "label" , { class: "btn btn-outline-secondary" , text: I18n.get( "theme." + key + "_" + value ) , attrs: { for: id } } ) );
       } );
       return Dom.el( "div" , { class: "theme-choice" , children: [ Dom.el( "span" , { class: "form-label mb-0" , text: label } ) , group ] } );
+    };
+
+    // A theme's labels, edited as a board's are in Board settings: a name and
+    // a color for each, and a form to add one. Every change saves the list.
+    const labelsPane = ( theme ) => {
+      const current = () => ( theme.labels || [] ).map( ( label ) => Object.assign( {} , label ) );
+      const wrap = Dom.el( "div" , { class: "theme-labels" } );
+      const list = Dom.el( "ul" , { class: "label-editor" } );
+      ( theme.labels || [] ).forEach( ( label , index ) => {
+        const name = Dom.el( "input" , { class: "form-control" , attrs: { maxlength: "40" , "aria-label": I18n.get( "settings.label_name" ) ,
+          "data-focus": "label-name:" + index } } );
+        name.value = label.name || "";
+        name.addEventListener( "change" , () => {
+          const next = current();
+          next[ index ].name = name.value.trim();
+          actions.labels( theme , next );
+        } );
+        const color = ColorPicker.label( label.color , ( value ) => {
+          const next = current();
+          next[ index ].color = value;
+          actions.labels( theme , next , "color:" + index );
+        } , { labelKey: "settings.label_color" } );
+        const remove = Dom.el( "button" , { class: "btn btn-sm btn-outline-danger" , attrs: { type: "button" ,
+          title: I18n.get( "theme.label_delete" ) , "aria-label": I18n.get( "theme.label_delete" ) } ,
+          children: [ Dom.el( "i" , { class: "bi bi-trash" , attrs: { "aria-hidden": "true" } } ) ] ,
+          on: { click: () => actions.labels( theme , current().filter( ( item , at ) => at !== index ) ) } } );
+        const chip = Tone.paint( Dom.el( "span" , { class: "label-chip " + Tone.className( label.color ) , text: label.name || "\u00a0" } ) , label.color );
+        list.appendChild( Dom.el( "li" , { class: "label-row" , children: [ chip , name , color , remove ] } ) );
+      } );
+      if ( !( theme.labels || [] ).length ) wrap.appendChild( Dom.el( "p" , { class: "small text-body-secondary mb-2" , text: I18n.get( "theme.labels_none" ) } ) );
+      wrap.appendChild( list );
+      if ( ( theme.labels || [] ).length >= 50 ) return wrap;
+      const form = Dom.el( "form" , { class: "theme-label-add" , attrs: { autocomplete: "off" } } );
+      const name = Dom.el( "input" , { class: "form-control" , attrs: { maxlength: "40" , id: root.id + "-label-new" ,
+        placeholder: I18n.get( "settings.label_name_placeholder" ) , "data-focus": "label-new" } } );
+      let newColor = Colors[ ( theme.labels || [] ).length % Colors.length ];
+      const color = ColorPicker.label( newColor , ( value ) => { newColor = value; } , { labelKey: "settings.label_color" } );
+      form.appendChild( Dom.el( "div" , { class: "mb-2" , children: [
+        Dom.el( "label" , { class: "form-label" , text: I18n.get( "settings.label_name" ) , attrs: { for: root.id + "-label-new" } } ) , name ] } ) );
+      form.appendChild( Dom.el( "div" , { class: "mb-2" , children: [
+        Dom.el( "span" , { class: "form-label d-block" , text: I18n.get( "settings.label_color" ) } ) , color ] } ) );
+      form.appendChild( Dom.el( "button" , { class: "btn btn-sm btn-primary" , attrs: { type: "submit" , "data-focus": "label-add" } ,
+        children: [ Dom.el( "i" , { class: "bi bi-plus-lg" , attrs: { "aria-hidden": "true" } } ) , Dom.el( "span" , { text: " " + I18n.get( "settings.add_label" ) } ) ] } ) );
+      form.addEventListener( "submit" , ( event ) => {
+        event.preventDefault();
+        actions.labels( theme , current().concat( [ { name: name.value.trim() , color: newColor } ] ) );
+      } );
+      wrap.appendChild( form );
+      return wrap;
     };
 
     const editPane = ( theme ) => {
@@ -519,8 +635,21 @@ const ThemeEditor = {
       main.push( Dom.el( "div" , { class: "d-flex flex-wrap align-items-baseline gap-3 mt-4 mb-1" , children: fineHeader } ) );
       main.push( Dom.el( "p" , { class: "small text-body-secondary" , text: I18n.get( "theme.fine_help" ) } ) );
       main.push( fine );
+      // TodoBoard: the labels that come with the theme. A board's own theme
+      // has none here: its labels are the board's, in Board settings.
+      if ( !source.single ) {
+        main.push( Dom.el( "h4" , { class: "h6 mt-4 mb-1" , text: I18n.get( "theme.labels_heading" ) } ) );
+        main.push( Dom.el( "p" , { class: "small text-body-secondary" , text: I18n.get( "theme.labels_help" ) } ) );
+        main.push( labelsPane( theme ) );
+      }
       // The preview and anything hard to read first, then the colors.
       const top = [ modeGroup ];
+      // Admins: this theme, labels and all, into the defaults for everyone.
+      if ( source.kind === "mine" && self.me && self.me.role === "admin" ) {
+        top.push( Dom.el( "button" , { class: "btn btn-sm btn-outline-secondary ms-sm-auto" , attrs: { type: "button" , "data-focus": "to-defaults" } ,
+          children: [ Dom.el( "i" , { class: "bi bi-cloud-upload" , attrs: { "aria-hidden": "true" } } ) , Dom.el( "span" , { text: " " + I18n.get( "theme.to_defaults" ) } ) ] ,
+          on: { click: () => self.toDefaults( theme ) } } ) );
+      }
       if ( name ) top.unshift( Dom.el( "h3" , { class: "h5 mb-0" , children: [ name ] } ) );
       const children = [ Dom.el( "div" , { class: "d-flex flex-wrap align-items-center gap-2 mb-3" , children: top } ) ]
         .concat( aside , [ Dom.el( "div" , { class: "mt-3" , children: main } ) ] );

@@ -80,3 +80,25 @@ func TestBoardTheme( t *testing.T ) {
 	if err != nil { t.Fatal( err ) }
 	if updated.Theme != nil { t.Errorf( "clear_theme should go back to each person's own: %+v" , updated.Theme ) }
 }
+
+// A theme's labels are cleaned like a board's: names trimmed, colors a
+// palette name or #rrggbb in lower case; anything else is refused.
+func TestCleanThemesLabels( t *testing.T ) {
+	base := Theme{ ID: "t1" , Name: "One" , Mode: "light" , Accent: "#112233" , Second: "#445566" }
+	good := base
+	good.Labels = []ThemeLabel{ { Name: " Urgent " , Color: "red" } , { Name: "" , Color: "#AABBCC" } }
+	cleaned , err := CleanThemes( []Theme{ good } )
+	if err != nil { t.Fatal( err ) }
+	labels := cleaned[ 0 ].Labels
+	if len( labels ) != 2 || labels[ 0 ].Name != "Urgent" || labels[ 1 ].Color != "#aabbcc" {
+		t.Errorf( "labels not cleaned: %+v" , labels )
+	}
+	for _ , label := range []ThemeLabel{ { Name: "x" , Color: "url(x)" } , { Name: "x" , Color: "" } , { Name: string( make( []rune , 41 ) ) , Color: "red" } } {
+		bad := base
+		bad.Labels = []ThemeLabel{ label }
+		if _ , err := CleanThemes( []Theme{ bad } ); err == nil { t.Errorf( "%+v should be refused" , label ) }
+	}
+	many := base
+	for len( many.Labels ) <= MaxThemeLabels { many.Labels = append( many.Labels , ThemeLabel{ Color: "red" } ) }
+	if _ , err := CleanThemes( []Theme{ many } ); err == nil { t.Error( "too many labels should be refused" ) }
+}

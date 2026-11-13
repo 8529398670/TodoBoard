@@ -33,6 +33,9 @@ import (
 const (
 	MaxThemes         = 40
 	MaxThemeNameRunes = 60
+	// A theme's labels: the same limits as a board's (AddLabel).
+	MaxThemeLabels         = 50
+	MaxThemeLabelNameRunes = 40
 	metaThemeDefaultsKey = "theme_defaults"
 )
 
@@ -50,6 +53,39 @@ type Theme struct {
 	// light theme's Dark, a dark theme's Light. Switching mode swaps them in.
 	Light *ThemeColors `json:"light,omitempty"`
 	Dark  *ThemeColors `json:"dark,omitempty"`
+	// TodoBoard: labels that come with the theme. Picking the theme for a
+	// board adds them to the board's labels (a label of the same name takes
+	// the theme's color); the board keeps any others it has.
+	Labels []ThemeLabel `json:"labels,omitempty"`
+}
+
+// ThemeLabel is one of a theme's labels: a name and a color, as a board
+// label's (ValidLabelColor: a palette name or a #rrggbb).
+type ThemeLabel struct {
+	Name  string `json:"name"`
+	Color string `json:"color"`
+}
+
+// cleanThemeLabels checks a theme's labels; nil when it has none.
+func cleanThemeLabels( id string , labels []ThemeLabel ) ( result []ThemeLabel , err error ) {
+	if len( labels ) > MaxThemeLabels {
+		err = fmt.Errorf( "theme %s: at most %d labels" , id , MaxThemeLabels )
+		return
+	}
+	for _ , label := range labels {
+		label.Name = strings.TrimSpace( label.Name )
+		label.Color = strings.ToLower( strings.TrimSpace( label.Color ) )
+		if utf8.RuneCountInString( label.Name ) > MaxThemeLabelNameRunes {
+			err = fmt.Errorf( "theme %s: a label name of up to %d characters" , id , MaxThemeLabelNameRunes )
+			return
+		}
+		if ValidLabelColor( label.Color ) == false {
+			err = fmt.Errorf( "theme %s: label color %q is not a palette color or #rrggbb" , id , label.Color )
+			return
+		}
+		result = append( result , label )
+	}
+	return
 }
 
 // ThemeColors is one mode's colors, kept on a theme while the other is in use.
@@ -197,6 +233,7 @@ func CleanThemes( themes []Theme ) ( result []Theme , err error ) {
 			*kept = &cleaned
 		}
 		if theme.Button , err = cleanThemeButton( theme.ID , theme.Button ); err != nil { return }
+		if theme.Labels , err = cleanThemeLabels( theme.ID , theme.Labels ); err != nil { return }
 		result = append( result , theme )
 	}
 	return

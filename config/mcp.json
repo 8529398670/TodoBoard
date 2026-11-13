@@ -403,7 +403,7 @@
         "readOnlyHint": false,
         "title": "Replace your own themes"
       },
-      "description": "Replace your whole list of color themes (1 to 40) and pick the one you use. themes: null goes back to following the app's defaults. A theme is the Theme schema in the API reference (config/openapi.json): id, name, mode light|dark, accent, second, and optional colors as #rrggbb. whoami shows the current list.",
+      "description": "Replace your whole list of color themes (1 to 40) and pick the one you use. themes: null goes back to following the app's defaults. A theme is the Theme schema in the API reference (config/openapi.json): id, name, mode light|dark, accent, second, optional colors as #rrggbb, and optional labels [{name, color}] that are added to a board when the theme is picked for it. whoami shows the current list.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {

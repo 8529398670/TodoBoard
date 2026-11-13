@@ -19155,6 +19155,19 @@
             },
             "description": "Worked-out colors replaced by name: text, accent, accentFg, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, column (a board's columns), face (a board's card faces), and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back."
           },
+          "labels": {
+            "type": "array",
+            "maxItems": 50,
+            "description": "Labels that come with the theme. Picking the theme for a board in Board settings adds them to the board's labels; a board label of the same name takes the theme's color, and the board keeps its others.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": { "type": "string", "description": "Up to 40 characters; may be empty." },
+                "color": { "type": "string", "description": "A palette color name, or #rrggbb." }
+              },
+              "required": [ "color" ]
+            }
+          },
           "button": {
             "type": "object",
             "description": "How the theme's buttons look. A choice left out is the default (rounded, normal, raised, normal).",
