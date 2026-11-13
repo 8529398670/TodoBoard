@@ -23,7 +23,7 @@ import (
 // decision alone. App admin rights grant nothing here, exactly as on the web.
 //
 // What is deliberately missing, beyond the template's list: deleting a
-// board, column, label, card or checklist item (archiving a card through
+// board (archive_board is the reversible way to put one away), column, label, card or checklist item (archiving a card through
 // update_card is the reversible way to clear it), share links, board
 // membership, and backup import. Deleting a board already needs a browser
 // session on the web; the rest either cannot be undone or hands out access.
@@ -92,7 +92,7 @@ func ( handlers *Handlers ) registerBoardTools( server *mcp.Server ) {
 		Name:        "list_boards",
 		Route:       "GET /api/boards",
 		Title:       "List my boards",
-		Description: "Every board you own or are a member of (id, slug, title, your role, folder), your home-page folders, and single cards shared with you from boards you are not on.",
+		Description: "Every board you own or are a member of (id, slug, title, your role, folder, and whether it is archived for everyone -- read-only -- or archived_for_me), your home-page folders, and single cards shared with you from boards you are not on.",
 		ReadOnly:    true,
 		Call: func( call *mcp.Call ) ( result any , err error ) {
 			if err = call.Bind( &struct{}{} ); err != nil { return }
@@ -369,6 +369,33 @@ func ( handlers *Handlers ) registerBoardTools( server *mcp.Server ) {
 				return
 			}
 			result = fiber.Map{ "id": copied.ID , "slug": copied.Slug }
+			return
+		},
+	} )
+
+	server.Register( &mcp.Tool{
+		Name:        "archive_board",
+		Route:       "POST /api/boards/{board_id}/archive",
+		Title:       "Archive or unarchive a board",
+		Description: `scope "everyone" (the owner only): the board leaves every member's home page and becomes read-only -- every change is refused with board_archived -- until it is unarchived the same way. scope "me" (anyone on the board): it only leaves your own home page. list_boards says which applies (archived, archived_for_me).`,
+		InputSchema: objectSchema( fiber.Map{
+			"board":    boardRefSchema,
+			"archived": fiber.Map{ "type": "boolean" , "description": "true archives, false unarchives." },
+			"scope":    fiber.Map{ "type": "string" , "enum": []string{ archiveEveryone , archiveMe } },
+		} , "board" , "archived" , "scope" ),
+		Call: func( call *mcp.Call ) ( result any , err error ) {
+			var args struct {
+				Board    boardRef `json:"board"`
+				Archived *bool    `json:"archived"`
+				Scope    string   `json:"scope"`
+			}
+			if err = call.Bind( &args ); err != nil { return }
+			_ , refused := handlers.archiveBoard( mcpPrincipal( call ) , string( args.Board ) , archiveBoardRequest{ Archived: args.Archived , Scope: args.Scope } )
+			if refused != nil {
+				err = refusalError( refused )
+				return
+			}
+			result = fiber.Map{ "ok": true }
 			return
 		},
 	} )

@@ -156,6 +156,15 @@ type Board struct {
 	// NextCardSerial is the last number given to a card here; 0 until the
 	// board has numbered one (see card_identity.go).
 	NextCardSerial uint64         `json:"next_card_serial"`
+	// ArchivedAt: the owner archived the board for everyone. It drops off
+	// every member's home grid and opens read-only until it is unarchived
+	// (see routes/principal.go). ArchivedBy is the name shown for it.
+	ArchivedAt  *time.Time        `json:"archived_at,omitempty"`
+	ArchivedBy  string            `json:"archived_by,omitempty"`
+	// DeletedAt: the board is in its owner's trash (see board_trash.go). A
+	// trashed board reads as not found everywhere but the trash itself.
+	DeletedAt   *time.Time        `json:"deleted_at,omitempty"`
+	DeletedBy   uint64            `json:"deleted_by,omitempty"`
 	CreatedAt   time.Time         `json:"created_at"`
 	UpdatedAt   time.Time         `json:"updated_at"`
 }
@@ -323,7 +332,20 @@ func CreateBoard( store *db.Store , owner_id uint64 , title string , list_titles
 	return
 }
 
+// GetBoard loads a board that is not in the trash: a trashed board is
+// ErrBoardNotFound here, so every reader stops seeing it without having to
+// know the trash exists (as with trashed cards).
 func GetBoard( store *db.Store , board_id uint64 ) ( board *Board , err error ) {
+	board , err = getBoardAny( store , board_id )
+	if err == nil && board.Trashed() {
+		board = nil
+		err = ErrBoardNotFound
+	}
+	return
+}
+
+// getBoardAny is GetBoard with trashed boards included, for the trash.
+func getBoardAny( store *db.Store , board_id uint64 ) ( board *Board , err error ) {
 	board = &Board{}
 	if err = store.Get( db.BucketBoards , boardKey( board_id ) , board ); err != nil {
 		board = nil
@@ -334,6 +356,18 @@ func GetBoard( store *db.Store , board_id uint64 ) ( board *Board , err error ) 
 	return
 }
 
+// Archived reports whether the owner archived the board for everyone.
+func ( board *Board ) Archived() ( result bool ) {
+	result = board.ArchivedAt != nil
+	return
+}
+
+// Trashed reports whether the board is in its owner's trash.
+func ( board *Board ) Trashed() ( result bool ) {
+	result = board.DeletedAt != nil
+	return
+}
+
 func normalizeBoard( board *Board ) {
 	if board.Members == nil { board.Members = map[uint64]string{} }
 	if board.Lists == nil { board.Lists = []*List{} }
@@ -341,6 +375,15 @@ func normalizeBoard( board *Board ) {
 }
 
 func getBoardTx( tx *db.Tx , board_id uint64 ) ( board *Board , err error ) {
+	board , err = getBoardAnyTx( tx , board_id )
+	if err == nil && board.Trashed() {
+		board = nil
+		err = ErrBoardNotFound
+	}
+	return
+}
+
+func getBoardAnyTx( tx *db.Tx , board_id uint64 ) ( board *Board , err error ) {
 	board = &Board{}
 	if err = tx.Get( db.BucketBoards , boardKey( board_id ) , board ); err != nil {
 		board = nil
@@ -739,6 +782,10 @@ type BoardRef struct {
 	// CollapsedLists: the columns this person keeps folded down to a strip.
 	// Theirs alone, like the rest of this row.
 	CollapsedLists []uint64 `json:"collapsed_lists,omitempty"`
+	// Archived: this person archived the board for themselves -- it moves
+	// off their home grid into Archived, and nobody else sees a change.
+	// Board.ArchivedAt is the owner's archive for everyone.
+	Archived bool `json:"archived,omitempty"`
 }
 
 // GetBoardRef is one person's row for one board, or nil when they are not on
@@ -830,6 +877,10 @@ type BoardSummary struct {
 	OwnerID uint64    `json:"owner_id"`
 	Folder  uint64    `json:"folder_id"`
 	Updated time.Time `json:"updated_at"`
+	// Archived: by the owner, for everyone. ArchivedForMe: by this person,
+	// for themselves alone.
+	Archived      bool `json:"archived"`
+	ArchivedForMe bool `json:"archived_for_me"`
 }
 
 // SharedCardSummary is a card someone shared with this user on a board they
@@ -860,7 +911,7 @@ func ListBoardsForUser( store *db.Store , user_id uint64 ) ( boards []*BoardSumm
 		if get_err != nil { continue }
 		role := board.RoleOf( user_id )
 		if role == "" { continue }
-		boards = append( boards , &BoardSummary{ ID: board.ID , Title: board.Title , Slug: board.Slug , Role: role , Color: board.Color , OwnerID: board.OwnerID , Folder: ref.Folder , Updated: board.UpdatedAt } )
+		boards = append( boards , &BoardSummary{ ID: board.ID , Title: board.Title , Slug: board.Slug , Role: role , Color: board.Color , OwnerID: board.OwnerID , Folder: ref.Folder , Updated: board.UpdatedAt , Archived: board.Archived() , ArchivedForMe: ref.Archived } )
 	}
 	sort.Slice( boards , func( i int , j int ) bool { return boards[ i ].Updated.After( boards[ j ].Updated ) } )
 
@@ -884,18 +935,8 @@ func ListBoardsForUser( store *db.Store , user_id uint64 ) ( boards []*BoardSumm
 	return
 }
 
-// DeleteBoard removes the board and everything hanging off it: cards, index
-// rows, share links, and subscriptions.
-func DeleteBoard( store *db.Store , board_id uint64 ) ( err error ) {
-	err = store.Write( func( tx *db.Tx ) ( tx_err error ) {
-		tx_err = deleteBoardTx( tx , board_id )
-		return
-	} )
-	return
-}
-
 func deleteBoardTx( tx *db.Tx , board_id uint64 ) ( err error ) {
-	board , err := getBoardTx( tx , board_id )
+	board , err := getBoardAnyTx( tx , board_id )
 	if err != nil { return }
 
 	cards := []*Card{}
@@ -943,7 +984,9 @@ func removeBoardAccessTx( tx *db.Tx , user_id uint64 , heir_id uint64 ) ( err er
 		} )
 	if err != nil { return }
 	for board_id := range refs {
-		board , get_err := getBoardTx( tx , board_id )
+		// Trashed boards too: one in the trash passes to the heir, still in
+		// the trash, like any other.
+		board , get_err := getBoardAnyTx( tx , board_id )
 		if get_err != nil { continue }
 		delete( board.Members , user_id )
 		if board.OwnerID == user_id {

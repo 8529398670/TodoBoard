@@ -197,7 +197,7 @@ func ( handlers *Handlers ) boardPayload( principal *access.Principal , board *m
 	// A link showing only some columns may still edit cards in those; the
 	// page offers that, and nothing board-wide (columns_only).
 	columns_only := principal.Share != nil && principal.Share.BoardID == board.ID && principal.Share.Restricted()
-	if columns_only && principal.Share.Mode == models.ModeEdit { reported = access.Edit }
+	if columns_only && principal.Share.Mode == models.ModeEdit && board.Archived() == false { reported = access.Edit }
 
 	visible := []fiber.Map{}
 	visible_lists := map[uint64]bool{}
@@ -258,6 +258,7 @@ func ( handlers *Handlers ) boardPayload( principal *access.Principal , board *m
 			// has a row to save theirs in.
 			me[ "collapsed_lists" ] = ref.CollapsedLists
 			if ref.CollapsedLists == nil { me[ "collapsed_lists" ] = []uint64{} }
+			me[ "archived" ] = ref.Archived
 		}
 	}
 
@@ -284,6 +285,10 @@ func ( handlers *Handlers ) boardPayload( principal *access.Principal , board *m
 		"lists":        lists,
 		"labels":       board.Labels,
 		"members":      members,
+		// Archived for everyone: the page shows it read-only, with the
+		// owner's Unarchive.
+		"archived_at":  board.ArchivedAt,
+		"archived_by":  board.ArchivedBy,
 	}
 	// The people working on the board decide what to share; a guest has no
 	// use for it.
@@ -464,7 +469,7 @@ func ( handlers *Handlers ) duplicateBoard( principal *access.Principal , board 
 		for start := 0 ; start < len( list.Cards ) ; start += duplicateChunk {
 			end := min( start + duplicateChunk , len( list.Cards ) )
 			if _ , cards_err := models.ImportCards( handlers.Store , copied.ID , lists[ index ] , snap.Labels , list.Cards[ start:end ] , principal.UserID , principal.Name ) ; cards_err != nil {
-				models.DeleteBoard( handlers.Store , copied.ID )
+				models.PurgeBoard( handlers.Store , copied.ID )
 				copied = nil
 				refused = modelRefusal( cards_err )
 				return
@@ -474,16 +479,119 @@ func ( handlers *Handlers ) duplicateBoard( principal *access.Principal , board 
 	return
 }
 
-// DeleteBoard needs the owner and a browser session: it cannot be undone,
-// so a leaked API key must not be able to do it.
+// DeleteBoard moves the board to its owner's trash, archived or not. It
+// still needs the owner and a browser session: a leaked API key must not be
+// able to take a board away from everyone on it, even for a while.
 func ( handlers *Handlers ) DeleteBoard( c fiber.Ctx ) ( err error ) {
-	_ , board , err := handlers.requireBoard( c , access.Manage )
+	principal , board , err := handlers.boardFor( c )
 	if board == nil { return }
-	if delete_err := models.DeleteBoard( handlers.Store , board.ID ); delete_err != nil {
-		err = modelError( c , delete_err )
+	if access.Owner( principal , board ) == false {
+		err = forbidden( c , "forbidden" )
+		return
+	}
+	if trash_err := models.TrashBoard( handlers.Store , board.ID , principal.UserID ); trash_err != nil {
+		err = modelError( c , trash_err )
 		return
 	}
 	err = c.JSON( fiber.Map{ "ok": true } )
+	return
+}
+
+// Archive scopes: for everyone on the board (the owner's), or off the
+// caller's own home page.
+const (
+	archiveEveryone = "everyone"
+	archiveMe       = "me"
+)
+
+type archiveBoardRequest struct {
+	Archived *bool  `json:"archived"`
+	Scope    string `json:"scope"`
+}
+
+// ArchiveBoard archives or unarchives a board. For everyone it is the
+// owner's, and works on an archived board -- it is how one is unarchived.
+// For me, anyone on the board, but not a key held to some boards: like
+// folders, it is the person's own home page.
+func ( handlers *Handlers ) ArchiveBoard( c fiber.Ctx ) ( err error ) {
+	var body archiveBoardRequest
+	if ok , bind_err := bindBody( c , &body ); ok == false { return bind_err }
+	_ , refused := handlers.archiveBoard( principalFrom( c ) , c.Params( "board_id" ) , body )
+	if refused != nil {
+		err = refused.send( c )
+		return
+	}
+	err = c.JSON( fiber.Map{ "ok": true } )
+	return
+}
+
+// archiveBoard is ArchiveBoard for both doors, the page and MCP.
+func ( handlers *Handlers ) archiveBoard( principal *access.Principal , ref string , body archiveBoardRequest ) ( board *models.Board , refused *refusal ) {
+	if body.Archived == nil || ( body.Scope != archiveEveryone && body.Scope != archiveMe ) {
+		refused = refuse( fiber.StatusBadRequest , "invalid_input" )
+		return
+	}
+	board , refused = handlers.loadBoard( principal , ref )
+	if refused != nil { return }
+	var model_err error
+	switch {
+	case principal.IsGuest() || access.Board( principal , board ) == access.None:
+		refused = refuse( fiber.StatusForbidden , "forbidden" )
+	case body.Scope == archiveEveryone && access.Owner( principal , board ) == false:
+		refused = refuse( fiber.StatusForbidden , "forbidden" )
+	case body.Scope == archiveMe && principal.Key.Limited():
+		refused = refuse( fiber.StatusForbidden , "forbidden" )
+	case body.Scope == archiveEveryone:
+		board , model_err = models.SetBoardArchived( handlers.Store , board.ID , *body.Archived , principal.Name )
+	default:
+		model_err = models.SetBoardArchivedFor( handlers.Store , principal.UserID , board.ID , *body.Archived )
+	}
+	if model_err != nil { refused = modelRefusal( model_err ) }
+	if refused != nil { board = nil }
+	return
+}
+
+// The board trash: the caller's own boards they deleted, which stay until
+// restored or deleted for good. A browser session only, like delete.
+
+func ( handlers *Handlers ) ListBoardTrash( c fiber.Ctx ) ( err error ) {
+	boards , list_err := models.ListTrashedBoards( handlers.Store , principalFrom( c ).UserID )
+	if list_err != nil {
+		err = serverError( c )
+		return
+	}
+	err = c.JSON( fiber.Map{ "boards": boards } )
+	return
+}
+
+func ( handlers *Handlers ) RestoreBoard( c fiber.Ctx ) ( err error ) {
+	board_id , _ := paramID( c , "board_id" )
+	board , restore_err := models.RestoreBoard( handlers.Store , principalFrom( c ).UserID , board_id )
+	if restore_err != nil {
+		err = modelError( c , restore_err )
+		return
+	}
+	err = c.JSON( fiber.Map{ "id": board.ID , "slug": board.Slug } )
+	return
+}
+
+func ( handlers *Handlers ) PurgeBoard( c fiber.Ctx ) ( err error ) {
+	board_id , _ := paramID( c , "board_id" )
+	if purge_err := models.PurgeTrashedBoard( handlers.Store , principalFrom( c ).UserID , board_id ); purge_err != nil {
+		err = modelError( c , purge_err )
+		return
+	}
+	err = c.JSON( fiber.Map{ "ok": true } )
+	return
+}
+
+func ( handlers *Handlers ) EmptyBoardTrash( c fiber.Ctx ) ( err error ) {
+	removed , empty_err := models.EmptyBoardTrash( handlers.Store , principalFrom( c ).UserID )
+	if empty_err != nil {
+		err = modelError( c , empty_err )
+		return
+	}
+	err = c.JSON( fiber.Map{ "removed": removed } )
 	return
 }
 

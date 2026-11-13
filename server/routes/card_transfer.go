@@ -41,14 +41,18 @@ func ( handlers *Handlers ) cardTransfer( principal *access.Principal , board *m
 		return
 	}
 	if access.List( principal , target , body.ListID ) < access.Edit {
-		refused = refuse( fiber.StatusForbidden , "forbidden" )
+		refused = writeRefusal( target , access.Edit )
 		return
 	}
 	place := models.TransferPlace{ BoardID: target.ID , ListID: body.ListID , Top: body.Top , Position: body.Position }
 	var model_err error
 	if send {
-		if target.ID == board.ID || access.Board( principal , board ) < access.Edit {
+		if target.ID == board.ID {
 			refused = refuse( fiber.StatusForbidden , "forbidden" )
+			return
+		}
+		if access.Board( principal , board ) < access.Edit {
+			refused = writeRefusal( board , access.Edit )
 			return
 		}
 		result , model_err = models.SendCard( handlers.Store , board.ID , card.ID , place , principal.Name )
@@ -58,7 +62,7 @@ func ( handlers *Handlers ) cardTransfer( principal *access.Principal , board *m
 			return
 		}
 		if body.Mirror != models.MirrorNone && access.Card( principal , board , card ) < access.Edit {
-			refused = refuse( fiber.StatusForbidden , "forbidden" )
+			refused = writeRefusal( board , access.Edit )
 			return
 		}
 		result , model_err = models.CopyCard( handlers.Store , board.ID , card.ID , place , body.Mirror , principal.UserID , principal.Name )

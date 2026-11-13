@@ -90,7 +90,7 @@ func ( handlers *Handlers ) AddComment( c fiber.Ctx ) ( err error ) {
 // addComment is posting a comment for both doors, the page and MCP.
 func ( handlers *Handlers ) addComment( principal *access.Principal , board *models.Board , card *models.Card , text string ) ( comment *models.Comment , refused *refusal ) {
 	if access.CanComment( principal , board , card ) == false {
-		refused = refuse( fiber.StatusForbidden , "forbidden" )
+		refused = writeRefusal( board , access.Edit )
 		return
 	}
 	name , named := access.CommentName( principal , board )

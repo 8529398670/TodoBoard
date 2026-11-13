@@ -9284,7 +9284,7 @@
     },
     "/api/boards/{board_id}/delete": {
       "post": {
-        "summary": "Delete a board",
+        "summary": "Move a board to the trash",
         "operationId": "post_api_boards_board_id_delete",
         "tags": [
           "Boards"
@@ -9294,7 +9294,7 @@
             "sessionCookie": []
           }
         ],
-        "description": "Cannot be undone, so it takes a session: a leaked key must not be able to do it.",
+        "description": "Moves the board to its owner's board trash (see /api/board-trash), archived or not; everyone on it loses it until it is restored. Takes a session: a leaked key must not be able to take a board away.",
         "x-board-access": "manage",
         "parameters": [
           {
@@ -16294,6 +16294,354 @@
           }
         }
       }
+    },
+    "/api/boards/{board_id}/archive": {
+      "post": {
+        "summary": "Archive or unarchive a board",
+        "operationId": "post_api_boards_board_id_archive",
+        "tags": [
+          "Boards"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "description": "scope everyone: the owner's; the board leaves every member's home grid and is read-only (changes answer 409 board_archived) until unarchived, which still works on an archived board. scope me: anyone on the board; it only leaves your own home page. Scope me is refused to an API key held to some boards.",
+        "x-board-access": "view",
+        "parameters": [
+          {
+            "name": "board_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "The board's number or URL slug."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "archived": {
+                    "type": "boolean"
+                  },
+                  "scope": {
+                    "type": "string",
+                    "enum": [
+                      "everyone",
+                      "me"
+                    ]
+                  },
+                  "csrf_token": {
+                    "type": "string",
+                    "description": "From GET /api/me. Browser sessions only."
+                  }
+                },
+                "required": [
+                  "archived",
+                  "scope"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "404": {
+            "$ref": "#/components/responses/E404"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          }
+        }
+      }
+    },
+    "/api/board-trash": {
+      "get": {
+        "summary": "Your board trash",
+        "operationId": "get_api_board_trash",
+        "tags": [
+          "Boards"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "description": "Boards you own and moved to the trash, most recently deleted first. They stay until restored or deleted for good.",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "boards": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/TrashedBoard"
+                      }
+                    }
+                  },
+                  "required": [
+                    "boards"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          }
+        }
+      }
+    },
+    "/api/board-trash/empty": {
+      "post": {
+        "summary": "Empty your board trash",
+        "operationId": "post_api_board_trash_empty",
+        "tags": [
+          "Boards"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "description": "Deletes every board in your board trash for good.",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "csrf_token": {
+                    "type": "string",
+                    "description": "From GET /api/me. Browser sessions only."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "removed": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "removed"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          }
+        }
+      }
+    },
+    "/api/board-trash/{board_id}/restore": {
+      "post": {
+        "summary": "Restore a board from the trash",
+        "operationId": "post_api_board_trash_board_id_restore",
+        "tags": [
+          "Boards"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "description": "Puts the board back as it was: cards, members, share links and URL.",
+        "parameters": [
+          {
+            "name": "board_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "description": "The board's number."
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "csrf_token": {
+                    "type": "string",
+                    "description": "From GET /api/me. Browser sessions only."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "integer"
+                    },
+                    "slug": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "slug"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "404": {
+            "$ref": "#/components/responses/E404"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          }
+        }
+      }
+    },
+    "/api/board-trash/{board_id}/delete": {
+      "post": {
+        "summary": "Delete a board for good",
+        "operationId": "post_api_board_trash_board_id_delete",
+        "tags": [
+          "Boards"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "description": "Only a board already in your trash. Cannot be undone.",
+        "parameters": [
+          {
+            "name": "board_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "description": "The board's number."
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "csrf_token": {
+                    "type": "string",
+                    "description": "From GET /api/me. Browser sessions only."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "404": {
+            "$ref": "#/components/responses/E404"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -17478,6 +17826,14 @@
           "updated_at": {
             "type": "string",
             "format": "date-time"
+          },
+          "archived": {
+            "type": "boolean",
+            "description": "The owner archived it for everyone: read-only until unarchived."
+          },
+          "archived_for_me": {
+            "type": "boolean",
+            "description": "You archived it off your own home page."
           }
         },
         "required": [
@@ -17488,7 +17844,9 @@
           "color",
           "owner_id",
           "folder_id",
-          "updated_at"
+          "updated_at",
+          "archived",
+          "archived_for_me"
         ]
       },
       "SharedCardSummary": {
@@ -18156,6 +18514,17 @@
               "carry_over": {
                 "type": "boolean",
                 "description": "On a calendar board, whether unfinished cards from past days move to today."
+              },
+              "archived_at": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time",
+                "description": "Set when the owner archived the board for everyone: it is read-only until unarchived."
+              },
+              "archived_by": {
+                "type": "string"
               }
             },
             "required": [
@@ -18259,6 +18628,10 @@
                   "type": "integer"
                 },
                 "description": "The columns you keep collapsed. Left out when you have no row on this board, as for a guest."
+              },
+              "archived": {
+                "type": "boolean",
+                "description": "You archived the board off your own home page."
               }
             },
             "required": [
@@ -19162,10 +19535,18 @@
             "items": {
               "type": "object",
               "properties": {
-                "name": { "type": "string", "description": "Up to 40 characters; may be empty." },
-                "color": { "type": "string", "description": "A palette color name, or #rrggbb." }
+                "name": {
+                  "type": "string",
+                  "description": "Up to 40 characters; may be empty."
+                },
+                "color": {
+                  "type": "string",
+                  "description": "A palette color name, or #rrggbb."
+                }
               },
-              "required": [ "color" ]
+              "required": [
+                "color"
+              ]
             }
           },
           "button": {
@@ -19279,6 +19660,30 @@
           "mode",
           "accent",
           "second"
+        ]
+      },
+      "TrashedBoard": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "title": {
+            "type": "string"
+          },
+          "color": {
+            "type": "string"
+          },
+          "deleted_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "color",
+          "deleted_at"
         ]
       }
     },

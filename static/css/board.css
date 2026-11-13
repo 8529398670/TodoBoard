@@ -249,6 +249,8 @@ p.due-chip { margin: 0.5rem 0; }
 .view-picker .btn { flex: 1 1 0; display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem; }
 
 .guest-banner { margin: 0.75rem 1rem 0; }
+.archived-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.archived-banner #archived-banner-text { flex: 1 1 12rem; }
 
 /* Kanban and the timeline want the whole width; a list of rows reads better
    at a reading width. */
@@ -967,6 +969,9 @@ input.card-number:focus { color: var(--fg); background: var(--bg); border-color:
 .board-tile-when { font-size: 0.78rem; font-weight: 400; }
 #recent-section.is-searching { display: none; }
 .home-section-head select { width: auto; flex: 0 0 auto; padding-top: 0.25rem; padding-bottom: 0.25rem; font-size: 0.85rem; }
+.home-fold { flex: 1 1 auto; justify-content: flex-start; text-align: left; }
+.home-fold .section-title { flex: 0 1 auto; }
+.board-row-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; }
 .folder-grip { cursor: grab; color: var(--fg-muted); padding: 0.25rem 0.3rem; user-select: none; touch-action: none; }
 
 /* ------------------------------------------------------------------ */

@@ -63,6 +63,7 @@ const BoardPage = {
     }
 
     Dom.get( "settings-button" ).addEventListener( "click" , () => BoardSettings.open( this.context() ) );
+    Dom.get( "archived-banner-button" ).addEventListener( "click" , () => this.unarchive() );
     Dom.get( "notes-button" ).addEventListener( "click" , () => BoardNotes.open( "notes" ) );
     Dom.get( "purpose-button" ).addEventListener( "click" , () => BoardNotes.open( "purpose" ) );
     Dom.get( "trash-button" ).addEventListener( "click" , () => Trash.open( this.context() ) );
@@ -457,6 +458,30 @@ const BoardPage = {
     };
   },
 
+  // Archived for everyone: the server already answers read-only (access
+  // "view"); this says why, and gives the owner the way back.
+  showArchivedBanner( ctx ) {
+    const board = ctx.board;
+    const archived = !!board.archived_at && !ctx.quick;
+    Dom.show( Dom.get( "archived-banner" ) , archived );
+    if ( !archived ) return;
+    Dom.text( Dom.get( "archived-banner-text" ) , board.archived_by
+      ? I18n.fill( "board.archived_banner_by" , { name: board.archived_by , date: Dates.format( board.archived_at , false ) } )
+      : T( "board.archived_banner" ) );
+    Dom.show( Dom.get( "archived-banner-button" ) , !!( ctx.data.me && ctx.data.me.role === "owner" ) );
+  },
+
+  async unarchive() {
+    try {
+      await this.client.archive( false , "everyone" );
+    } catch ( error ) {
+      Ui.error( error );
+      return;
+    }
+    Ui.toast( T( "home.unarchived" ) , "ok" );
+    await this.load();
+  },
+
   render() {
     const ctx = this.context();
     const board = ctx.board;
@@ -475,6 +500,7 @@ const BoardPage = {
     Dom.show( Dom.get( "trash-button" ) , ctx.canEdit && !ctx.cardOnly && !ctx.fixedColumns );
     Dom.show( Dom.get( "account-link" ) , !ctx.isGuest );
     Dom.show( Dom.get( "guest-settings-button" ) , ctx.isGuest );
+    this.showArchivedBanner( ctx );
     this.showHistory();
 
     const root = Dom.get( "board-root" );

@@ -194,6 +194,7 @@ func ( handlers *Handlers ) Register( app *fiber.App ) {
 	boards.Post( "/:board_id/my-view" , handlers.SetMyBoardView )
 	boards.Post( "/:board_id/my-view/collapsed" , handlers.SetMyCollapsedLists )
 	boards.Post( "/:board_id/delete" , handlers.Guard.RequireSession , handlers.DeleteBoard )
+	boards.Post( "/:board_id/archive" , handlers.ArchiveBoard )
 	boards.Post( "/:board_id/duplicate" , handlers.Guard.RefuseOnlyBoardsKey , handlers.DuplicateBoard )
 	boards.Post( "/:board_id/members" , handlers.SetBoardMember )
 	boards.Post( "/:board_id/cards/:card_id/share-user" , handlers.ShareCardWithUser )
@@ -211,6 +212,15 @@ func ( handlers *Handlers ) Register( app *fiber.App ) {
 	boards.Post( "/:board_id/subscription" , handlers.SetBoardSubscription )
 	boards.Get( "/:board_id/cards/:card_id/subscription" , handlers.GetCardSubscription )
 	boards.Post( "/:board_id/cards/:card_id/subscription" , handlers.SetCardSubscription )
+
+	// The board trash: the caller's own deleted boards. Its own prefix, not
+	// under /api/boards, so no /:board_id route there can match "trash".
+	// Sessions only, like delete.
+	board_trash := app.Group( "/api/board-trash" , handlers.Guard.RequireLogin , handlers.MemberPrincipal , handlers.Guard.RequireSession )
+	board_trash.Get( "" , handlers.ListBoardTrash )
+	board_trash.Post( "/empty" , handlers.EmptyBoardTrash )
+	board_trash.Post( "/:board_id/restore" , handlers.RestoreBoard )
+	board_trash.Post( "/:board_id/delete" , handlers.PurgeBoard )
 
 	// Backups: every board you are on as one file, and boards back from it.
 	backup := app.Group( "/api/backup" , handlers.Guard.RequireLogin , handlers.MemberPrincipal )

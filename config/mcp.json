@@ -567,7 +567,7 @@
         "readOnlyHint": true,
         "title": "List my boards"
       },
-      "description": "Every board you own or are a member of (id, slug, title, your role, folder), your home-page folders, and single cards shared with you from boards you are not on.",
+      "description": "Every board you own or are a member of (id, slug, title, your role, folder, and whether it is archived for everyone -- read-only -- or archived_for_me), your home-page folders, and single cards shared with you from boards you are not on.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {},
@@ -912,6 +912,48 @@
       "name": "duplicate_board",
       "route": "POST /api/boards/{board_id}/duplicate",
       "title": "Duplicate a board"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Archive or unarchive a board"
+      },
+      "description": "scope \"everyone\" (the owner only): the board leaves every member's home page and becomes read-only -- every change is refused with board_archived -- until it is unarchived the same way. scope \"me\" (anyone on the board): it only leaves your own home page. list_boards says which applies (archived, archived_for_me).",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "archived": {
+            "description": "true archives, false unarchives.",
+            "type": "boolean"
+          },
+          "board": {
+            "description": "The board's id or URL slug, from list_boards.",
+            "type": [
+              "integer",
+              "string"
+            ]
+          },
+          "scope": {
+            "enum": [
+              "everyone",
+              "me"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "board",
+          "archived",
+          "scope"
+        ],
+        "type": "object"
+      },
+      "name": "archive_board",
+      "route": "POST /api/boards/{board_id}/archive",
+      "title": "Archive or unarchive a board"
     },
     {
       "adminOnly": false,

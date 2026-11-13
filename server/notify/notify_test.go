@@ -282,3 +282,28 @@ func TestSharedNotificationRespectsPreference( t *testing.T ) {
 		t.Errorf( "share pushes were switched off, got %d" , mock.count() )
 	}
 }
+
+// A board archived for everyone is on hold: no reminders until it is
+// unarchived.
+func TestNoRemindersOnArchivedBoard( t *testing.T ) {
+	service , mock , store := setup( t )
+	owner , _ := models.CreateUser( store , "Owner" , models.RoleAdmin )
+	withKey( t , store , owner.ID )
+	board , _ := models.CreateBoard( store , owner.ID , "Lab" , []string{ "To do" } )
+	card , _ := models.CreateCard( store , board.ID , board.Lists[ 0 ].ID , "Report" , nil , owner.ID , "Owner" )
+	due := time.Date( 2026 , 11 , 2 , 15 , 0 , 0 , 0 , time.UTC )
+	due_text := due.Format( time.RFC3339 )
+	assignees := []uint64{ owner.ID }
+	models.PatchCard( store , board.ID , card.ID , &models.CardPatch{ DueAt: &due_text , Assignees: &assignees } , "Owner" )
+	models.SetBoardArchived( store , board.ID , true , "Owner" )
+
+	service.now = func() time.Time { return due.Add( -30 * time.Minute ) }
+	service.checkDue()
+	drain( service )
+	if mock.count() != 0 { t.Fatalf( "an archived board sends no reminders, got %d" , mock.count() ) }
+
+	models.SetBoardArchived( store , board.ID , false , "Owner" )
+	service.checkDue()
+	drain( service )
+	if mock.count() != 1 { t.Errorf( "unarchived, the reminder comes, got %d" , mock.count() ) }
+}

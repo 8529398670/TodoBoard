@@ -161,6 +161,8 @@ class BoardClient {
   setMyCollapsed( listIds )        { return this.post( "/" + this.boardId + "/my-view/collapsed" , { list_ids: listIds } ); }
   leave()                          { return this.post( "/" + this.boardId + "/leave" ); }
   deleteBoard()                    { return this.post( "/" + this.boardId + "/delete" ); }
+  // scope "everyone" (the owner's: read-only for all) or "me" (off my home page).
+  archive( archived , scope )      { return this.post( "/" + this.boardId + "/archive" , { archived: archived , scope: scope } ); }
 }
 
 const BoardApi = {

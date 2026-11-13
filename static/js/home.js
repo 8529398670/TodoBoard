@@ -13,11 +13,17 @@
 //
 // Above it all, "Recently edited": the few boards changed last, mine and
 // shared, for jumping straight back in.
+//
+// Below it all, folded away: "Archived boards" -- archived for everyone by
+// their owner (read-only), or by me off my own page -- and the trash, my
+// deleted boards, which stay until I restore them or delete them for good.
 const Home = {
   me: null,
   boards: [],
   shared: [],
   folders: [],
+  archived: [],
+  trash: [],
   recentCount: 6,
   // Fewer boards than this and the whole list is already a glance away.
   recentMinBoards: 4,
@@ -33,6 +39,9 @@ const Home = {
     Dom.get( "create-board-form" ).addEventListener( "submit" , this.onCreate.bind( this ) );
     Dom.get( "board-search" ).addEventListener( "input" , () => this.filter() );
     Dom.get( "new-folder-button" ).addEventListener( "click" , () => this.editFolder( null ) );
+    this.bindFold( "archived" );
+    this.bindFold( "board-trash" );
+    Dom.get( "board-trash-empty" ).addEventListener( "click" , () => this.emptyTrash() );
     await this.refresh();
   },
 
@@ -44,12 +53,22 @@ const Home = {
       App.showError( error.message );
       return;
     }
-    this.boards = result.boards.filter( function ( board ) { return board.role === "owner"; } );
-    this.shared = result.boards.filter( function ( board ) { return board.role !== "owner"; } );
+    // The trash is a browser session's; anything else just shows none.
+    try {
+      this.trash = ( await Api.request( "/api/board-trash" ) ).boards || [];
+    } catch ( error ) {
+      this.trash = [];
+    }
+    const active = result.boards.filter( function ( board ) { return !board.archived && !board.archived_for_me; } );
+    this.archived = result.boards.filter( function ( board ) { return board.archived || board.archived_for_me; } );
+    this.boards = active.filter( function ( board ) { return board.role === "owner"; } );
+    this.shared = active.filter( function ( board ) { return board.role !== "owner"; } );
     this.folders = result.folders || [];
     this.render();
     this.renderShared();
-    this.renderRecent( result.boards );
+    this.renderRecent( active );
+    this.renderArchived();
+    this.renderTrash();
 
     const shared = Dom.get( "shared-cards" );
     Dom.clear( shared );
@@ -282,15 +301,135 @@ const Home = {
     return wrap;
   },
 
-  // The tile's options. Filing and deleting are for my own boards; any board
-  // I can open, I can copy into one of my own.
+  // The tile's options. Filing, archiving for everyone and deleting are for
+  // my own boards; any board I can open, I can copy into one of my own and
+  // archive off my own page.
   boardMenu( board ) {
     const mine = board.role === "owner";
     const items = [];
     if ( mine ) items.push( { key: "home.move_menu" , action: () => this.moveBoard( board ) } );
     items.push( { key: "home.duplicate" , action: () => this.duplicateBoard( board ) } );
+    if ( mine ) items.push( { key: "home.archive_everyone" , action: () => this.archive( board , "everyone" , true ) } );
+    items.push( { key: "home.archive_me" , action: () => this.archive( board , "me" , true ) } );
     if ( mine ) items.push( { key: "home.delete_board" , danger: true , action: () => this.deleteBoard( board ) } );
     return items;
+  },
+
+  async archive( board , scope , archived ) {
+    try {
+      await Api.post( "/api/boards/" + board.id + "/archive" , { archived: archived , scope: scope } );
+    } catch ( error ) {
+      Ui.error( error );
+      return;
+    }
+    const done = !archived ? "home.unarchived" : scope === "everyone" ? "home.archived_everyone_done" : "home.archived_me_done";
+    Dom.toast( T( done ) , "ok" , archived ? { text: T( "undo.button" ) , run: () => this.archive( board , scope , false ) } : null );
+    await this.refresh();
+  },
+
+  // A section folded away under its heading, open or shut as last left in
+  // this browser.
+  bindFold( name ) {
+    const toggle = Dom.get( name + "-toggle" );
+    const key = "home_open_" + name;
+    let open = false;
+    try { open = window.localStorage.getItem( key ) === "1"; } catch ( error ) { /* shut */ }
+    const show = ( value ) => {
+      toggle.setAttribute( "aria-expanded" , value ? "true" : "false" );
+      Dom.text( toggle.querySelector( ".folder-symbol" ) , T( value ? "home.open_symbol" : "home.closed_symbol" ) );
+      Dom.get( name + "-body" ).hidden = !value;
+    };
+    show( open );
+    toggle.addEventListener( "click" , () => {
+      open = !open;
+      try { window.localStorage.setItem( key , open ? "1" : "0" ); } catch ( error ) { /* not remembered */ }
+      show( open );
+    } );
+  },
+
+  // Archived boards: each a link, what kind of archive it is, and the
+  // Unarchive that the viewer may use.
+  renderArchived() {
+    const list = Dom.get( "archived-boards" );
+    Dom.clear( list );
+    this.archived.forEach( ( board ) => {
+      const mine = board.role === "owner";
+      const link = Dom.el( "a" , { attrs: { href: "/b/" + ( board.slug || board.id ) } } );
+      Markdown.renderInline( board.title , link );
+      const notes = [];
+      if ( board.archived ) notes.push( T( "home.archived_for_everyone_plain" ) );
+      if ( board.archived_for_me ) notes.push( T( "home.archived_for_me" ) );
+      const actions = Dom.el( "div" , { class: "board-row-actions" } );
+      if ( board.archived && mine ) actions.appendChild( Ui.button( "home.unarchive" , () => this.archive( board , "everyone" , false ) ) );
+      if ( board.archived_for_me ) actions.appendChild( Ui.button( board.archived && mine ? "home.unarchive_me" : "home.unarchive" , () => this.archive( board , "me" , false ) ) );
+      if ( mine ) actions.appendChild( Ui.button( "home.delete_board" , () => this.deleteBoard( board ) , "secondary small danger" ) );
+      list.appendChild( Dom.el( "li" , { class: "link-row" , attrs: { "data-board-id": board.id } , children: [
+        Dom.el( "div" , { class: "trash-text" , children: [ link , Dom.el( "span" , { class: "text-body-secondary small" , text: notes.join( " · " ) } ) ] } ),
+        actions,
+      ] } ) );
+    } );
+    Dom.text( Dom.get( "archived-count" ) , I18n.fill( "home.folder_count" , { n: this.archived.length } ) );
+    Dom.show( Dom.get( "archived-section" ) , this.archived.length > 0 );
+  },
+
+  // The board trash: my deleted boards, newest first. Restore, or delete
+  // for good.
+  renderTrash() {
+    const list = Dom.get( "board-trash" );
+    Dom.clear( list );
+    this.trash.forEach( ( board ) => {
+      const title = Dom.el( "span" , { class: "fw-semibold" } );
+      Markdown.renderInline( board.title , title );
+      list.appendChild( Dom.el( "li" , { class: "link-row" , attrs: { "data-board-id": board.id } , children: [
+        Dom.el( "div" , { class: "trash-text" , children: [
+          title,
+          Dom.el( "span" , { class: "text-body-secondary small" , text: I18n.fill( "home.trash_deleted" , { date: Dates.format( board.deleted_at , false ) } ) } ),
+        ] } ),
+        Dom.el( "div" , { class: "board-row-actions" , children: [
+          Ui.button( "home.trash_restore" , () => this.restoreBoard( board ) ),
+          Ui.button( "home.trash_delete" , () => this.purgeBoard( board ) , "secondary small danger" ),
+        ] } ),
+      ] } ) );
+    } );
+    Dom.text( Dom.get( "board-trash-count" ) , I18n.fill( "home.folder_count" , { n: this.trash.length } ) );
+    Dom.show( Dom.get( "board-trash-section" ) , this.trash.length > 0 );
+  },
+
+  async restoreBoard( board , quiet ) {
+    try {
+      await Api.post( "/api/board-trash/" + board.id + "/restore" );
+    } catch ( error ) {
+      Ui.error( error );
+      return;
+    }
+    if ( !quiet ) Ui.toast( T( "home.trash_restored" ) , "ok" );
+    await this.refresh();
+  },
+
+  // For good, for everyone on it: asked first.
+  async purgeBoard( board ) {
+    if ( !window.confirm( I18n.fill( "home.trash_delete_confirm" , { name: board.title } ) ) ) return;
+    try {
+      await Api.post( "/api/board-trash/" + board.id + "/delete" );
+    } catch ( error ) {
+      Ui.error( error );
+      return;
+    }
+    Ui.toast( T( "home.trash_deleted_done" ) , "ok" );
+    await this.refresh();
+  },
+
+  async emptyTrash() {
+    if ( !this.trash.length ) return;
+    if ( !window.confirm( I18n.fill( "home.trash_empty_confirm" , { n: this.trash.length } ) ) ) return;
+    try {
+      await Api.post( "/api/board-trash/empty" );
+    } catch ( error ) {
+      Ui.error( error );
+      return;
+    }
+    Ui.toast( T( "home.trash_deleted_done" ) , "ok" );
+    await this.refresh();
   },
 
   // The copy stays here on the home page, beside the original.
@@ -305,16 +444,17 @@ const Home = {
     await this.refresh();
   },
 
-  // For good, for everyone on it: asked first.
+  // Into the trash, for everyone on it: asked first, and undoable from the
+  // toast as well as from the trash.
   async deleteBoard( board ) {
-    if ( !window.confirm( I18n.fill( "settings.delete_board_confirm" , { name: board.title } ) ) ) return;
+    if ( !window.confirm( I18n.fill( "home.delete_board_confirm" , { name: board.title } ) ) ) return;
     try {
       await Api.post( "/api/boards/" + board.id + "/delete" );
     } catch ( error ) {
       Ui.error( error );
       return;
     }
-    Ui.toast( T( "home.deleted" ) , "ok" );
+    Dom.toast( T( "home.deleted" ) , "ok" , { text: T( "undo.button" ) , run: () => this.restoreBoard( board ) } );
     await this.refresh();
   },
 

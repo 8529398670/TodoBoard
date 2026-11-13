@@ -47,7 +47,7 @@ func ( handlers *Handlers ) createCard( principal *access.Principal , board *mod
 		return
 	}
 	if access.List( principal , board , list_id ) < access.Edit {
-		refused = refuse( fiber.StatusForbidden , "forbidden" )
+		refused = writeRefusal( board , access.Edit )
 		return
 	}
 	card , create_err := models.CreateCard( handlers.Store , board.ID , list_id , title , position , principal.UserID , principal.Name )
@@ -102,12 +102,12 @@ func ( handlers *Handlers ) patchCard( principal *access.Principal , board *mode
 		// editor has them everywhere, a column link nowhere else, and a link
 		// showing some columns only in those.
 		if ( leaves && access.List( principal , board , *patch.ListID ) < access.Edit ) || access.List( principal , board , card.ListID ) < access.Edit {
-			refused = refuse( fiber.StatusForbidden , "forbidden" )
+			refused = writeRefusal( board , access.Edit )
 			return
 		}
 	}
 	if patch.Ranks() && access.Board( principal , board ) < access.Edit {
-		refused = refuse( fiber.StatusForbidden , "forbidden" )
+		refused = writeRefusal( board , access.Edit )
 		return
 	}
 	updated , change , patch_err := models.PatchCard( handlers.Store , board.ID , card.ID , patch , principal.Name )
@@ -128,7 +128,7 @@ func ( handlers *Handlers ) DeleteCard( c fiber.Ctx ) ( err error ) {
 	principal , board , card , err := handlers.requireCard( c , access.Edit )
 	if card == nil { return }
 	if access.List( principal , board , card.ListID ) < access.Edit {
-		err = forbidden( c , "forbidden" )
+		err = writeRefusal( board , access.Edit ).send( c )
 		return
 	}
 	if delete_err := models.TrashCard( handlers.Store , board.ID , card.ID , principal.Name ); delete_err != nil {
@@ -159,7 +159,7 @@ func ( handlers *Handlers ) ArchiveListCards( c fiber.Ctx ) ( err error ) {
 		return
 	}
 	if access.List( principal , board , list_id ) < access.Edit {
-		err = forbidden( c , "forbidden" )
+		err = writeRefusal( board , access.Edit ).send( c )
 		return
 	}
 	ids , archive_err := models.ArchiveListCards( handlers.Store , board.ID , list_id , body.CardIDs , principal.Name )

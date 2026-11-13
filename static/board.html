@@ -64,6 +64,13 @@
   </nav>
 
   <div id="guest-banner" class="alert alert-info guest-banner" role="status" hidden></div>
+  <!-- The owner archived this board for everyone: read-only until they
+       unarchive it (board.js showArchived). -->
+  <div id="archived-banner" class="alert alert-warning guest-banner archived-banner" role="status" hidden>
+    <i class="bi bi-archive" aria-hidden="true"></i>
+    <span id="archived-banner-text"></span>
+    <button type="button" id="archived-banner-button" class="btn btn-sm btn-outline-dark" data-i18n="home.unarchive" hidden></button>
+  </div>
 
   <main id="board-root" class="board-root"></main>
 

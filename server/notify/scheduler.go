@@ -116,7 +116,9 @@ func ( service *Service ) checkDue() {
 			board , _ = models.GetBoard( service.store , card.BoardID )
 			boards[ card.BoardID ] = board
 		}
-		if board == nil { continue }
+		// A trashed board is not found; one archived for everyone is on
+		// hold, reminders included, until it is unarchived.
+		if board == nil || board.Archived() { continue }
 		for _ , user_id := range recipients( board , card ) {
 			prefs , cached := prefs_cache[ user_id ]
 			if cached == false {

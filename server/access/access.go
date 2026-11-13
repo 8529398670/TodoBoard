@@ -103,6 +103,7 @@ func modeLevel( mode string ) ( level Level ) {
 // a card shared with them to comment on. A member who is a viewer, a view
 // link and a card's public link read comments but post none.
 func CanComment( principal *Principal , board *models.Board , card *models.Card ) ( result bool ) {
+	if board == nil || board.Archived() { return false }
 	level := Card( principal , board , card )
 	if level >= Edit { return true }
 	if level < View || QuickLink( principal ) { return false }
@@ -126,7 +127,31 @@ func CommentName( principal *Principal , board *models.Board ) ( name string , o
 // Board is the principal's level on the board as a whole: lists, every card,
 // board settings. Someone with access to a single column or card only gets
 // None here -- see List and Card.
+//
+// A board its owner archived for everyone is read-only: Board, List and Card
+// all stop at View until it is unarchived. Owner says who may do that.
 func Board( principal *Principal , board *models.Board ) ( level Level ) {
+	level = boardLevel( principal , board )
+	level = readOnlyIfArchived( board , level )
+	return
+}
+
+func readOnlyIfArchived( board *models.Board , level Level ) ( result Level ) {
+	result = level
+	if board != nil && board.Archived() && result > View { result = View }
+	return
+}
+
+// Owner reports whether the principal is the board's owner, signed in or on
+// one of their own API keys -- never a share link -- whether or not the board
+// is archived. It is the check for what still works on an archived board:
+// unarchiving it and moving it to the trash.
+func Owner( principal *Principal , board *models.Board ) ( result bool ) {
+	result = boardLevel( principal , board ) == Manage && principal.Share == nil
+	return
+}
+
+func boardLevel( principal *Principal , board *models.Board ) ( level Level ) {
 	if principal == nil || board == nil { return }
 	if KeyAllows( principal , board.ID ) == false { return }
 	if principal.Share != nil {
@@ -164,6 +189,7 @@ func List( principal *Principal , board *models.Board , list_id uint64 ) ( level
 			if direct := modeLevel( link.Mode ); direct > level { level = direct }
 		}
 	}
+	level = readOnlyIfArchived( board , level )
 	return
 }
 
@@ -198,6 +224,7 @@ func Card( principal *Principal , board *models.Board , card *models.Card ) ( le
 		direct = modeLevel( card.SharedWith[ principal.UserID ] )
 	}
 	if direct > level { level = direct }
+	level = readOnlyIfArchived( board , level )
 	return
 }
 

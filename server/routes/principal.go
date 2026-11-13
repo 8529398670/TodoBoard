@@ -166,9 +166,22 @@ func ( handlers *Handlers ) loadBoardAt( principal *access.Principal , ref strin
 	board , refused = handlers.loadBoard( principal , ref )
 	if refused != nil { return }
 	if access.Board( principal , board ) < minimum {
+		refused = writeRefusal( board , minimum )
 		board = nil
-		refused = refuse( fiber.StatusForbidden , "forbidden" )
 	}
+	return
+}
+
+// writeRefusal is the 403 for too low a level, or, when the board is archived
+// for everyone and the call wanted to change something, a 409 that says so:
+// nobody may change an archived board, so asking for more rights would not
+// help.
+func writeRefusal( board *models.Board , minimum access.Level ) ( refused *refusal ) {
+	if board != nil && board.Archived() && minimum >= access.Edit {
+		refused = refuse( fiber.StatusConflict , "board_archived" )
+		return
+	}
+	refused = refuse( fiber.StatusForbidden , "forbidden" )
 	return
 }
 
@@ -199,7 +212,7 @@ func ( handlers *Handlers ) loadCard( principal *access.Principal , board *model
 		return
 	}
 	if level < minimum {
-		refused = refuse( fiber.StatusForbidden , "forbidden" )
+		refused = writeRefusal( board , minimum )
 		return
 	}
 	card = loaded
@@ -253,6 +266,8 @@ func modelRefusal( model_err error ) ( refused *refusal ) {
 		refused = refuse( fiber.StatusBadRequest , "card_archived" )
 	case errors.Is( model_err , models.ErrShareLinkNotFound ):
 		refused = refuse( fiber.StatusNotFound , "share_link_not_found" )
+	case errors.Is( model_err , models.ErrBoardNotInTrash ):
+		refused = refuse( fiber.StatusNotFound , "board_not_found" )
 	case errors.Is( model_err , models.ErrNotInTrash ):
 		refused = refuse( fiber.StatusNotFound , "card_not_found" )
 	case errors.Is( model_err , models.ErrFolderNotFound ):

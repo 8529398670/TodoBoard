@@ -281,6 +281,36 @@
               <ul id="shared-cards" class="link-list list-group"></ul>
             </div>
           </section>
+
+          <!-- Boards archived for everyone by their owner, or by you for
+               yourself; and your board trash. Folded away until opened. -->
+          <section id="archived-section" class="home-section" hidden>
+            <div class="home-section-head">
+              <button type="button" id="archived-toggle" class="folder-toggle home-fold" aria-expanded="false" aria-controls="archived-body">
+                <span class="folder-symbol" aria-hidden="true"></span>
+                <span class="section-title h5" data-i18n="home.archived_heading"></span>
+                <span id="archived-count" class="folder-count"></span>
+              </button>
+            </div>
+            <div id="archived-body" hidden>
+              <ul id="archived-boards" class="link-list"></ul>
+            </div>
+          </section>
+
+          <section id="board-trash-section" class="home-section" hidden>
+            <div class="home-section-head">
+              <button type="button" id="board-trash-toggle" class="folder-toggle home-fold" aria-expanded="false" aria-controls="board-trash-body">
+                <span class="folder-symbol" aria-hidden="true"></span>
+                <span class="section-title h5" data-i18n="home.trash_heading"></span>
+                <span id="board-trash-count" class="folder-count"></span>
+              </button>
+            </div>
+            <div id="board-trash-body" hidden>
+              <p class="text-body-secondary small" data-i18n="home.trash_hint"></p>
+              <ul id="board-trash" class="link-list trash-list"></ul>
+              <button type="button" id="board-trash-empty" class="btn btn-sm btn-outline-danger" data-i18n="home.trash_empty"></button>
+            </div>
+          </section>
         </section>
 
         <section class="card view" data-view="account" id="account-panel">

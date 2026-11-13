@@ -394,15 +394,46 @@ const BoardSettings = {
     return section;
   },
 
+  // Archive for everyone (the owner's: read-only for all until unarchived)
+  // and archive for me (off my own home page). Each flips; the page reloads
+  // to show the board as it now is.
+  archiveButtons( ctx , role ) {
+    const wrap = Dom.el( "div" , { class: "mb-3" } );
+    wrap.appendChild( Dom.el( "p" , { children: [ Dom.el( "strong" , { text: T( "settings.archive_heading" ) } ) ] } ) );
+    wrap.appendChild( Dom.el( "p" , { class: "muted" , text: T( role === "owner" ? "settings.archive_hint_owner" : "settings.archive_hint" ) } ) );
+    const row = Dom.el( "div" , { class: "board-row-actions" } );
+    const flip = function ( scope , archived , done ) {
+      return async function () {
+        try {
+          await ctx.client.archive( archived , scope );
+        } catch ( error ) {
+          Ui.error( error );
+          return;
+        }
+        Ui.toast( T( done ) , "ok" );
+        window.location.reload();
+      };
+    };
+    if ( role === "owner" ) {
+      const everyone = !!ctx.board.archived_at;
+      row.appendChild( Ui.button( everyone ? "home.unarchive" : "home.archive_everyone" , flip( "everyone" , !everyone , everyone ? "home.unarchived" : "home.archived_everyone_done" ) ) );
+    }
+    const mine = !!( ctx.data.me && ctx.data.me.archived );
+    row.appendChild( Ui.button( mine ? "home.unarchive_me" : "home.archive_me" , flip( "me" , !mine , mine ? "home.unarchived" : "home.archived_me_done" ) ) );
+    wrap.appendChild( row );
+    return wrap;
+  },
+
   danger( ctx ) {
     const section = Dom.el( "section" , { class: "panel-section" } );
     const role = ctx.me && ctx.data.me ? ctx.data.me.role : "";
     if ( role ) section.appendChild( Dom.el( "h3" , { text: T( "settings.danger_heading" ) } ) );
+    if ( role ) section.appendChild( this.archiveButtons( ctx , role ) );
     if ( role === "owner" ) {
       section.appendChild( Dom.el( "p" , { children: [ Dom.el( "strong" , { text: T( "settings.delete_heading" ) } ) ] } ) );
       section.appendChild( Dom.el( "p" , { class: "muted" , text: T( "settings.delete_hint" ) } ) );
       section.appendChild( Ui.button( "settings.delete_board" , async function () {
-        if ( !window.confirm( I18n.fill( "settings.delete_board_confirm" , { name: ctx.board.title } ) ) ) return;
+        if ( !window.confirm( I18n.fill( "home.delete_board_confirm" , { name: ctx.board.title } ) ) ) return;
         try {
           await ctx.client.deleteBoard();
           window.location.href = "/";

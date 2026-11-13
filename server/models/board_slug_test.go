@@ -73,7 +73,7 @@ func TestBoardSlugs( t *testing.T ) {
 	if updated.Slug != "chemistry" { t.Errorf( "empty slug should regenerate, got %q" , updated.Slug ) }
 
 	// Deleting a board frees its slug.
-	if err := DeleteBoard( store , first.ID ); err != nil { t.Fatal( err ) }
+	if err := PurgeBoard( store , first.ID ); err != nil { t.Fatal( err ) }
 	if BoardIDForSlug( store , "lab" ) != 0 { t.Error( "a deleted board's slug must be freed" ) }
 }
 
