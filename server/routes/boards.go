@@ -6,39 +6,201 @@ import (
 	fiber "github.com/gofiber/fiber/v3"
 
 	access "todoboard/server/access"
+	apidoc "todoboard/server/apidoc"
 	models "todoboard/server/models"
 )
 
+// Boards, their columns and labels. The routes on a board's own content
+// (reading it, its settings, columns, labels, carry-over) are mounted twice:
+// under /api/boards for people on the board, and under /api/shared for a
+// guest holding a share link (the shared* wrappers). Who may do what is
+// server/access's decision either way.
+
 type createBoardRequest struct {
-	Title string   `json:"title"`
-	Lists []string `json:"lists"`
+	Title string   `json:"title" jsonschema:"maxLength=120" jsonschema_description:"The new board's title."`
+	Lists []string `json:"lists,omitempty" jsonschema_description:"Its columns, in order, for example [\"To do\", \"Doing\", \"Done\"]. A board always gets at least three, so fewer are padded out."`
 }
 
-type listRequest struct {
-	Title    string   `json:"title"`
-	Position *float64 `json:"position"`
+// newBoardReply is a board just made: where to find it.
+type newBoardReply struct {
+	ID   uint64 `json:"id"`
+	Slug string `json:"slug" jsonschema_description:"Its URL name, the part after /b/."`
 }
 
-type labelRequest struct {
-	Name  *string `json:"name"`
-	Color *string `json:"color"`
+type getBoardRequest struct {
+	boardPath
+	IncludeArchived *bool `json:"include_archived,omitempty" query:"include_archived" jsonschema_description:"Include archived cards. The page gets them unless this is false; an agent's get_board leaves them out unless it is true."`
 }
 
-// ListMyBoards is the home page: boards I own or am a member of, the folders
-// I sort them into, and single cards shared with me from boards I am not on.
-func ( handlers *Handlers ) ListMyBoards( c fiber.Ctx ) ( err error ) {
-	payload , list_err := handlers.myBoards( principalFrom( c ) )
-	if list_err != nil {
-		err = serverError( c )
-		return
+type boardStampReply struct {
+	Rev uint64 `json:"rev" jsonschema_description:"Moves whenever anything the caller can see on the board changes."`
+}
+
+// updateBoardRequest is models.BoardSettings, field for field, with words for
+// an agent. Every field is optional: what is left out does not change.
+type updateBoardRequest struct {
+	boardPath
+	Title         *string `json:"title,omitempty" jsonschema:"maxLength=120"`
+	Slug          *string `json:"slug,omitempty" jsonschema_description:"The board's URL name (the part after /b/). Empty picks one from the title. 409 slug_taken if another board has it."`
+	DefaultView   *string `json:"default_view,omitempty" jsonschema:"enum=kanban,enum=todo,enum=timeline" jsonschema_description:"The view the board opens in for someone who has not picked one."`
+	Color         *string `json:"color,omitempty" jsonschema:"enum=,enum=blue,enum=green,enum=orange,enum=red,enum=purple,enum=pink,enum=teal,enum=gray,enum=yellow" jsonschema_description:"The board's colour; empty for none."`
+	Layout        *string `json:"layout,omitempty" jsonschema:"enum=,enum=three,enum=staged,enum=calendar" jsonschema_description:"\"\" (free: any number of columns), \"three\" (pinned to three columns: to do, doing, done), \"staged\" (each column has its own To do / Doing / Done, with an All view ranked board-wide), or \"calendar\" (cards filed by day; columns titled with dates are filed under those days)."`
+	ListTitles    []string `json:"list_titles,omitempty" jsonschema_description:"With layout \"three\": the titles of the columns added if the board has fewer than three open ones."`
+	Numbering     *string `json:"numbering,omitempty" jsonschema:"enum=,enum=on,enum=off" jsonschema_description:"Card numbers for everyone on the board: on, off, or \"\" to leave it to each person's account setting."`
+	DonePlacement *string `json:"done_placement,omitempty" jsonschema:"enum=,enum=top,enum=bottom" jsonschema_description:"Where finished cards go in a column: top, bottom, or \"\" for each person's account setting."`
+	AddPlacement  *string `json:"add_placement,omitempty" jsonschema:"enum=,enum=top,enum=bottom" jsonschema_description:"Where the add-card box sits in a column: top, bottom, or \"\" for each person's account setting."`
+	Theme         *models.DisplayTheme `json:"theme,omitempty" jsonschema_description:"The board's own theme, shown to everyone on it."`
+	ClearTheme    bool    `json:"clear_theme,omitempty" jsonschema_description:"true drops the board's own theme: everyone sees their own again."`
+	Shopping      *bool   `json:"shopping,omitempty" jsonschema_description:"A shopping board: cards carry products and prices."`
+	ShowRank      *bool   `json:"show_rank,omitempty" jsonschema_description:"Show each card's place in the board-wide ranking."`
+	CenterColumns *bool   `json:"center_columns,omitempty" jsonschema_description:"Centre the columns on wide screens."`
+	StageTabs     *bool   `json:"stage_tabs,omitempty" jsonschema_description:"On a staged board, give every column its own To do / Doing / Done buttons."`
+	StageTodo     *string `json:"stage_todo,omitempty" jsonschema_description:"What the To do stage is called on this board; empty for the default."`
+	StageDoing    *string `json:"stage_doing,omitempty" jsonschema_description:"What the Doing stage is called on this board; empty for the default."`
+	StageDone     *string `json:"stage_done,omitempty" jsonschema_description:"What the Done stage is called on this board; empty for the default."`
+	CarryOver     *bool   `json:"carry_over,omitempty" jsonschema_description:"On a calendar board, move unfinished cards from past days to today."`
+	AllowQuickShare   *bool `json:"allow_quick_share,omitempty" jsonschema_description:"Let the board's cards be shared by quick link. The owner's, from a browser only: refused through a key."`
+	AllowAnonComments *bool `json:"allow_anon_comments,omitempty" jsonschema_description:"Let guests comment without giving a name. The owner's, from a browser only: refused through a key."`
+	PurposeEnabled *bool   `json:"purpose_enabled,omitempty" jsonschema_description:"Switch the board's Purpose section on or off. Members only."`
+	Purpose        *string `json:"purpose,omitempty" jsonschema_description:"Markdown: what the board is for and how to work on it. Only while the Purpose section is on (409 purpose_off otherwise). Members only."`
+	PurposeRev     *uint64 `json:"purpose_rev,omitempty" jsonschema_description:"The purpose_rev the purpose was read at: if it moved since, 409 board_text_stale instead of writing over someone's change."`
+	Notes          *string `json:"notes,omitempty" jsonschema_description:"Markdown: links, documents, an index. Members only."`
+	NotesRev       *uint64 `json:"notes_rev,omitempty" jsonschema_description:"The notes_rev the notes were read at, as purpose_rev."`
+}
+
+func ( in *updateBoardRequest ) settings() ( settings *models.BoardSettings ) {
+	settings = &models.BoardSettings{
+		Title: in.Title , DefaultView: in.DefaultView , Color: in.Color , Slug: in.Slug , Layout: in.Layout ,
+		Numbering: in.Numbering , ListTitles: in.ListTitles , Theme: in.Theme , ClearTheme: in.ClearTheme ,
+		Shopping: in.Shopping , ShowRank: in.ShowRank , CenterColumns: in.CenterColumns , StageTabs: in.StageTabs ,
+		StageTodo: in.StageTodo , StageDoing: in.StageDoing , StageDone: in.StageDone ,
+		AllowQuickShare: in.AllowQuickShare , AllowAnonComments: in.AllowAnonComments , CarryOver: in.CarryOver ,
+		DonePlacement: in.DonePlacement , AddPlacement: in.AddPlacement ,
+		PurposeEnabled: in.PurposeEnabled , Purpose: in.Purpose , PurposeRev: in.PurposeRev , Notes: in.Notes , NotesRev: in.NotesRev ,
 	}
-	err = c.JSON( payload )
 	return
 }
 
-// myBoards is shared with the MCP list_boards tool. This is a list rather
-// than one board, so a key's board limit is applied here by hand. A limited
-// key gets no folders: they are home-page settings that span boards.
+type updateBoardReply struct {
+	Rev        uint64 `json:"rev"`
+	Slug       string `json:"slug"`
+	PurposeRev uint64 `json:"purpose_rev"`
+	NotesRev   uint64 `json:"notes_rev"`
+}
+
+type duplicateBoardRequest struct {
+	boardPath
+	Title string `json:"title" jsonschema:"maxLength=120" jsonschema_description:"The copy's title."`
+}
+
+// Archive scopes: for everyone on the board (the owner's), or off the
+// caller's own home page.
+const (
+	archiveEveryone = "everyone"
+	archiveMe       = "me"
+)
+
+type archiveBoardRequest struct {
+	boardPath
+	Archived *bool  `json:"archived" jsonschema_description:"true archives, false unarchives."`
+	Scope    string `json:"scope" jsonschema:"enum=everyone,enum=me" jsonschema_description:"everyone (the owner only) or me (just your own home page)."`
+}
+
+// trashBoardPath names a board in the caller's board trash, by its number
+// alone, as the old route read it.
+type trashBoardPath struct {
+	BoardID uint64 `json:"board_id" path:"board_id" jsonschema_description:"The deleted board's id, from GET /api/board-trash."`
+}
+
+type boardTrashReply struct {
+	Boards []*models.TrashedBoard `json:"boards"`
+}
+
+type emptiedTrashReply struct {
+	Removed int `json:"removed"`
+}
+
+type myViewRequest struct {
+	boardPath
+	PlainIcons *bool `json:"plain_icons,omitempty" jsonschema_description:"true for greyscale status icons on this board, false for coloured; null or left out follows your account default."`
+}
+
+type myViewReply struct {
+	PlainIcons *bool `json:"plain_icons"`
+}
+
+type myCollapsedRequest struct {
+	boardPath
+	ListIDs []uint64 `json:"list_ids,omitempty" jsonschema_description:"Every column you keep collapsed on this board (the whole set; ids from get_board's board.lists). Empty expands them all."`
+}
+
+type myCollapsedReply struct {
+	CollapsedLists []uint64 `json:"collapsed_lists" jsonschema_description:"The ids kept: ones that are not columns of this board are dropped."`
+}
+
+type createListRequest struct {
+	boardPath
+	Title    string   `json:"title" jsonschema:"maxLength=120"`
+	Position *float64 `json:"position,omitempty" jsonschema_description:"Sort position among the columns; lower comes first. Leave out to put it at the end."`
+}
+
+type updateListRequest struct {
+	listPath
+	Title     *string  `json:"title,omitempty" jsonschema:"maxLength=120"`
+	Position  *float64 `json:"position,omitempty" jsonschema_description:"Sort position among the columns; lower comes first."`
+	Archived  *bool    `json:"archived,omitempty" jsonschema_description:"true hides the column; false brings it back."`
+	Shopping  *bool    `json:"shopping,omitempty" jsonschema_description:"A shopping column: its cards carry products and prices."`
+	Width     *int     `json:"width,omitempty" jsonschema_description:"The column's width in pixels (200-800); 0 puts it back to the standard width."`
+	StageView *string  `json:"stage_view,omitempty" jsonschema:"enum=,enum=todo,enum=doing,enum=done" jsonschema_description:"On a staged board, the stage this column shows for everyone; empty follows the navbar."`
+	StageTabs *string  `json:"stage_tabs,omitempty" jsonschema:"enum=,enum=on,enum=off" jsonschema_description:"On a staged board, this column's own To do / Doing / Done buttons: on, off, or empty to follow the board's setting."`
+}
+
+func ( in *updateListRequest ) update() ( update *models.ListUpdate ) {
+	update = &models.ListUpdate{ Title: in.Title , Position: in.Position , Archived: in.Archived , Shopping: in.Shopping , Width: in.Width , StageView: in.StageView , StageTabs: in.StageTabs }
+	return
+}
+
+type createLabelRequest struct {
+	boardPath
+	Name  *string `json:"name,omitempty" jsonschema:"maxLength=40"`
+	Color string  `json:"color" jsonschema_description:"A palette name (blue, green, orange, red, purple, pink, teal, gray, yellow) or a #rrggbb colour."`
+}
+
+type updateLabelRequest struct {
+	labelPath
+	Name  *string `json:"name,omitempty" jsonschema:"maxLength=40"`
+	Color *string `json:"color,omitempty" jsonschema_description:"A palette name (blue, green, orange, red, purple, pink, teal, gray, yellow) or a #rrggbb colour."`
+}
+
+type carryOverRequest struct {
+	boardPath
+	Today string `json:"today" jsonschema_description:"Your today, as 2026-11-07: within a day of the server's."`
+}
+
+type carryOverReply struct {
+	Moved int `json:"moved" jsonschema_description:"How many cards moved to today."`
+}
+
+// listMyBoards is the home page: boards I own or am a member of, the folders
+// I sort them into, and single cards shared with me from boards I am not on.
+//
+// @route("GET /api/boards", summary="List my boards",
+//     tag="Boards",
+//     description="Every board you own or are a member of (id, slug, title, your role, folder, and whether it is "
+//         "archived for everyone -- read-only -- or archived_for_me), your home-page folders, and single cards "
+//         "shared with you from boards you are not on.",
+//     mcp="list_boards", read_only=True,
+// )
+func ( handlers *Handlers ) listMyBoards( c fiber.Ctx , in *apidoc.None ) ( reply *fiber.Map , err error ) {
+	payload , err := handlers.myBoards( principalFrom( c ) )
+	if err != nil { return }
+	reply = &payload
+	return
+}
+
+// myBoards is the home page's list. This is a list rather than one board,
+// so a key's board limit is applied here by hand. A limited key gets no
+// folders: they are home-page settings that span boards.
 func ( handlers *Handlers ) myBoards( principal *access.Principal ) ( payload fiber.Map , err error ) {
 	boards , cards , err := handlers.boardsFor( principal )
 	if err != nil { return }
@@ -67,50 +229,100 @@ func ( handlers *Handlers ) boardsFor( principal *access.Principal ) ( boards []
 	return
 }
 
-func ( handlers *Handlers ) CreateBoard( c fiber.Ctx ) ( err error ) {
-	var body createBoardRequest
-	if ok , bind_err := bindBody( c , &body ); ok == false { return bind_err }
-	principal := principalFrom( c )
-	board , create_err := models.CreateBoard( handlers.Store , principal.UserID , body.Title , body.Lists )
+// createBoard makes a board owned by the caller.
+//
+// @route("POST /api/boards", summary="Create a board",
+//     tag="Boards", errors=(403,),
+//     description="A new board owned by you, with the given columns in order (for example [\"To do\", \"Doing\", "
+//         "\"Done\"]); a board always gets at least three, so fewer are padded out. Returns its id and slug. "
+//         "A key held to some boards cannot make one.",
+//     mcp="create_board",
+// )
+func ( handlers *Handlers ) createBoard( c fiber.Ctx , in *createBoardRequest ) ( reply *newBoardReply , err error ) {
+	if err = refuseOnlyBoardsKey( c ); err != nil { return }
+	board , create_err := models.CreateBoard( handlers.Store , principalFrom( c ).UserID , in.Title , in.Lists )
 	if create_err != nil {
-		err = modelError( c , create_err )
+		err = modelErr( create_err )
 		return
 	}
-	err = c.JSON( fiber.Map{ "id": board.ID , "slug": board.Slug } )
+	reply = &newBoardReply{ ID: board.ID , Slug: board.Slug }
 	return
 }
 
-// GetBoard returns everything a board view needs in one response: the board,
+// getBoard returns everything a board view needs in one response: the board,
 // the cards this caller may see, the names behind every user id mentioned,
 // and what this caller may do.
-func ( handlers *Handlers ) GetBoard( c fiber.Ctx ) ( err error ) {
-	principal , board , err := handlers.boardFor( c )
-	if board == nil { return }
-	cards , list_err := models.ListCards( handlers.Store , board.ID )
-	if list_err != nil {
-		err = serverError( c )
-		return
+//
+// @route("GET /api/boards/{board_id}", summary="Read a board",
+//     tag="Boards", errors=(404,),
+//     description="A board as you can see it: its notes, its purpose if the board has that section on "
+//         "(board.purpose says what the board is for and how to work on it, so read it first), columns "
+//         "(board.lists), labels, members, and the cards you may see, with each card's column, labels, "
+//         "assignees, dates, checklist and rev. people maps user ids to names. access is what you may do.",
+//     mcp_note="Archived cards are left out unless include_archived is true.",
+//     mcp="get_board", read_only=True, call=getBoardTool,
+// )
+func ( handlers *Handlers ) getBoard( c fiber.Ctx , in *getBoardRequest ) ( reply *fiber.Map , err error ) {
+	principal , board , err := handlers.boardAt( c , in.BoardID )
+	if err != nil { return }
+	cards , err := models.ListCards( handlers.Store , board.ID )
+	if err != nil { return }
+	if in.IncludeArchived != nil && *in.IncludeArchived == false {
+		open := cards[ :0 ]
+		for _ , card := range cards {
+			if card.Archived == false { open = append( open , card ) }
+		}
+		cards = open
 	}
-	err = c.JSON( handlers.boardPayload( principal , board , cards ) )
+	payload := handlers.boardPayload( principal , board , cards )
+	reply = &payload
 	return
 }
 
-// GetBoardStamp is the cheap call a board view polls: the revision only.
-func ( handlers *Handlers ) GetBoardStamp( c fiber.Ctx ) ( err error ) {
-	principal , board , err := handlers.boardFor( c )
-	if board == nil { return }
+// sharedGetBoard is getBoard for a share link's guest.
+//
+// @route("GET /api/shared/{board_id}", summary="Read a board (share link)",
+//     tag="Shared", access=PUBLIC, use=[handlers.SharePrincipal], errors=(404,),
+//     description="getBoard for a guest holding a share link in X-Share-Token: what the link shows.",
+// )
+func ( handlers *Handlers ) sharedGetBoard( c fiber.Ctx , in *getBoardRequest ) ( reply *fiber.Map , err error ) {
+	reply , err = handlers.getBoard( c , in )
+	return
+}
+
+// getBoardStamp is the cheap call a board view polls: the revision only.
+//
+// @route("GET /api/boards/{board_id}/stamp", summary="A board's revision",
+//     tag="Boards", errors=(404,),
+//     description="The board's revision alone, which the page polls to know when to read the board again.",
+//     mcp_http="The board page's cheap change poll; get_board reads the board itself.",
+// )
+func ( handlers *Handlers ) getBoardStamp( c fiber.Ctx , in *boardPath ) ( reply *boardStampReply , err error ) {
+	principal , board , err := handlers.boardAt( c , in.BoardID )
+	if err != nil { return }
 	rev := board.Rev
 	// The board's revision moves with every other card, which is not a quick
 	// link's to know: it hears about its own card.
 	if access.QuickLink( principal ) {
 		card , get_err := models.GetCard( handlers.Store , board.ID , principal.Share.CardID )
 		if get_err != nil {
-			err = modelError( c , get_err )
+			err = modelErr( get_err )
 			return
 		}
 		rev = card.Rev
 	}
-	err = c.JSON( fiber.Map{ "rev": rev } )
+	reply = &boardStampReply{ Rev: rev }
+	return
+}
+
+// sharedGetBoardStamp is getBoardStamp for a share link's guest.
+//
+// @route("GET /api/shared/{board_id}/stamp", summary="A board's revision (share link)",
+//     tag="Shared", access=PUBLIC, use=[handlers.SharePrincipal], errors=(404,),
+//     description="getBoardStamp for a guest holding a share link in X-Share-Token.",
+// )
+func ( handlers *Handlers ) sharedGetBoardStamp( c fiber.Ctx , in *boardPath ) ( reply *boardStampReply , err error ) {
+	reply , err = handlers.getBoardStamp( c , in )
 	return
 }
 
@@ -374,31 +586,43 @@ func cardPayload( card *models.Card , level access.Level , board_level access.Le
 	return
 }
 
-func ( handlers *Handlers ) UpdateBoard( c fiber.Ctx ) ( err error ) {
-	principal , board , err := handlers.requireBoard( c , access.Edit )
-	if board == nil { return }
-	var body models.BoardSettings
-	if ok , bind_err := bindBody( c , &body ); ok == false { return bind_err }
+// updateBoard changes a board's settings: everything Board settings shows.
+//
+// @route("POST /api/boards/{board_id}", summary="Change a board's settings",
+//     tag="Boards", errors=(403, 404, 409),
+//     description="Change any of a board's settings; leave out what should not change: its title, URL name "
+//         "(slug), layout (free, three, staged or calendar), default view, colour, theme, card numbering, "
+//         "where finished cards and the add-card box go, the stage names and buttons of a staged board, "
+//         "carry-over on a calendar board, shopping, ranking, and its purpose and notes. Needs edit rights "
+//         "on the whole board. The purpose and notes are for members, not share links; the quick-share and "
+//         "anonymous-comment switches are the owner's, from a browser. Answers the board's new revs.",
+//     mcp_note="To change only the purpose or notes, update_board_notes is the safer call: it insists on the rev "
+//         "you read them at.",
+//     mcp="update_board",
+// )
+func ( handlers *Handlers ) updateBoard( c fiber.Ctx , in *updateBoardRequest ) ( reply *updateBoardReply , err error ) {
+	principal , board , err := handlers.requireBoardAt( c , in.BoardID , access.Edit )
+	if err != nil { return }
 	// The purpose is what agents act on, so it is for the board's members: an
 	// edit link is handed around for changing cards, not for instructing them.
-	if principal.IsGuest() && ( body.PurposeEnabled != nil || body.Purpose != nil || body.Notes != nil ) {
-		err = c.Status( fiber.StatusForbidden ).JSON( fiber.Map{ "error": "forbidden" } )
+	if principal.IsGuest() && ( in.PurposeEnabled != nil || in.Purpose != nil || in.Notes != nil ) {
+		err = refuse( fiber.StatusForbidden , "forbidden" )
 		return
 	}
 	// Opening a board's cards to the public is the owner's call, made in a
 	// browser: a leaked key cannot switch paused links back on.
-	if ( body.AllowQuickShare != nil || body.AllowAnonComments != nil ) && ( access.Board( principal , board ) != access.Manage || principal.Key != nil ) {
-		err = c.Status( fiber.StatusForbidden ).JSON( fiber.Map{ "error": "forbidden" } )
+	if ( in.AllowQuickShare != nil || in.AllowAnonComments != nil ) && ( access.Board( principal , board ) != access.Manage || principal.Key != nil ) {
+		err = refuse( fiber.StatusForbidden , "forbidden" )
 		return
 	}
 	before := *board
-	updated , update_err := models.UpdateBoardSettings( handlers.Store , board.ID , &body )
+	updated , update_err := models.UpdateBoardSettings( handlers.Store , board.ID , in.settings() )
 	if errors.Is( update_err , models.ErrSlugTaken ) {
-		err = c.Status( fiber.StatusConflict ).JSON( fiber.Map{ "error": "slug_taken" } )
+		err = refuse( fiber.StatusConflict , "slug_taken" )
 		return
 	}
 	if update_err != nil {
-		err = modelError( c , update_err )
+		err = modelErr( update_err )
 		return
 	}
 	// A board becoming a calendar files the cards in date-titled columns
@@ -409,7 +633,18 @@ func ( handlers *Handlers ) UpdateBoard( c fiber.Ctx ) ( err error ) {
 		}
 	}
 	handlers.boardTextActivity( principal , &before , updated )
-	err = c.JSON( fiber.Map{ "rev": updated.Rev , "slug": updated.Slug , "purpose_rev": updated.PurposeRev , "notes_rev": updated.NotesRev } )
+	reply = &updateBoardReply{ Rev: updated.Rev , Slug: updated.Slug , PurposeRev: updated.PurposeRev , NotesRev: updated.NotesRev }
+	return
+}
+
+// sharedUpdateBoard is updateBoard for a share link's guest.
+//
+// @route("POST /api/shared/{board_id}", summary="Change a board's settings (share link)",
+//     tag="Shared", access=PUBLIC, use=[handlers.SharePrincipal], errors=(403, 404, 409),
+//     description="updateBoard for a guest holding an edit share link in X-Share-Token. Never the purpose or notes.",
+// )
+func ( handlers *Handlers ) sharedUpdateBoard( c fiber.Ctx , in *updateBoardRequest ) ( reply *updateBoardReply , err error ) {
+	reply , err = handlers.updateBoard( c , in )
 	return
 }
 
@@ -421,36 +656,38 @@ func ( handlers *Handlers ) boardTextActivity( principal *access.Principal , bef
 	if before.Purpose != after.Purpose { handlers.activity( principal , after.ID , "board_purpose" , nil ) }
 }
 
-type duplicateBoardRequest struct {
-	Title string `json:"title"`
-}
-
 // duplicateChunk is how many cards go into the copy per transaction, kept
 // under the import limit in server/models/snapshot.go.
 const duplicateChunk = 1000
 
-// DuplicateBoard answers POST /api/boards/:board_id/duplicate: a new board,
-// owned by the caller, holding what they can see of this one -- the same
-// things a backup carries (settings, notes, labels, lists, cards and their
-// checklists), so no comments, pictures, members or share links.
-func ( handlers *Handlers ) DuplicateBoard( c fiber.Ctx ) ( err error ) {
-	principal , board , err := handlers.requireBoard( c , access.View )
-	if board == nil { return }
-	var body duplicateBoardRequest
-	if ok , bind_err := bindBody( c , &body ); ok == false { return bind_err }
-	copied , refused := handlers.duplicateBoard( principal , board , body.Title )
+// duplicateBoard is a new board, owned by the caller, holding what they can
+// see of this one -- the same things a backup carries (settings, notes,
+// labels, lists, cards and their checklists), so no comments, pictures,
+// members or share links.
+//
+// @route("POST /api/boards/{board_id}/duplicate", summary="Duplicate a board",
+//     tag="Boards", errors=(403, 404),
+//     description="A new board owned by you, copied from one you can open: its settings, notes, labels, columns, "
+//         "and the cards you can see with their checklists. Comments, card pictures, members and share links "
+//         "are not copied. Returns the copy's id and slug. A key held to some boards cannot make one.",
+//     mcp="duplicate_board",
+// )
+func ( handlers *Handlers ) duplicateBoard( c fiber.Ctx , in *duplicateBoardRequest ) ( reply *newBoardReply , err error ) {
+	if err = refuseOnlyBoardsKey( c ); err != nil { return }
+	principal , board , err := handlers.requireBoardAt( c , in.BoardID , access.View )
+	if err != nil { return }
+	copied , refused := handlers.copyBoard( principal , board , in.Title )
 	if refused != nil {
-		err = refused.send( c )
+		err = refused
 		return
 	}
-	err = c.JSON( fiber.Map{ "id": copied.ID , "slug": copied.Slug } )
+	reply = &newBoardReply{ ID: copied.ID , Slug: copied.Slug }
 	return
 }
 
-// duplicateBoard is shared with the MCP duplicate_board tool. It is the
-// backup import run straight from a snapshot; a copy that fails partway is
-// removed again.
-func ( handlers *Handlers ) duplicateBoard( principal *access.Principal , board *models.Board , title string ) ( copied *models.Board , refused *refusal ) {
+// copyBoard is the backup import run straight from a snapshot; a copy that
+// fails partway is removed again.
+func ( handlers *Handlers ) copyBoard( principal *access.Principal , board *models.Board , title string ) ( copied *models.Board , refused *refusal ) {
 	cards , list_err := models.ListCards( handlers.Store , board.ID )
 	if list_err != nil {
 		refused = internalFailure( list_err )
@@ -479,222 +716,267 @@ func ( handlers *Handlers ) duplicateBoard( principal *access.Principal , board 
 	return
 }
 
-// DeleteBoard moves the board to its owner's trash, archived or not. It
+// deleteBoard moves the board to its owner's trash, archived or not. It
 // still needs the owner and a browser session: a leaked API key must not be
 // able to take a board away from everyone on it, even for a while.
-func ( handlers *Handlers ) DeleteBoard( c fiber.Ctx ) ( err error ) {
-	principal , board , err := handlers.boardFor( c )
-	if board == nil { return }
+//
+// @route("POST /api/boards/{board_id}/delete", summary="Delete a board",
+//     tag="Boards", access=SESSION_ONLY, errors=(403, 404),
+//     description="Move one of your own boards to your board trash, where it stays until you restore it or "
+//         "delete it for good. The owner only, from a browser.",
+// )
+func ( handlers *Handlers ) deleteBoard( c fiber.Ctx , in *boardPath ) ( reply *okReply , err error ) {
+	principal , board , err := handlers.boardAt( c , in.BoardID )
+	if err != nil { return }
 	if access.Owner( principal , board ) == false {
-		err = forbidden( c , "forbidden" )
+		err = refuse( fiber.StatusForbidden , "forbidden" )
 		return
 	}
 	if trash_err := models.TrashBoard( handlers.Store , board.ID , principal.UserID ); trash_err != nil {
-		err = modelError( c , trash_err )
+		err = modelErr( trash_err )
 		return
 	}
-	err = c.JSON( fiber.Map{ "ok": true } )
+	reply = &okReply{ Ok: true }
 	return
 }
 
-// Archive scopes: for everyone on the board (the owner's), or off the
-// caller's own home page.
-const (
-	archiveEveryone = "everyone"
-	archiveMe       = "me"
-)
-
-type archiveBoardRequest struct {
-	Archived *bool  `json:"archived"`
-	Scope    string `json:"scope"`
-}
-
-// ArchiveBoard archives or unarchives a board. For everyone it is the
+// archiveBoard archives or unarchives a board. For everyone it is the
 // owner's, and works on an archived board -- it is how one is unarchived.
 // For me, anyone on the board, but not a key held to some boards: like
 // folders, it is the person's own home page.
-func ( handlers *Handlers ) ArchiveBoard( c fiber.Ctx ) ( err error ) {
-	var body archiveBoardRequest
-	if ok , bind_err := bindBody( c , &body ); ok == false { return bind_err }
-	_ , refused := handlers.archiveBoard( principalFrom( c ) , c.Params( "board_id" ) , body )
-	if refused != nil {
-		err = refused.send( c )
+//
+// @route("POST /api/boards/{board_id}/archive", summary="Archive or unarchive a board",
+//     tag="Boards", errors=(400, 403, 404),
+//     description="scope \"everyone\" (the owner only): the board leaves every member's home page and becomes "
+//         "read-only -- every change is refused with board_archived -- until it is unarchived the same way. "
+//         "scope \"me\" (anyone on the board, but not a key held to some boards): it only leaves your own home "
+//         "page. list_boards says which applies (archived, archived_for_me).",
+//     mcp="archive_board",
+// )
+func ( handlers *Handlers ) archiveBoard( c fiber.Ctx , in *archiveBoardRequest ) ( reply *okReply , err error ) {
+	if in.Archived == nil || ( in.Scope != archiveEveryone && in.Scope != archiveMe ) {
+		err = refuse( fiber.StatusBadRequest , "invalid_input" )
 		return
 	}
-	err = c.JSON( fiber.Map{ "ok": true } )
-	return
-}
-
-// archiveBoard is ArchiveBoard for both doors, the page and MCP.
-func ( handlers *Handlers ) archiveBoard( principal *access.Principal , ref string , body archiveBoardRequest ) ( board *models.Board , refused *refusal ) {
-	if body.Archived == nil || ( body.Scope != archiveEveryone && body.Scope != archiveMe ) {
-		refused = refuse( fiber.StatusBadRequest , "invalid_input" )
-		return
-	}
-	board , refused = handlers.loadBoard( principal , ref )
-	if refused != nil { return }
+	principal , board , err := handlers.boardAt( c , in.BoardID )
+	if err != nil { return }
 	var model_err error
 	switch {
 	case principal.IsGuest() || access.Board( principal , board ) == access.None:
-		refused = refuse( fiber.StatusForbidden , "forbidden" )
-	case body.Scope == archiveEveryone && access.Owner( principal , board ) == false:
-		refused = refuse( fiber.StatusForbidden , "forbidden" )
-	case body.Scope == archiveMe && principal.Key.Limited():
-		refused = refuse( fiber.StatusForbidden , "forbidden" )
-	case body.Scope == archiveEveryone:
-		board , model_err = models.SetBoardArchived( handlers.Store , board.ID , *body.Archived , principal.Name )
+		err = refuse( fiber.StatusForbidden , "forbidden" )
+	case in.Scope == archiveEveryone && access.Owner( principal , board ) == false:
+		err = refuse( fiber.StatusForbidden , "forbidden" )
+	case in.Scope == archiveMe && principal.Key.Limited():
+		err = refuse( fiber.StatusForbidden , "forbidden" )
+	case in.Scope == archiveEveryone:
+		_ , model_err = models.SetBoardArchived( handlers.Store , board.ID , *in.Archived , principal.Name )
 	default:
-		model_err = models.SetBoardArchivedFor( handlers.Store , principal.UserID , board.ID , *body.Archived )
+		model_err = models.SetBoardArchivedFor( handlers.Store , principal.UserID , board.ID , *in.Archived )
 	}
-	if model_err != nil { refused = modelRefusal( model_err ) }
-	if refused != nil { board = nil }
+	if model_err != nil { err = modelErr( model_err ) }
+	if err != nil { return }
+	reply = &okReply{ Ok: true }
 	return
 }
 
 // The board trash: the caller's own boards they deleted, which stay until
-// restored or deleted for good. A browser session only, like delete.
+// restored or deleted for good. A browser session only, like delete. Its
+// own prefix, not under /api/boards, so no /{board_id} route there can
+// match "trash".
 
-func ( handlers *Handlers ) ListBoardTrash( c fiber.Ctx ) ( err error ) {
-	boards , list_err := models.ListTrashedBoards( handlers.Store , principalFrom( c ).UserID )
-	if list_err != nil {
-		err = serverError( c )
-		return
-	}
-	err = c.JSON( fiber.Map{ "boards": boards } )
+// listBoardTrash is the caller's deleted boards.
+//
+// @route("GET /api/board-trash", summary="Your deleted boards",
+//     tag="Trash", access=SESSION_ONLY,
+//     description="The boards you deleted, which stay until you restore them or delete them for good.",
+// )
+func ( handlers *Handlers ) listBoardTrash( c fiber.Ctx , in *apidoc.None ) ( reply *boardTrashReply , err error ) {
+	boards , err := models.ListTrashedBoards( handlers.Store , principalFrom( c ).UserID )
+	if err != nil { return }
+	reply = &boardTrashReply{ Boards: boards }
 	return
 }
 
-func ( handlers *Handlers ) RestoreBoard( c fiber.Ctx ) ( err error ) {
-	board_id , _ := paramID( c , "board_id" )
-	board , restore_err := models.RestoreBoard( handlers.Store , principalFrom( c ).UserID , board_id )
+// restoreBoard takes one of the caller's boards back out of their trash.
+//
+// @route("POST /api/board-trash/{board_id}/restore", summary="Restore a deleted board",
+//     tag="Trash", access=SESSION_ONLY, errors=(404,),
+//     description="Bring one of your deleted boards back, for everyone who was on it. Answers its id and slug.",
+// )
+func ( handlers *Handlers ) restoreBoard( c fiber.Ctx , in *trashBoardPath ) ( reply *newBoardReply , err error ) {
+	board , restore_err := models.RestoreBoard( handlers.Store , principalFrom( c ).UserID , in.BoardID )
 	if restore_err != nil {
-		err = modelError( c , restore_err )
+		err = modelErr( restore_err )
 		return
 	}
-	err = c.JSON( fiber.Map{ "id": board.ID , "slug": board.Slug } )
+	reply = &newBoardReply{ ID: board.ID , Slug: board.Slug }
 	return
 }
 
-func ( handlers *Handlers ) PurgeBoard( c fiber.Ctx ) ( err error ) {
-	board_id , _ := paramID( c , "board_id" )
-	if purge_err := models.PurgeTrashedBoard( handlers.Store , principalFrom( c ).UserID , board_id ); purge_err != nil {
-		err = modelError( c , purge_err )
+// purgeBoard deletes one board in the caller's trash for good.
+//
+// @route("POST /api/board-trash/{board_id}/delete", summary="Delete a board for good",
+//     tag="Trash", access=SESSION_ONLY, errors=(404,),
+//     description="Delete one of your deleted boards for good, with its cards, comments and pictures. "
+//         "This cannot be undone.",
+// )
+func ( handlers *Handlers ) purgeBoard( c fiber.Ctx , in *trashBoardPath ) ( reply *okReply , err error ) {
+	if purge_err := models.PurgeTrashedBoard( handlers.Store , principalFrom( c ).UserID , in.BoardID ); purge_err != nil {
+		err = modelErr( purge_err )
 		return
 	}
-	err = c.JSON( fiber.Map{ "ok": true } )
+	reply = &okReply{ Ok: true }
 	return
 }
 
-func ( handlers *Handlers ) EmptyBoardTrash( c fiber.Ctx ) ( err error ) {
+// emptyBoardTrash deletes every board in the caller's trash for good.
+//
+// @route("POST /api/board-trash/empty", summary="Empty your board trash",
+//     tag="Trash", access=SESSION_ONLY,
+//     description="Delete every board in your board trash for good. This cannot be undone. Answers how many went.",
+// )
+func ( handlers *Handlers ) emptyBoardTrash( c fiber.Ctx , in *apidoc.None ) ( reply *emptiedTrashReply , err error ) {
 	removed , empty_err := models.EmptyBoardTrash( handlers.Store , principalFrom( c ).UserID )
 	if empty_err != nil {
-		err = modelError( c , empty_err )
+		err = modelErr( empty_err )
 		return
 	}
-	err = c.JSON( fiber.Map{ "removed": removed } )
+	reply = &emptiedTrashReply{ Removed: removed }
 	return
 }
 
-// plain_icons null means "use my account default".
-type myViewRequest struct {
-	PlainIcons *bool `json:"plain_icons"`
-}
-
-// SetMyBoardView saves how this board looks to the caller alone -- greyscale
+// setMyBoardView saves how this board looks to the caller alone -- greyscale
 // status icons, for now. Only people on the board have somewhere to keep it.
-func ( handlers *Handlers ) SetMyBoardView( c fiber.Ctx ) ( err error ) {
-	principal , board , err := handlers.requireBoard( c , access.View )
-	if board == nil { return }
-	var body myViewRequest
-	if ok , bind_err := bindBody( c , &body ); ok == false { return bind_err }
-	if set_err := models.SetBoardPlainIcons( handlers.Store , principal.UserID , board.ID , body.PlainIcons ); set_err != nil {
-		err = modelError( c , set_err )
+//
+// @route("POST /api/boards/{board_id}/my-view", summary="Your own view of a board",
+//     tag="Boards", errors=(403, 404),
+//     description="How a board looks to you alone: greyscale status icons (plain_icons), or null to follow "
+//         "your account default. Nobody else on the board sees it.",
+//     mcp="set_my_board_view",
+// )
+func ( handlers *Handlers ) setMyBoardView( c fiber.Ctx , in *myViewRequest ) ( reply *myViewReply , err error ) {
+	principal , board , err := handlers.requireBoardAt( c , in.BoardID , access.View )
+	if err != nil { return }
+	if set_err := models.SetBoardPlainIcons( handlers.Store , principal.UserID , board.ID , in.PlainIcons ); set_err != nil {
+		err = modelErr( set_err )
 		return
 	}
-	err = c.JSON( fiber.Map{ "plain_icons": body.PlainIcons } )
+	reply = &myViewReply{ PlainIcons: in.PlainIcons }
 	return
 }
 
-type myCollapsedRequest struct {
-	ListIDs []uint64 `json:"list_ids"`
-}
-
-// SetMyCollapsedLists saves which columns the caller keeps collapsed: the
+// setMyCollapsedLists saves which columns the caller keeps collapsed: the
 // whole list each time. Its own route so that saving it cannot touch the rest
 // of how the board looks to them.
-func ( handlers *Handlers ) SetMyCollapsedLists( c fiber.Ctx ) ( err error ) {
-	principal , board , err := handlers.requireBoard( c , access.View )
-	if board == nil { return }
-	var body myCollapsedRequest
-	if ok , bind_err := bindBody( c , &body ); ok == false { return bind_err }
-	kept , set_err := models.SetBoardCollapsedLists( handlers.Store , principal.UserID , board , body.ListIDs )
+//
+// @route("POST /api/boards/{board_id}/my-view/collapsed", summary="Your collapsed columns",
+//     tag="Boards", errors=(403, 404),
+//     description="Which columns of a board you keep collapsed, for you alone: the whole set each time.",
+//     mcp="set_my_collapsed_lists",
+// )
+func ( handlers *Handlers ) setMyCollapsedLists( c fiber.Ctx , in *myCollapsedRequest ) ( reply *myCollapsedReply , err error ) {
+	principal , board , err := handlers.requireBoardAt( c , in.BoardID , access.View )
+	if err != nil { return }
+	kept , set_err := models.SetBoardCollapsedLists( handlers.Store , principal.UserID , board , in.ListIDs )
 	if set_err != nil {
-		err = modelError( c , set_err )
+		err = modelErr( set_err )
 		return
 	}
-	err = c.JSON( fiber.Map{ "collapsed_lists": kept } )
+	reply = &myCollapsedReply{ CollapsedLists: kept }
 	return
 }
 
-// LeaveBoard lets a member remove themselves. The owner cannot leave; they
+// leaveBoard lets a member remove themselves. The owner cannot leave; they
 // delete the board or hand it over instead.
-func ( handlers *Handlers ) LeaveBoard( c fiber.Ctx ) ( err error ) {
-	principal , board , err := handlers.requireBoard( c , access.View )
-	if board == nil { return }
+//
+// @route("POST /api/boards/{board_id}/leave", summary="Leave a board",
+//     tag="Boards", errors=(400, 403, 404),
+//     description="Take yourself off a board you are a member of; it leaves your home page and you lose access "
+//         "until someone adds you again. The owner cannot leave (400 owner_cannot_leave).",
+//     mcp="leave_board", destructive=True,
+// )
+func ( handlers *Handlers ) leaveBoard( c fiber.Ctx , in *boardPath ) ( reply *okReply , err error ) {
+	principal , board , err := handlers.requireBoardAt( c , in.BoardID , access.View )
+	if err != nil { return }
 	if board.OwnerID == principal.UserID {
-		err = badRequest( c , "owner_cannot_leave" )
+		err = refuse( fiber.StatusBadRequest , "owner_cannot_leave" )
 		return
 	}
 	if _ , set_err := models.SetMember( handlers.Store , board.ID , principal.UserID , "" ); set_err != nil {
-		err = modelError( c , set_err )
+		err = modelErr( set_err )
 		return
 	}
 	handlers.activity( principal , board.ID , "member_left" , nil )
-	err = c.JSON( fiber.Map{ "ok": true } )
+	reply = &okReply{ Ok: true }
 	return
 }
 
-func ( handlers *Handlers ) CreateList( c fiber.Ctx ) ( err error ) {
-	principal , board , err := handlers.requireBoard( c , access.Edit )
-	if board == nil { return }
-	var body listRequest
-	if ok , bind_err := bindBody( c , &body ); ok == false { return bind_err }
-	created , refused := handlers.createList( principal , board , body.Title , body.Position )
-	if refused != nil {
-		err = refused.send( c )
-		return
-	}
-	err = c.JSON( created )
-	return
-}
-
-// createList, updateList and createLabel are shared with the MCP tools of
-// the same name. The board has already passed loadBoardAt at Edit.
-func ( handlers *Handlers ) createList( principal *access.Principal , board *models.Board , title string , position *float64 ) ( created *models.List , refused *refusal ) {
+// createList adds a column.
+//
+// @route("POST /api/boards/{board_id}/lists", summary="Add a column",
+//     tag="Boards", errors=(403, 404, 409),
+//     description="Add a column (list) to a board, at the end or at position. Needs edit rights on the whole board.",
+//     mcp="create_list",
+// )
+func ( handlers *Handlers ) createList( c fiber.Ctx , in *createListRequest ) ( reply *models.List , err error ) {
+	principal , board , err := handlers.requireBoardAt( c , in.BoardID , access.Edit )
+	if err != nil { return }
 	_ , update_err := models.MutateBoard( handlers.Store , board.ID , func( target *models.Board ) ( mutate_err error ) {
-		created , mutate_err = models.AddList( target , title , position )
+		reply , mutate_err = models.AddList( target , in.Title , in.Position )
 		return
 	} )
 	if update_err != nil {
-		refused = modelRefusal( update_err )
+		reply = nil
+		err = modelErr( update_err )
 		return
 	}
-	handlers.activity( principal , board.ID , "list_added" , map[string]string{ "list": created.Title } )
+	handlers.activity( principal , board.ID , "list_added" , map[string]string{ "list": reply.Title } )
 	return
 }
 
-func ( handlers *Handlers ) updateList( principal *access.Principal , board *models.Board , list_id uint64 , update *models.ListUpdate ) ( refused *refusal ) {
+// sharedCreateList is createList for a share link's guest.
+//
+// @route("POST /api/shared/{board_id}/lists", summary="Add a column (share link)",
+//     tag="Shared", access=PUBLIC, use=[handlers.SharePrincipal], errors=(403, 404, 409),
+//     description="createList for a guest holding an edit share link in X-Share-Token.",
+// )
+func ( handlers *Handlers ) sharedCreateList( c fiber.Ctx , in *createListRequest ) ( reply *models.List , err error ) {
+	reply , err = handlers.createList( c , in )
+	return
+}
+
+// updateList changes a column; the activity feed hears of renames and
+// archiving.
+//
+// @route("POST /api/boards/{board_id}/lists/{list_id}", summary="Rename, move or archive a column",
+//     tag="Boards", errors=(403, 404, 409),
+//     description="Change a column's title, position or width, archive it (archived: true hides it; false brings "
+//         "it back), make it a shopping column, or on a staged board fix the stage it shows for everyone "
+//         "(stage_view; empty follows the navbar) or give it its own To do/Doing/Done buttons (stage_tabs: on, "
+//         "off, or empty to follow the board's setting). Leave out what should not change. Needs edit rights "
+//         "on the whole board.",
+//     mcp="update_list",
+// )
+func ( handlers *Handlers ) updateList( c fiber.Ctx , in *updateListRequest ) ( reply *okReply , err error ) {
+	principal , board , err := handlers.requireBoardAt( c , in.BoardID , access.Edit )
+	if err != nil { return }
+	if in.ListID == 0 {
+		err = refuse( fiber.StatusNotFound , "list_not_found" )
+		return
+	}
 	// A copy: the board passed in is not reread, and Apply is what changes.
 	before := models.List{}
-	if list := board.List( list_id ); list != nil { before = *list }
+	if list := board.List( in.ListID ); list != nil { before = *list }
+	update := in.update()
 	updated , update_err := models.MutateBoard( handlers.Store , board.ID , func( target *models.Board ) error {
-		return update.Apply( target , list_id )
+		return update.Apply( target , in.ListID )
 	} )
 	if update_err != nil {
-		refused = modelRefusal( update_err )
+		err = modelErr( update_err )
 		return
 	}
-	after := updated.List( list_id )
+	reply = &okReply{ Ok: true }
+	after := updated.List( in.ListID )
 	if after == nil { return }
 	if after.Title != before.Title {
 		handlers.activity( principal , board.ID , "list_renamed" , map[string]string{ "from": before.Title , "list": after.Title } )
@@ -707,127 +989,190 @@ func ( handlers *Handlers ) updateList( principal *access.Principal , board *mod
 	return
 }
 
-func ( handlers *Handlers ) createLabel( board *models.Board , name string , color string ) ( created *models.Label , refused *refusal ) {
-	_ , update_err := models.MutateBoard( handlers.Store , board.ID , func( target *models.Board ) ( mutate_err error ) {
-		created , mutate_err = models.AddLabel( target , name , color )
-		return
-	} )
-	if update_err != nil { refused = modelRefusal( update_err ) }
+// sharedUpdateList is updateList for a share link's guest.
+//
+// @route("POST /api/shared/{board_id}/lists/{list_id}", summary="Rename, move or archive a column (share link)",
+//     tag="Shared", access=PUBLIC, use=[handlers.SharePrincipal], errors=(403, 404, 409),
+//     description="updateList for a guest holding an edit share link in X-Share-Token.",
+// )
+func ( handlers *Handlers ) sharedUpdateList( c fiber.Ctx , in *updateListRequest ) ( reply *okReply , err error ) {
+	reply , err = handlers.updateList( c , in )
 	return
 }
 
-func ( handlers *Handlers ) UpdateList( c fiber.Ctx ) ( err error ) {
-	principal , board , err := handlers.requireBoard( c , access.Edit )
-	if board == nil { return }
-	list_id , ok := paramID( c , "list_id" )
-	if ok == false {
-		err = notFound( c , "list_not_found" )
-		return
-	}
-	var body models.ListUpdate
-	if ok , bind_err := bindBody( c , &body ); ok == false { return bind_err }
-	if refused := handlers.updateList( principal , board , list_id , &body ); refused != nil {
-		err = refused.send( c )
-		return
-	}
-	err = c.JSON( fiber.Map{ "ok": true } )
-	return
-}
-
-func ( handlers *Handlers ) DeleteList( c fiber.Ctx ) ( err error ) {
-	principal , board , err := handlers.requireBoard( c , access.Edit )
-	if board == nil { return }
-	list_id , ok := paramID( c , "list_id" )
-	if ok == false {
-		err = notFound( c , "list_not_found" )
+// deleteList removes a column and the cards in it.
+//
+// @route("POST /api/boards/{board_id}/lists/{list_id}/delete", summary="Delete a column",
+//     tag="Boards", errors=(403, 404, 409),
+//     description="Delete a column and its share links; its cards go to the board's trash, where they can be restored into another column. Archiving it (update_list, archived: true) "
+//         "is the gentler way to put one away. Needs edit rights on the whole board.",
+//     mcp="delete_list", destructive=True,
+// )
+func ( handlers *Handlers ) deleteList( c fiber.Ctx , in *listPath ) ( reply *okReply , err error ) {
+	principal , board , err := handlers.requireBoardAt( c , in.BoardID , access.Edit )
+	if err != nil { return }
+	if in.ListID == 0 {
+		err = refuse( fiber.StatusNotFound , "list_not_found" )
 		return
 	}
 	title := ""
-	if list := board.List( list_id ); list != nil { title = list.Title }
-	if delete_err := models.DeleteList( handlers.Store , board.ID , list_id , principal.Name ); delete_err != nil {
-		err = modelError( c , delete_err )
+	if list := board.List( in.ListID ); list != nil { title = list.Title }
+	if delete_err := models.DeleteList( handlers.Store , board.ID , in.ListID , principal.Name ); delete_err != nil {
+		err = modelErr( delete_err )
 		return
 	}
 	handlers.activity( principal , board.ID , "list_deleted" , map[string]string{ "list": title } )
-	err = c.JSON( fiber.Map{ "ok": true } )
+	reply = &okReply{ Ok: true }
 	return
 }
 
-func ( handlers *Handlers ) CreateLabel( c fiber.Ctx ) ( err error ) {
-	_ , board , err := handlers.requireBoard( c , access.Edit )
-	if board == nil { return }
-	var body labelRequest
-	if ok , bind_err := bindBody( c , &body ); ok == false { return bind_err }
-	if body.Color == nil {
-		err = badRequest( c , "invalid_input" )
-		return
-	}
+// sharedDeleteList is deleteList for a share link's guest.
+//
+// @route("POST /api/shared/{board_id}/lists/{list_id}/delete", summary="Delete a column (share link)",
+//     tag="Shared", access=PUBLIC, use=[handlers.SharePrincipal], errors=(403, 404, 409),
+//     description="deleteList for a guest holding an edit share link in X-Share-Token.",
+// )
+func ( handlers *Handlers ) sharedDeleteList( c fiber.Ctx , in *listPath ) ( reply *okReply , err error ) {
+	reply , err = handlers.deleteList( c , in )
+	return
+}
+
+// createLabel adds a label to the board.
+//
+// @route("POST /api/boards/{board_id}/labels", summary="Add a label",
+//     tag="Boards", errors=(403, 404, 409),
+//     description="Add a label to a board, to put on cards with update_card's label_ids. Needs edit rights on "
+//         "the whole board.",
+//     mcp="create_label",
+// )
+func ( handlers *Handlers ) createLabel( c fiber.Ctx , in *createLabelRequest ) ( reply *models.Label , err error ) {
+	_ , board , err := handlers.requireBoardAt( c , in.BoardID , access.Edit )
+	if err != nil { return }
 	name := ""
-	if body.Name != nil { name = *body.Name }
-	created , refused := handlers.createLabel( board , name , *body.Color )
-	if refused != nil {
-		err = refused.send( c )
+	if in.Name != nil { name = *in.Name }
+	_ , update_err := models.MutateBoard( handlers.Store , board.ID , func( target *models.Board ) ( mutate_err error ) {
+		reply , mutate_err = models.AddLabel( target , name , in.Color )
 		return
-	}
-	err = c.JSON( created )
-	return
-}
-
-func ( handlers *Handlers ) UpdateLabel( c fiber.Ctx ) ( err error ) {
-	_ , board , err := handlers.requireBoard( c , access.Edit )
-	if board == nil { return }
-	label_id , ok := paramID( c , "label_id" )
-	if ok == false {
-		err = notFound( c , "label_not_found" )
-		return
-	}
-	var body labelRequest
-	if ok , bind_err := bindBody( c , &body ); ok == false { return bind_err }
-	_ , update_err := models.MutateBoard( handlers.Store , board.ID , func( target *models.Board ) error {
-		return models.UpdateLabel( target , label_id , body.Name , body.Color )
 	} )
 	if update_err != nil {
-		err = modelError( c , update_err )
-		return
+		reply = nil
+		err = modelErr( update_err )
 	}
-	err = c.JSON( fiber.Map{ "ok": true } )
 	return
 }
 
-func ( handlers *Handlers ) DeleteLabel( c fiber.Ctx ) ( err error ) {
-	_ , board , err := handlers.requireBoard( c , access.Edit )
-	if board == nil { return }
-	label_id , ok := paramID( c , "label_id" )
-	if ok == false {
-		err = notFound( c , "label_not_found" )
-		return
-	}
-	if delete_err := models.DeleteLabel( handlers.Store , board.ID , label_id ); delete_err != nil {
-		err = modelError( c , delete_err )
-		return
-	}
-	err = c.JSON( fiber.Map{ "ok": true } )
+// sharedCreateLabel is createLabel for a share link's guest.
+//
+// @route("POST /api/shared/{board_id}/labels", summary="Add a label (share link)",
+//     tag="Shared", access=PUBLIC, use=[handlers.SharePrincipal], errors=(403, 404, 409),
+//     description="createLabel for a guest holding an edit share link in X-Share-Token.",
+// )
+func ( handlers *Handlers ) sharedCreateLabel( c fiber.Ctx , in *createLabelRequest ) ( reply *models.Label , err error ) {
+	reply , err = handlers.createLabel( c , in )
 	return
 }
 
-type carryOverRequest struct {
-	Today string `json:"today"`
+// updateLabel renames or recolours a label.
+//
+// @route("POST /api/boards/{board_id}/labels/{label_id}", summary="Change a label",
+//     tag="Boards", errors=(403, 404, 409),
+//     description="Rename a label or change its colour; leave out what should not change. Needs edit rights on "
+//         "the whole board.",
+//     mcp="update_label",
+// )
+func ( handlers *Handlers ) updateLabel( c fiber.Ctx , in *updateLabelRequest ) ( reply *okReply , err error ) {
+	_ , board , err := handlers.requireBoardAt( c , in.BoardID , access.Edit )
+	if err != nil { return }
+	if in.LabelID == 0 {
+		err = refuse( fiber.StatusNotFound , "label_not_found" )
+		return
+	}
+	_ , update_err := models.MutateBoard( handlers.Store , board.ID , func( target *models.Board ) error {
+		return models.UpdateLabel( target , in.LabelID , in.Name , in.Color )
+	} )
+	if update_err != nil {
+		err = modelErr( update_err )
+		return
+	}
+	reply = &okReply{ Ok: true }
+	return
 }
 
-// CarryOver moves a calendar board's unfinished cards from past days to
+// sharedUpdateLabel is updateLabel for a share link's guest.
+//
+// @route("POST /api/shared/{board_id}/labels/{label_id}", summary="Change a label (share link)",
+//     tag="Shared", access=PUBLIC, use=[handlers.SharePrincipal], errors=(403, 404, 409),
+//     description="updateLabel for a guest holding an edit share link in X-Share-Token.",
+// )
+func ( handlers *Handlers ) sharedUpdateLabel( c fiber.Ctx , in *updateLabelRequest ) ( reply *okReply , err error ) {
+	reply , err = handlers.updateLabel( c , in )
+	return
+}
+
+// deleteLabel removes a label from the board and from every card.
+//
+// @route("POST /api/boards/{board_id}/labels/{label_id}/delete", summary="Delete a label",
+//     tag="Boards", errors=(403, 404, 409),
+//     description="Delete a label; it comes off every card it was on. Needs edit rights on the whole board.",
+//     mcp="delete_label", destructive=True,
+// )
+func ( handlers *Handlers ) deleteLabel( c fiber.Ctx , in *labelPath ) ( reply *okReply , err error ) {
+	_ , board , err := handlers.requireBoardAt( c , in.BoardID , access.Edit )
+	if err != nil { return }
+	if in.LabelID == 0 {
+		err = refuse( fiber.StatusNotFound , "label_not_found" )
+		return
+	}
+	if delete_err := models.DeleteLabel( handlers.Store , board.ID , in.LabelID ); delete_err != nil {
+		err = modelErr( delete_err )
+		return
+	}
+	reply = &okReply{ Ok: true }
+	return
+}
+
+// sharedDeleteLabel is deleteLabel for a share link's guest.
+//
+// @route("POST /api/shared/{board_id}/labels/{label_id}/delete", summary="Delete a label (share link)",
+//     tag="Shared", access=PUBLIC, use=[handlers.SharePrincipal], errors=(403, 404, 409),
+//     description="deleteLabel for a guest holding an edit share link in X-Share-Token.",
+// )
+func ( handlers *Handlers ) sharedDeleteLabel( c fiber.Ctx , in *labelPath ) ( reply *okReply , err error ) {
+	reply , err = handlers.deleteLabel( c , in )
+	return
+}
+
+// carryOver moves a calendar board's unfinished cards from past days to
 // today, the caller's today. The page asks on opening the board, so
 // whoever opens it first that day does it for everyone; asking again moves
 // nothing. A board with carry-over off, or not a calendar, moves nothing.
-func ( handlers *Handlers ) CarryOver( c fiber.Ctx ) ( err error ) {
-	principal , board , err := handlers.requireBoard( c , access.Edit )
-	if board == nil { return }
-	var body carryOverRequest
-	if ok , bind_err := bindBody( c , &body ); ok == false { return bind_err }
-	moved , carry_err := models.CarryOverCards( handlers.Store , board.ID , body.Today , principal.Name )
+//
+// @route("POST /api/boards/{board_id}/carry-over", summary="Carry unfinished cards over to today",
+//     tag="Boards", errors=(403, 404, 409),
+//     description="On a calendar board with carry-over on, move the unfinished cards of past days to today "
+//         "(yours, within a day of the server's). Asking again the same day moves nothing; a board with "
+//         "carry-over off, or not a calendar, moves nothing. Needs edit rights on the whole board.",
+//     mcp="carry_over",
+// )
+func ( handlers *Handlers ) carryOver( c fiber.Ctx , in *carryOverRequest ) ( reply *carryOverReply , err error ) {
+	principal , board , err := handlers.requireBoardAt( c , in.BoardID , access.Edit )
+	if err != nil { return }
+	moved , carry_err := models.CarryOverCards( handlers.Store , board.ID , in.Today , principal.Name )
 	if carry_err != nil {
-		err = modelError( c , carry_err )
+		err = modelErr( carry_err )
 		return
 	}
-	err = c.JSON( fiber.Map{ "moved": moved } )
+	reply = &carryOverReply{ Moved: moved }
+	return
+}
+
+// sharedCarryOver is carryOver for a share link's guest.
+//
+// @route("POST /api/shared/{board_id}/carry-over", summary="Carry unfinished cards over to today (share link)",
+//     tag="Shared", access=PUBLIC, use=[handlers.SharePrincipal], errors=(403, 404, 409),
+//     description="carryOver for a guest holding an edit share link in X-Share-Token.",
+// )
+func ( handlers *Handlers ) sharedCarryOver( c fiber.Ctx , in *carryOverRequest ) ( reply *carryOverReply , err error ) {
+	reply , err = handlers.carryOver( c , in )
 	return
 }

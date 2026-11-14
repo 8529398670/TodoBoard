@@ -14,31 +14,46 @@ import (
 	sheet "todoboard/server/sheet"
 )
 
-// ExportBoard answers GET .../export?format=xlsx|csv with the board as a
-// spreadsheet: one row per card the caller can see, list by list, in board
-// order. archived=1 adds archived cards (and archived lists) with an
-// Archived column; tz names the timezone timed dates are written in, which
-// defaults to the member's own and otherwise UTC. Column headings come from
-// language.yaml (export.col_*), like everything else people read.
-func ( handlers *Handlers ) ExportBoard( c fiber.Ctx ) ( err error ) {
-	principal , board , err := handlers.boardFor( c )
-	if board == nil { return }
+type exportBoardRequest struct {
+	boardPath
+	Format   string `json:"format" query:"format" jsonschema_description:"xlsx or csv."`
+	Archived string `json:"archived,omitempty" query:"archived" jsonschema_description:"1 adds archived cards and columns, with an Archived column."`
+	TZ       string `json:"tz,omitempty" query:"tz" jsonschema_description:"The timezone timed dates are written in (an IANA name); defaults to your own, else UTC."`
+}
+
+// exportBoard answers with the board as a spreadsheet: one row per card the
+// caller can see, list by list, in board order. archived=1 adds archived
+// cards (and archived lists) with an Archived column; tz names the timezone
+// timed dates are written in, which defaults to the member's own and
+// otherwise UTC. Column headings come from language.yaml (export.col_*),
+// like everything else people read.
+//
+// @route("GET /api/boards/{board_id}/export", summary="Download a board as a spreadsheet",
+//     tag="Boards", errors=(400, 403, 404), reply_type="application/octet-stream",
+//     description="The board as an xlsx or csv spreadsheet (format): one row per card you can see, column by "
+//         "column, in board order. archived=1 adds archived cards and columns; tz is the timezone timed dates "
+//         "are written in.",
+//     mcp_http="A file (a picture, a spreadsheet or a backup), which travels over HTTP rather than as a tool answer.",
+// )
+func ( handlers *Handlers ) exportBoard( c fiber.Ctx , in *exportBoardRequest ) ( err error ) {
+	principal , board , err := handlers.boardAt( c , in.BoardID )
+	if err != nil { return }
 	// A spreadsheet names the board and the card's column.
 	if access.QuickLink( principal ) {
-		err = notFound( c , "board_not_found" )
+		err = refuse( fiber.StatusNotFound , "board_not_found" )
 		return
 	}
-	format := c.Query( "format" )
+	format := in.Format
 	if format != "xlsx" && format != "csv" {
-		err = badRequest( c , "invalid_input" )
+		err = refuse( fiber.StatusBadRequest , "invalid_input" )
 		return
 	}
 	cards , list_err := models.ListCards( handlers.Store , board.ID )
 	if list_err != nil {
-		err = serverError( c )
+		err = list_err
 		return
 	}
-	table := handlers.exportTable( principal , board , cards , c.Query( "archived" ) == "1" , handlers.exportLocation( principal , c.Query( "tz" ) ) )
+	table := handlers.exportTable( principal , board , cards , in.Archived == "1" , handlers.exportLocation( principal , in.TZ ) )
 
 	var body []byte
 	var build_err error
@@ -50,7 +65,7 @@ func ( handlers *Handlers ) ExportBoard( c fiber.Ctx ) ( err error ) {
 		body , build_err = table.CSV()
 	}
 	if build_err != nil {
-		err = serverError( c )
+		err = build_err
 		return
 	}
 	name := board.Slug
@@ -59,6 +74,18 @@ func ( handlers *Handlers ) ExportBoard( c fiber.Ctx ) ( err error ) {
 	c.Set( fiber.HeaderContentDisposition , fmt.Sprintf( `attachment; filename="%s.%s"` , name , format ) )
 	c.Set( fiber.HeaderCacheControl , "no-store" )
 	err = c.Send( body )
+	return
+}
+
+// sharedExportBoard is exportBoard for a share link's guest.
+//
+// @route("GET /api/shared/{board_id}/export", summary="Download a board as a spreadsheet (share link)",
+//     tag="Shared", access=PUBLIC, use=[handlers.SharePrincipal], errors=(400, 403, 404),
+//     reply_type="application/octet-stream",
+//     description="exportBoard for a guest holding a share link in X-Share-Token.",
+// )
+func ( handlers *Handlers ) sharedExportBoard( c fiber.Ctx , in *exportBoardRequest ) ( err error ) {
+	err = handlers.exportBoard( c , in )
 	return
 }
 

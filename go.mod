@@ -5,9 +5,14 @@ go 1.26.0
 toolchain go1.26.9
 
 require (
+	github.com/bahlo/generic-list-go v0.2.0 // indirect
+	github.com/buger/jsonparser v1.1.2 // indirect
 	github.com/gofiber/fiber/v3 v3.6.1
+	github.com/invopop/jsonschema v0.14.0
+	github.com/pb33f/ordered-map/v2 v2.3.1 // indirect
 	github.com/symbolicsoft/kyber-k2so v1.1.1
 	go.etcd.io/bbolt v1.5.0
+	go.yaml.in/yaml/v4 v4.0.0-rc.2 // indirect
 	golang.org/x/crypto v0.58.0
 	golang.org/x/net v0.61.0
 	golang.org/x/sys v0.49.0

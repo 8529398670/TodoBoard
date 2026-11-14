@@ -192,7 +192,7 @@ const Settings = {
     const field = this.fields[ state.key ] = { input: input , state: state , reset: null };
 
     const tone = { live: "success" , restart: "warning" , scripts: "secondary" }[ state.apply ] || "secondary";
-    const label = Dom.el( "label" , { class: "form-label settings-label" , attrs: { for: id } , children: [
+    const label = Dom.el( "label" , { class: "form-label settings-label d-flex flex-wrap align-items-center gap-2" , attrs: { for: id } , children: [
       Dom.el( "code" , { text: state.name } ),
       Dom.badge( I18n.get( "settings.apply_" + state.apply ) || state.apply , tone ),
     ] } );
@@ -216,7 +216,8 @@ const Settings = {
     if ( state.pending_restart ) {
       notes.appendChild( Dom.el( "div" , { class: "text-warning-emphasis" , text: I18n.get( "settings.pending_restart" ).replace( "{running}" , this.format( state.running ) ) } ) );
     }
-    if ( state.locked ) notes.appendChild( Dom.el( "div" , { text: I18n.get( "settings.locked" ) } ) );
+    if ( state.file_only ) notes.appendChild( Dom.el( "div" , { text: I18n.get( "settings.file_only" ) } ) );
+    else if ( state.locked ) notes.appendChild( Dom.el( "div" , { text: I18n.get( "settings.locked" ) } ) );
 
     const row = Dom.el( "div" , { class: "settings-key" , attrs: { "data-key": state.key } } );
     if ( state.type === "bool" ) {

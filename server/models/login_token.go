@@ -52,6 +52,10 @@ type LoginToken struct {
 	MaxUses    int        `json:"max_uses,omitempty"`
 	Unlimited  bool       `json:"unlimited,omitempty"`
 	Uses       int        `json:"uses,omitempty"`
+	// MintedByKey is the API key that asked for this link, empty when a
+	// person did. Revoking or deleting that key voids the link while it can
+	// still be used (VoidLinksMintedByKey).
+	MintedByKey string `json:"minted_by_key,omitempty"`
 }
 
 // LoginLinkOptions says how a new link may be used. MaxUses is ignored when
@@ -60,6 +64,14 @@ type LoginLinkOptions struct {
 	MaxUses   int
 	Unlimited bool
 	TTL       time.Duration
+	// MintedByKey is the id of the API key asking, if one is. See
+	// LoginToken.MintedByKey.
+	MintedByKey string
+	// ActorID is the account asking for a link to someone else's account,
+	// checked against mayActOnTx inside the issuing transaction: a link is a
+	// way in, so minting one is as much power over the account as deleting
+	// it. Zero is the operator, or an account being created just now.
+	ActorID uint64
 }
 
 // OnceLink is the classic one-time link.
@@ -72,20 +84,25 @@ func OnceLink( ttl time.Duration ) ( options LoginLinkOptions ) {
 // configured defaults fill the gaps. MaxUses: nil means once, 0 unlimited.
 // ExpiresInMinutes: nil means the configured default, 0 never.
 type LoginLinkRequest struct {
-	MaxUses          *int `json:"max_uses,omitempty"`
-	ExpiresInMinutes *int `json:"expires_in_minutes,omitempty"`
+	MaxUses          *int `json:"max_uses,omitempty" jsonschema:"minimum=0,maximum=1000" jsonschema_description:"Sign-ins the link allows: 1-1000, or 0 for unlimited. Default 1." error:"max_uses must be 0 (unlimited) or 1-1000, expires_in_minutes 0 (never) or 1-525600"`
+	ExpiresInMinutes *int `json:"expires_in_minutes,omitempty" jsonschema:"minimum=0,maximum=525600" jsonschema_description:"0 never expires. Default auth.login_token_ttl_seconds for a link that works once, auth.multi_use_login_token_ttl_seconds otherwise." error:"max_uses must be 0 (unlimited) or 1-1000, expires_in_minutes 0 (never) or 1-525600"`
 }
 
 // LoginLinkInfo is a link as the UI shows it. ExpiresAt is nil when it
 // never expires.
 type LoginLinkInfo struct {
-	MaxUses    int        `json:"max_uses"`
+	MaxUses    int        `json:"max_uses" jsonschema_description:"Sign-ins it allows. 0 when unlimited."`
 	Unlimited  bool       `json:"unlimited"`
-	Uses       int        `json:"uses"`
+	Uses       int        `json:"uses" jsonschema_description:"Sign-ins so far."`
 	CreatedAt  time.Time  `json:"created_at"`
-	ExpiresAt  *time.Time `json:"expires_at"`
+	ExpiresAt  *time.Time `json:"expires_at" jsonschema_description:"null when it never expires."`
 	LastUsedAt *time.Time `json:"last_used_at"`
 }
+
+// APIName and APIDoc name it in the API docs (see server/apidoc).
+func ( LoginLinkInfo ) APIName() ( name string ) { name = "LoginLink"; return }
+
+func ( LoginLinkInfo ) APIDoc() ( text string ) { text = "A login link that can still be used. One per account at most."; return }
 
 func ( token *LoginToken ) maxUses() ( result int ) {
 	result = token.MaxUses
@@ -256,11 +273,14 @@ func IssueLoginLink( store *db.Store , user_id uint64 , options LoginLinkOptions
 		CreatedAt:  now,
 		MaxUses:    options.MaxUses,
 		Unlimited:  options.Unlimited,
+		MintedByKey: options.MintedByKey,
 	}
 	if token.Unlimited { token.MaxUses = 0 }
 	if options.TTL > 0 { token.ExpiresAt = now.Add( options.TTL ) }
 	err = store.Write( func( tx *db.Tx ) ( tx_err error ) {
-		if tx_err = tx.Get( db.BucketUsers , encryption.Uint64ToBytes( user_id ) , &User{} ); tx_err != nil { return }
+		target := &User{}
+		if tx_err = tx.Get( db.BucketUsers , encryption.Uint64ToBytes( user_id ) , target ); tx_err != nil { return }
+		if tx_err = mayActOnTx( tx , options.ActorID , target ); tx_err != nil { return }
 		if _ , tx_err = deletePendingLoginTokens( tx , user_id ); tx_err != nil { return }
 		tx_err = tx.Put( db.BucketLoginTokens , []byte( token_id ) , token )
 		return
@@ -324,6 +344,7 @@ func RedeemLoginToken( store *db.Store , credential string , rules SignInRules )
 		current.UsedAt = &now
 		if tx_err = tx.Put( db.BucketLoginTokens , []byte( token_id ) , current ); tx_err != nil { return }
 
+		rules.MintedByKey = current.MintedByKey
 		signed , tx_err = startSignInTx( tx , owner , rules )
 		return
 	} )
@@ -353,9 +374,11 @@ func LiveLoginLinks( store *db.Store ) ( links map[uint64]LoginLinkInfo , err er
 }
 
 // CancelLoginLink stops the account's live link working. Sessions it already
-// made stay signed in, as with reissuing.
-func CancelLoginLink( store *db.Store , user_id uint64 ) ( removed int , err error ) {
+// made stay signed in, as with reissuing. actor_id is who is asking, held to
+// mayActOnTx: zero for the operator, the account itself for its own link.
+func CancelLoginLink( store *db.Store , user_id uint64 , actor_id uint64 ) ( removed int , err error ) {
 	err = store.Write( func( tx *db.Tx ) ( tx_err error ) {
+		if tx_err = mayActOnIDTx( tx , actor_id , user_id ); tx_err != nil { return }
 		removed , tx_err = deletePendingLoginTokens( tx , user_id )
 		return
 	} )
@@ -373,6 +396,44 @@ func deletePendingLoginTokens( tx *db.Tx , user_id uint64 ) ( removed int , err 
 			token := item.( *LoginToken )
 			return token.UserID == user_id && token.Usable()
 		} )
+	return
+}
+
+// VoidLinksMintedByKeyTx is what keeps revoking a key meaningful now that a key
+// may hand out login links and invite links: inside the caller's transaction
+// (the one revoking or deleting the key), every login link the key made that
+// could still sign someone in is deleted, every browser session one of those
+// links signed in is ended, along with a sign-in still waiting on its
+// two-factor code, and every invite link it made is switched off. Restoring a
+// deleted key brings none of them back.
+//
+// Sessions made through an invite link the key made stay: those are the
+// accounts of the people who joined, not a way into an existing one.
+func VoidLinksMintedByKeyTx( tx *db.Tx , key_id string ) ( voided int , err error ) {
+	if key_id == "" { return }
+	voided , err = tx.DeleteWhere( db.BucketLoginTokens ,
+		func() any { return &LoginToken{} } ,
+		func( key []byte , item any ) bool {
+			token := item.( *LoginToken )
+			return token.MintedByKey == key_id && token.Usable()
+		} )
+	if err != nil { return }
+	ended , err := tx.DeleteWhere( db.BucketSessions ,
+		func() any { return &Session{} } ,
+		func( key []byte , item any ) bool {
+			return item.( *Session ).MintedByKey == key_id
+		} )
+	voided += ended
+	if err != nil { return }
+	waiting , err := tx.DeleteWhere( db.BucketSignInChallenges ,
+		func() any { return &signInChallenge{} } ,
+		func( key []byte , item any ) bool {
+			return item.( *signInChallenge ).MintedByKey == key_id
+		} )
+	voided += waiting
+	if err != nil { return }
+	switched_off , err := revokeInviteLinksMintedByKeyTx( tx , key_id )
+	voided += switched_off
 	return
 }
 

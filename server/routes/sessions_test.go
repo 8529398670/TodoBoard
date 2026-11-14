@@ -167,17 +167,26 @@ func TestRevokeOthersKeepsThisOne( t *testing.T ) {
 	}
 }
 
-func TestAnAPIKeyCannotManageDevices( t *testing.T ) {
+func TestAnAPIKeyManagesDevices( t *testing.T ) {
 	fixture := newAuthFixture( t )
+	phone := fixture.signIn( t , fixture.alice.ID )
+	laptop := fixture.signIn( t , fixture.alice.ID )
 	key , _ , err := models.IssueAPIKey( fixture.store , fixture.alice.ID , "script" , models.RoleUser , time.Hour )
 	if err != nil { t.Fatal( err ) }
-	request , _ := http.NewRequest( http.MethodGet , "/api/account/sessions" , nil )
-	request.Header.Set( "Authorization" , "Bearer "+key )
-	response , err := fixture.app.Test( request , fiber.TestConfig{ Timeout: 10 * time.Second } )
-	if err != nil { t.Fatal( err ) }
-	if response.StatusCode != http.StatusForbidden {
-		t.Fatalf( "status %d" , response.StatusCode )
+
+	status , page := fixture.withKey( t , key , http.MethodGet , "/api/account/sessions" , nil )
+	rows , _ := page[ "sessions" ].( []any )
+	if status != fiber.StatusOK || len( rows ) != 2 { t.Fatalf( "%d %v" , status , page ) }
+	for _ , row := range rows {
+		if row.( map[ string ]any )[ "current" ] == true { t.Fatalf( "a key has no current device: %v" , row ) }
 	}
+	id := rows[ 0 ].( map[ string ]any )[ "id" ].( string )
+	if status , reply := fixture.withKey( t , key , http.MethodPost , "/api/account/sessions/"+id+"/label" , fiber.Map{ "label": "Phone" } ); status != fiber.StatusOK { t.Fatalf( "label: %d %v" , status , reply ) }
+
+	// No device is "this one" through a key, so revoke-others ends them all.
+	status , reply := fixture.withKey( t , key , http.MethodPost , "/api/account/sessions/revoke-others" , fiber.Map{} )
+	if status != fiber.StatusOK || reply[ "removed" ] != float64( 2 ) { t.Fatalf( "%d %v" , status , reply ) }
+	if phone.signedIn( t ) || laptop.signedIn( t ) { t.Fatal( "a device stayed signed in" ) }
 }
 
 // sessionsOf reads an account's session records straight from the bucket.
@@ -382,6 +391,23 @@ func TestOnlyTheOwnerReachesTheOwnersSessionsAndAddresses( t *testing.T ) {
 	}
 }
 
+// S3: only the owner signs another admin's device out.
+func TestOnlyTheOwnerEndsAnAdminsSession( t *testing.T ) {
+	fixture := newAuthFixture( t )
+	peer , _ := models.CreateUser( fixture.store , "Peer" , models.RoleAdmin )
+	other , _ := models.CreateUser( fixture.store , "Other" , models.RoleAdmin )
+	owner := fixture.signIn( t , fixture.owner.ID )
+	admin := fixture.signIn( t , peer.ID )
+	victim := fixture.signIn( t , other.ID )
+	session := victim.devices( t )[ 0 ][ "id" ].( string )
+	path := fmt.Sprintf( "/api/admin/users/%d/sessions/%s/revoke" , other.ID , session )
+
+	if status , _ := admin.post( t , path , fiber.Map{ "csrf_token": admin.csrf( t ) } ); status != http.StatusForbidden { t.Fatalf( "a peer: %d" , status ) }
+	if victim.signedIn( t ) == false { t.Fatal( "a peer signed another admin out" ) }
+	if status , _ := owner.post( t , path , fiber.Map{ "csrf_token": owner.csrf( t ) } ); status != http.StatusOK { t.Fatalf( "the owner: %d" , status ) }
+	if victim.signedIn( t ) { t.Fatal( "the owner's revoke did not end the session" ) }
+}
+
 func TestSessionAdminRoutesRefuse( t *testing.T ) {
 	fixture := newAuthFixture( t )
 	owner := fixture.signIn( t , fixture.owner.ID )
@@ -538,18 +564,4 @@ func TestOnlyYouNameYourDevices( t *testing.T ) {
 	status , page := owner.do( t , http.MethodGet , fmt.Sprintf( "/api/admin/users/%d/sessions" , fixture.alice.ID ) , nil )
 	rows , _ := page[ "sessions" ].( []any )
 	if status != fiber.StatusOK || len( rows ) != 1 || rows[ 0 ].( map[ string ]any )[ "label" ] != "Phone" { t.Fatalf( "%d %v" , status , page ) }
-}
-
-func TestAKeyCannotNameADevice( t *testing.T ) {
-	fixture := newAuthFixture( t )
-	alice := fixture.signIn( t , fixture.alice.ID )
-	id , _ := alice.devices( t )[ 0 ][ "id" ].( string )
-	key , _ , err := models.IssueAPIKey( fixture.store , fixture.alice.ID , "ops" , models.RoleUser , time.Hour )
-	if err != nil { t.Fatal( err ) }
-	request , _ := http.NewRequest( http.MethodPost , "/api/account/sessions/"+id+"/label" , strings.NewReader( `{"label":"x"}` ) )
-	request.Header.Set( "Authorization" , "Bearer " + key )
-	request.Header.Set( "Content-Type" , "application/json" )
-	response , test_err := fixture.app.Test( request )
-	if test_err != nil { t.Fatal( test_err ) }
-	if response.StatusCode != fiber.StatusForbidden { t.Fatalf( "%d" , response.StatusCode ) }
 }

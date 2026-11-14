@@ -32,6 +32,10 @@ var ErrChallengeInvalid = errors.New( "that sign-in has expired, start again" )
 type SignInRules struct {
 	SessionTTL time.Duration
 	TwoFactor  bool
+	// MintedByKey is the API key that made the link being redeemed, carried
+	// to the session (and through a two-factor challenge) so revoking the
+	// key ends it. RedeemLoginToken fills it in; callers leave it empty.
+	MintedByKey string
 }
 
 // SignIn is a first factor that was accepted. Exactly one of
@@ -46,6 +50,8 @@ type signInChallenge struct {
 	UserID     uint64    `json:"user_id"`
 	SecretHash string    `json:"secret_hash"`
 	ExpiresAt  time.Time `json:"expires_at"`
+	// MintedByKey: see SignInRules.MintedByKey.
+	MintedByKey string `json:"minted_by_key,omitempty"`
 }
 
 func ( challenge *signInChallenge ) live( secret string ) ( result bool ) {
@@ -64,12 +70,14 @@ func startSignInTx( tx *db.Tx , user *User , rules SignInRules ) ( signed *SignI
 			UserID:     user.ID,
 			SecretHash: encryption.Sha256Hex( secret ),
 			ExpiresAt:  time.Now().UTC().Add( ChallengeTTL ),
+			MintedByKey: rules.MintedByKey,
 		}
 		if err = tx.Put( db.BucketSignInChallenges , []byte( challenge_id ) , challenge ); err != nil { return }
 		signed = &SignIn{ UserID: user.ID , Challenge: challenge_id + "." + secret }
 		return
 	}
 	session_id , credential , session := newSession( user.ID , rules.SessionTTL )
+	session.MintedByKey = rules.MintedByKey
 	if err = tx.Put( db.BucketSessions , []byte( session_id ) , session ); err != nil { return }
 	signed = &SignIn{ UserID: user.ID , SessionCredential: credential }
 	return
@@ -114,6 +122,7 @@ func FinishChallenge( store *db.Store , credential string , code string , sessio
 		if tx_err = tx.Put( db.BucketUsers , key , user ); tx_err != nil { return }
 		if tx_err = tx.Delete( db.BucketSignInChallenges , []byte( challenge_id ) ); tx_err != nil { return }
 		session_id , session_credential , session := newSession( user.ID , session_ttl )
+		session.MintedByKey = challenge.MintedByKey
 		if tx_err = tx.Put( db.BucketSessions , []byte( session_id ) , session ); tx_err != nil { return }
 		signed = &SignIn{ UserID: user.ID , SessionCredential: session_credential }
 		return

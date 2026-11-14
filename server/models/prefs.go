@@ -21,10 +21,10 @@ import (
 //            is a board's to set: asked of a card, it means nothing. Kept
 //            apart from Changes, which assignees have on by default.
 type EventSet struct {
-	Due      bool `json:"due"`
-	Assigned bool `json:"assigned"`
-	Changes  bool `json:"changes"`
-	Activity bool `json:"activity"`
+	Due      bool `json:"due" jsonschema:"required"`
+	Assigned bool `json:"assigned" jsonschema:"required"`
+	Changes  bool `json:"changes" jsonschema:"required"`
+	Activity bool `json:"activity,omitempty"`
 }
 
 // UserPrefs is kept apart from User so the account record the template owns

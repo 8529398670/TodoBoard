@@ -8,6 +8,7 @@ import (
 	utf8 "unicode/utf8"
 
 	fiber "github.com/gofiber/fiber/v3"
+	jsonschema "github.com/invopop/jsonschema"
 
 	access "todoboard/server/access"
 	db "todoboard/server/db"
@@ -32,8 +33,120 @@ const keyPrincipal principalKey = "board_principal"
 const ShareTokenHeader = "X-Share-Token"
 const GuestNameHeader = "X-Guest-Name"
 
+// principalFrom is who a board route acts for: the share link SharePrincipal
+// found (an /api/shared route), else the signed-in account. An MCP tool runs
+// its route's handler on the /mcp request, where no route middleware ran, so
+// the account comes from the actor there too.
 func principalFrom( c fiber.Ctx ) ( principal *access.Principal ) {
 	principal , _ = c.Locals( keyPrincipal ).( *access.Principal )
+	if principal != nil { return }
+	if actor := security.ActorFrom( c ); actor != nil && actor.User != nil {
+		principal = &access.Principal{ UserID: actor.User.ID , Key: actor.APIKey , Name: actor.User.DisplayName }
+	}
+	return
+}
+
+// The path parts of the board routes, shared by their request types. A
+// board is named by its id or its URL slug.
+type boardPath struct {
+	BoardID boardRef `json:"board" path:"board_id" jsonschema_description:"The board's id, or its URL slug (the part after /b/), from list_boards."`
+}
+
+// boardRef is a board's id or slug. In a URL it is text; an agent may send the
+// id as a number, as get_board shows it.
+type boardRef string
+
+func ( ref *boardRef ) UnmarshalJSON( raw []byte ) ( err error ) {
+	var text string
+	if err = json.Unmarshal( raw , &text ); err == nil {
+		*ref = boardRef( text )
+		return
+	}
+	var number json.Number
+	if err = json.Unmarshal( raw , &number ); err == nil { *ref = boardRef( number.String() ) }
+	return
+}
+
+func ( boardRef ) JSONSchema() ( schema *jsonschema.Schema ) {
+	schema = &jsonschema.Schema{ OneOf: []*jsonschema.Schema{
+		{ Type: "string" , MinLength: &minimumRefLength },
+		{ Type: "integer" , Minimum: json.Number( "1" ) },
+	} }
+	return
+}
+
+var minimumRefLength uint64 = 1
+
+type listPath struct {
+	boardPath
+	ListID uint64 `json:"list_id" path:"list_id" jsonschema_description:"A column's id, from get_board (board.lists)."`
+}
+
+type cardPath struct {
+	boardPath
+	CardID uint64 `json:"card_id" path:"card_id" jsonschema_description:"A card's id, from get_board or find_cards."`
+}
+
+type labelPath struct {
+	boardPath
+	LabelID uint64 `json:"label_id" path:"label_id" jsonschema_description:"A label's id, from get_board (board.labels)."`
+}
+
+type itemPath struct {
+	cardPath
+	ItemID uint64 `json:"item_id" path:"item_id" jsonschema_description:"A checklist item's id, from get_card."`
+}
+
+type commentPath struct {
+	cardPath
+	CommentID uint64 `json:"comment_id" path:"comment_id" jsonschema_description:"A comment's id, from list_comments."`
+}
+
+// boardAt is boardFor for a declared route: the board its path names,
+// refused (as the error) unless the caller can see some of it.
+func ( handlers *Handlers ) boardAt( c fiber.Ctx , ref boardRef ) ( principal *access.Principal , board *models.Board , err error ) {
+	principal = principalFrom( c )
+	board , refused := handlers.loadBoard( principal , string( ref ) )
+	if refused != nil { err = refused }
+	return
+}
+
+// requireBoardAt is boardAt plus a minimum board-wide level.
+func ( handlers *Handlers ) requireBoardAt( c fiber.Ctx , ref boardRef , minimum access.Level ) ( principal *access.Principal , board *models.Board , err error ) {
+	principal = principalFrom( c )
+	board , refused := handlers.loadBoardAt( principal , string( ref ) , minimum )
+	if refused != nil { err = refused }
+	return
+}
+
+// requireCardAt is the card a cardPath names, at a minimum level on it.
+func ( handlers *Handlers ) requireCardAt( c fiber.Ctx , path *cardPath , minimum access.Level ) ( principal *access.Principal , board *models.Board , card *models.Card , err error ) {
+	principal , board , err = handlers.boardAt( c , path.BoardID )
+	if err != nil { return }
+	card , refused := handlers.loadCard( principal , board , path.CardID , minimum )
+	if refused != nil {
+		board = nil
+		err = refused
+	}
+	return
+}
+
+// refuseLimitedKey and refuseOnlyBoardsKey are security.Guard's middleware
+// of the same names, asked inside a handler so that an MCP tool, which runs
+// no route middleware, is held to them too. nil when the caller may go on.
+func refuseLimitedKey( c fiber.Ctx ) ( err error ) {
+	if security.APIKeyFrom( c ).Limited() { err = refuse( fiber.StatusForbidden , security.KeyBoardsRefusal ) }
+	return
+}
+
+func refuseOnlyBoardsKey( c fiber.Ctx ) ( err error ) {
+	if security.APIKeyFrom( c ).OnlyBoards() { err = refuse( fiber.StatusForbidden , security.KeyBoardsRefusal ) }
+	return
+}
+
+// modelErr is modelRefusal as a declared route's error.
+func modelErr( model_err error ) ( err error ) {
+	err = modelRefusal( model_err )
 	return
 }
 

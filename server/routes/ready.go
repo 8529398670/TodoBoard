@@ -6,6 +6,7 @@ import (
 
 	fiber "github.com/gofiber/fiber/v3"
 
+	apidoc "todoboard/server/apidoc"
 	db "todoboard/server/db"
 	models "todoboard/server/models"
 )
@@ -29,7 +30,7 @@ type readyProbe struct {
 	ok   bool
 }
 
-// GetReady says whether this server can do real work: the database answers,
+// getReady says whether this server can do real work: the database answers,
 // is at the schema this build expects, and can be read with this key, which
 // reading the owner record proves.
 //
@@ -37,19 +38,31 @@ type readyProbe struct {
 // what fails it, so that one touches nothing; this is for a load balancer, or a
 // person, deciding whether to send traffic. The body says no more than yes or
 // no, because the route is public.
-func ( handlers *Handlers ) GetReady( c fiber.Ctx ) ( err error ) {
+//
+// @route("GET /api/ready", summary="Can the server do real work", tag="Monitoring", access=PUBLIC)
+func ( handlers *Handlers ) getReady( c fiber.Ctx , in *apidoc.None ) ( reply *okReply , err error ) {
 	probe := handlers.readyProbe()
-	ok := false
 	select {
 	case <-probe.done:
-		ok = probe.ok
+		if probe.ok { reply = &okReply{ Ok: true } }
 	case <-time.After( readyWait ):
 	}
-	status := fiber.StatusOK
-	if ok == false {
-		status = fiber.StatusServiceUnavailable
-	}
-	err = c.Status( status ).JSON( fiber.Map{ "ok": ok } )
+	if reply == nil { err = notReady{} }
+	return
+}
+
+// notReady is GetReady's no: a 503 with the same body as its yes.
+type notReady struct{}
+
+func ( notReady ) Error() ( text string ) { text = "not ready"; return }
+
+func ( notReady ) Refused() ( status int , message string ) {
+	status , message = fiber.StatusServiceUnavailable , "not ready"
+	return
+}
+
+func ( notReady ) Send( c fiber.Ctx ) ( err error ) {
+	err = c.Status( fiber.StatusServiceUnavailable ).JSON( okReply{ Ok: false } )
 	return
 }
 

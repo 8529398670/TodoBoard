@@ -16,6 +16,9 @@ type Revoked struct {
 	Passwords  int `json:"passwords"`
 }
 
+// APIName names it in the API docs (see server/apidoc).
+func ( Revoked ) APIName() ( name string ) { name = "Revoked"; return }
+
 // RevokeAllCredentials is the "this account may be compromised" operation:
 // every session is deleted, the live login link is deleted, the password
 // is removed, and every live API key is revoked, in one transaction.
@@ -37,6 +40,18 @@ type Revoked struct {
 // and true for the CLI and control socket: when it is the owner's own
 // credentials that leaked, an operator with shell access still needs this.
 func RevokeAllCredentials( store *db.Store , user_id uint64 , allow_owner bool ) ( revoked Revoked , err error ) {
+	revoked , err = revokeAllCredentials( store , user_id , allow_owner , 0 )
+	return
+}
+
+// RevokeAllCredentialsAs is the web route's RevokeAllCredentials: the owner is
+// refused, and only the owner revokes another admin (mayActOnTx).
+func RevokeAllCredentialsAs( store *db.Store , user_id uint64 , actor_id uint64 ) ( revoked Revoked , err error ) {
+	revoked , err = revokeAllCredentials( store , user_id , false , actor_id )
+	return
+}
+
+func revokeAllCredentials( store *db.Store , user_id uint64 , allow_owner bool , actor_id uint64 ) ( revoked Revoked , err error ) {
 	err = store.Write( func( tx *db.Tx ) ( tx_err error ) {
 		user_key := encryption.Uint64ToBytes( user_id )
 		user := &User{}
@@ -44,6 +59,7 @@ func RevokeAllCredentials( store *db.Store , user_id uint64 , allow_owner bool )
 		if allow_owner == false {
 			if tx_err = refuseOwnerTx( tx , user_id ); tx_err != nil { return }
 		}
+		if tx_err = mayActOnTx( tx , actor_id , user ); tx_err != nil { return }
 		if revoked.Sessions , tx_err = destroySessionsForUser( tx , user_id ); tx_err != nil { return }
 		if revoked.LoginLinks , tx_err = deletePendingLoginTokens( tx , user_id ); tx_err != nil { return }
 		// A browser that was signed in keeps showing card titles otherwise.
@@ -103,16 +119,10 @@ func DeleteUser( store *db.Store , user_id uint64 , actor_id uint64 ) ( removed 
 			tx_err = ErrDeleteSelf
 			return
 		}
-		owner_id , tx_err := ownerIDTx( tx )
-		if tx_err != nil { return }
-		if owner_id == user_id {
-			tx_err = ErrOwnerProtected
-			return
-		}
-		if actor_id != 0 && target.IsAdmin() && actor_id != owner_id {
-			tx_err = ErrOwnerRequired
-			return
-		}
+		// The operator may delete anyone but the owner; an admin goes by the
+		// rule every account action does.
+		if tx_err = refuseOwnerTx( tx , user_id ); tx_err != nil { return }
+		if tx_err = mayActOnTx( tx , actor_id , target ); tx_err != nil { return }
 
 		if removed.Sessions , tx_err = destroySessionsForUser( tx , user_id ); tx_err != nil { return }
 		if removed.LoginLinks , tx_err = deleteLoginTokensForUser( tx , user_id ); tx_err != nil { return }
@@ -128,7 +138,9 @@ func DeleteUser( store *db.Store , user_id uint64 , actor_id uint64 ) ( removed 
 		// Boards they owned pass to whoever deleted them, or to the owner
 		// when it was done from the CLI -- never silently deleted with them.
 		heir_id := actor_id
-		if heir_id == 0 { heir_id = owner_id }
+		if heir_id == 0 {
+			if heir_id , tx_err = ownerIDTx( tx ); tx_err != nil { return }
+		}
 		if tx_err = removeBoardAccessTx( tx , user_id , heir_id ); tx_err != nil { return }
 
 		tx_err = tx.Delete( db.BucketUsers , encryption.Uint64ToBytes( user_id ) )
@@ -154,25 +166,11 @@ func ResetTwoFactor( store *db.Store , user_id uint64 , actor_id uint64 ) ( err 
 		key := encryption.Uint64ToBytes( user_id )
 		target := &User{}
 		if tx_err = tx.Get( db.BucketUsers , key , target ); tx_err != nil { return }
-		if actor_id != 0 {
-			if actor_id == user_id {
-				tx_err = ErrResetSelf
-				return
-			}
-			owner_id , owner_err := ownerIDTx( tx )
-			if owner_err != nil {
-				tx_err = owner_err
-				return
-			}
-			if owner_id == user_id {
-				tx_err = ErrOwnerProtected
-				return
-			}
-			if target.IsAdmin() && actor_id != owner_id {
-				tx_err = ErrOwnerRequired
-				return
-			}
+		if actor_id != 0 && actor_id == user_id {
+			tx_err = ErrResetSelf
+			return
 		}
+		if tx_err = mayActOnTx( tx , actor_id , target ); tx_err != nil { return }
 		clearTwoFactor( target )
 		if tx_err = tx.Put( db.BucketUsers , key , target ); tx_err != nil { return }
 		tx_err = deleteChallengesForUser( tx , user_id )

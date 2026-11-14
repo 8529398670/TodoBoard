@@ -581,9 +581,6 @@ th[aria-sort="descending"] .th-sort::after { content: " \2193"; }
    the preview is a picture, not something to press. */
 .theme-preview-buttons { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.5rem; }
 .theme-preview-buttons .btn-sm { min-height: 0; min-width: 0; pointer-events: none; }
-/* The button style choices: label over its row of toggles. */
-.theme-choices { display: flex; flex-wrap: wrap; gap: 0.75rem 1.5rem; }
-.theme-choice { display: flex; flex-direction: column; gap: 0.25rem; }
 .theme-preview-heading { font-weight: 600; }
 
 /* TodoBoard: a board in the preview, a column with two card faces. */
@@ -674,7 +671,6 @@ th[aria-sort="descending"] .th-sort::after { content: " \2193"; }
 .settings-section { border-top: 1px solid var(--app-border); padding-top: 1rem; margin-bottom: 1.25rem; }
 .settings-section legend { font-family: var(--bs-font-monospace); }
 .settings-key { margin-bottom: 1.1rem; max-width: 46rem; }
-.settings-label { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
 .settings-label code { color: inherit; font-size: 0.95rem; }
 .settings-help { white-space: pre-wrap; overflow-wrap: anywhere; }
 .settings-key .form-text code { color: inherit; }

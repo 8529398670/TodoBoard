@@ -61,54 +61,106 @@ func ( handlers *Handlers ) lookUpProduct( board_id uint64 , card_id uint64 , li
 	return
 }
 
-// RefreshProduct reads the card's link again now and answers with the card.
+// refreshProduct reads the card's link again now and answers with the card.
 // Asked for by hand, so it reads any shop's link, shopping column or not.
-func ( handlers *Handlers ) RefreshProduct( c fiber.Ctx ) ( err error ) {
-	principal , board , card , err := handlers.requireCard( c , access.Edit )
-	if card == nil { return }
+//
+// @route("POST /api/boards/{board_id}/cards/{card_id}/product/refresh", summary="Look a card's product up again",
+//     tag="Cards", errors=(400, 403, 404),
+//     description="Read the shop link in a card's title or description (or the one it was last looked up "
+//         "from) again now, and store the product's name, price and photo on the card. Works for any shop's "
+//         "link, shopping column or not. Answers with the card; product.status is failed when the page "
+//         "could not be read.",
+//     mcp="refresh_product",
+// )
+func ( handlers *Handlers ) refreshProduct( c fiber.Ctx , in *cardPath ) ( reply *fiber.Map , err error ) {
+	principal , board , card , err := handlers.requireCardAt( c , in , access.Edit )
+	if err != nil { return }
 	link := product.FindURL( card.Title + "\n" + card.Description )
 	if link == "" && card.Product != nil { link = card.Product.URL }
 	if link == "" {
-		err = badRequest( c , "product_no_link" )
+		err = refuse( fiber.StatusBadRequest , "product_no_link" )
 		return
 	}
 	productSlots <- struct{}{}
 	updated , lookup_err := handlers.lookUpProduct( board.ID , card.ID , link )
 	<-productSlots
 	if lookup_err != nil {
-		err = modelError( c , lookup_err )
+		err = modelErr( lookup_err )
 		return
 	}
-	err = handlers.cardReply( c , principal , board , updated , nil )
+	reply = mediaCardReply( principal , board , updated )
 	return
 }
 
-// RemoveProduct takes the product off a card; the link in its text stays.
-func ( handlers *Handlers ) RemoveProduct( c fiber.Ctx ) ( err error ) {
-	principal , board , card , err := handlers.requireCard( c , access.Edit )
-	if card == nil { return }
+// sharedRefreshProduct is refreshProduct for a share link's guest.
+//
+// @route("POST /api/shared/{board_id}/cards/{card_id}/product/refresh", summary="Look a card's product up again (share link)",
+//     tag="Shared", access=PUBLIC, use=[handlers.SharePrincipal], errors=(400, 403, 404),
+//     description="refreshProduct for a guest holding a share link in X-Share-Token.",
+// )
+func ( handlers *Handlers ) sharedRefreshProduct( c fiber.Ctx , in *cardPath ) ( reply *fiber.Map , err error ) {
+	reply , err = handlers.refreshProduct( c , in )
+	return
+}
+
+// removeProduct takes the product off a card; the link in its text stays.
+//
+// @route("POST /api/boards/{board_id}/cards/{card_id}/product/delete", summary="Take a card's product off",
+//     tag="Cards", errors=(403, 404),
+//     description="Remove the product (name, price, photo) looked up for a card. The link in its text stays. "
+//         "Answers with the card.",
+//     mcp="remove_product", destructive=True,
+// )
+func ( handlers *Handlers ) removeProduct( c fiber.Ctx , in *cardPath ) ( reply *fiber.Map , err error ) {
+	principal , board , card , err := handlers.requireCardAt( c , in , access.Edit )
+	if err != nil { return }
 	updated , set_err := models.SetCardProduct( handlers.Store , board.ID , card.ID , "" , nil , nil )
 	if set_err != nil {
-		err = modelError( c , set_err )
+		err = modelErr( set_err )
 		return
 	}
-	err = handlers.cardReply( c , principal , board , updated , nil )
+	reply = mediaCardReply( principal , board , updated )
 	return
 }
 
-// ProductImage serves a card's product photo to whoever may read the card.
-func ( handlers *Handlers ) ProductImage( c fiber.Ctx ) ( err error ) {
-	_ , board , card , err := handlers.requireCard( c , access.View )
-	if card == nil { return }
+// sharedRemoveProduct is removeProduct for a share link's guest.
+//
+// @route("POST /api/shared/{board_id}/cards/{card_id}/product/delete", summary="Take a card's product off (share link)",
+//     tag="Shared", access=PUBLIC, use=[handlers.SharePrincipal], errors=(403, 404),
+//     description="removeProduct for a guest holding a share link in X-Share-Token.",
+// )
+func ( handlers *Handlers ) sharedRemoveProduct( c fiber.Ctx , in *cardPath ) ( reply *fiber.Map , err error ) {
+	reply , err = handlers.removeProduct( c , in )
+	return
+}
+
+// productImage serves a card's product photo to whoever may read the card.
+//
+// @route("GET /api/boards/{board_id}/cards/{card_id}/product-image", summary="A card's product photo",
+//     tag="Cards", errors=(403, 404), reply_type="application/octet-stream",
+//     description="The photo of the product looked up for a card, as the image file itself.",
+//     mcp_http="A file (a picture, a spreadsheet or a backup), which travels over HTTP rather than as a tool answer.",
+// )
+func ( handlers *Handlers ) productImage( c fiber.Ctx , in *cardPath ) ( err error ) {
+	_ , board , card , err := handlers.requireCardAt( c , in , access.View )
+	if err != nil { return }
 	image , get_err := models.GetProductImage( handlers.Store , board.ID , card.ID )
 	if get_err != nil || image == nil || product.ImageType( image.Data ) == "" {
-		err = notFound( c , "product_image_not_found" )
+		err = refuse( fiber.StatusNotFound , "product_image_not_found" )
 		return
 	}
-	c.Set( fiber.HeaderContentType , image.ContentType )
-	c.Set( fiber.HeaderCacheControl , "private, max-age=3600" )
-	c.Set( "X-Content-Type-Options" , "nosniff" )
-	err = c.Send( image.Data )
+	err = sendImage( c , image )
 	return
 }
 
+// sharedProductImage is productImage for a share link's guest.
+//
+// @route("GET /api/shared/{board_id}/cards/{card_id}/product-image", summary="A card's product photo (share link)",
+//     tag="Shared", access=PUBLIC, use=[handlers.SharePrincipal], errors=(403, 404),
+//     reply_type="application/octet-stream",
+//     description="productImage for a guest holding a share link in X-Share-Token.",
+// )
+func ( handlers *Handlers ) sharedProductImage( c fiber.Ctx , in *cardPath ) ( err error ) {
+	err = handlers.productImage( c , in )
+	return
+}

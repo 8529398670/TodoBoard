@@ -156,7 +156,7 @@ func TestRevokingAccessRemovesThePassword( t *testing.T ) {
 
 func TestInviteClaimAndPasswords( t *testing.T ) {
 	fixture := newAuthFixture( t )
-	credential , _ , err := models.IssueInviteLink( fixture.store , "Club" , 10 , 24*time.Hour , fixture.owner.ID )
+	credential , _ , err := models.IssueInviteLink( fixture.store , "Club" , 10 , 24*time.Hour , fixture.owner.ID , "" )
 	if err != nil { t.Fatal( err ) }
 	bob := fixture.browser()
 	if status , reply := bob.post( t , "/api/join/create" , fiber.Map{ "credential": credential , "display_name": "Bob" } ); status != 201 {

@@ -106,7 +106,7 @@ class BoardClient {
   }
   patchCard( cardId , fields )     { return this.post( "/" + this.boardId + "/cards/" + cardId , fields ); }
   deleteCard( cardId )             { return this.post( "/" + this.boardId + "/cards/" + cardId + "/delete" ); }
-  // To another board (send) or any board (copy); fields: { board , list_id ,
+  // To another board (send) or any board (copy); fields: { to_board , list_id ,
   // top , position , mirror }. See card_transfer.js.
   sendCard( cardId , fields )      { return this.post( "/" + this.boardId + "/cards/" + cardId + "/send" , fields ); }
   copyCard( cardId , fields )      { return this.post( "/" + this.boardId + "/cards/" + cardId + "/copy" , fields ); }

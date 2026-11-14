@@ -56,7 +56,9 @@ func ( fixture *adminKeys ) call( t *testing.T , method string , path string , k
 
 func ( fixture *adminKeys ) make( t *testing.T , user_id uint64 , role string ) ( status int , reply string ) {
 	t.Helper()
-	body := `{"csrf_token":"` + fixture.csrf + `","user_id":` + itoa( user_id ) + `,"name":"bot","role":"` + role + `"}`
+	body := `{"csrf_token":"` + fixture.csrf + `","user_id":` + itoa( user_id ) + `,"name":"bot"`
+	if role != "" { body += `,"role":"` + role + `"` }
+	body += `}`
 	status , reply = fixture.call( t , http.MethodPost , "/api/admin/keys" , "" , fixture.cookie , body )
 	return
 }

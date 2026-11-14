@@ -12,7 +12,7 @@ import (
 // What the Account page sends: the notification fields and nothing else.
 func notifyForm( key string ) ( body string ) {
 	body = `{"pushover_user_key":"` + key + `","pushover_device":"phone","timezone":"Europe/Paris","all_day_reminder_hour":7,"reminder_lead_minutes":[60],` +
-		`"assignee_defaults":{"due":true,"assigned":true,"changes":false},"watch_defaults":{"due":false,"assigned":false,"changes":true},"shared_with_me":false,"paused":true}`
+		`"assignee_defaults":{"due":true,"assigned":true,"changes":false,"activity":false},"watch_defaults":{"due":false,"assigned":false,"changes":true,"activity":false},"shared_with_me":false,"paused":true}`
 	return
 }
 

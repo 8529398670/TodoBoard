@@ -6,30 +6,41 @@ import (
 	models "todoboard/server/models"
 )
 
-// ListTeam exists so that ordinary features -- an assignee dropdown, an owner
+// teamMember is one person as ListTeam names them: who you can hand work to.
+type teamMember struct {
+	ID          uint64 `json:"id"`
+	DisplayName string `json:"display_name"`
+}
+
+func ( teamMember ) APIName() ( name string ) { name = "Member"; return }
+
+type listTeamReply struct {
+	Members []teamMember `json:"members"`
+	Paged
+}
+
+// listTeam exists so that ordinary features -- an assignee dropdown, an owner
 // picker, an @mention list -- do not need admin rights just to render a list
 // of names. It returns id and display name only; role and disabled status
 // stay behind the admin endpoint, because those are facts about who
 // administers the app rather than about who you can hand work to.
-func ( handlers *Handlers ) ListTeam( c fiber.Ctx ) ( err error ) {
-	members , list_err := handlers.teamRows()
-	if list_err != nil {
-		err = serverError( c , list_err )
-		return
-	}
-	err = sendPage( c , "members" , members )
-	return
-}
-
-// teamRows is shared with the MCP list_team tool.
-func ( handlers *Handlers ) teamRows() ( members []fiber.Map , err error ) {
+//
+// @route("GET /api/team", summary="List team",
+//     tag="Account",
+//     description="People with an active account, a page at a time: id and display name.",
+//     mcp_note="Use the id wherever another tool asks for a user. next is the offset of the following "
+//         "page, or null on the last one.",
+//     mcp="list_team", read_only=True,
+// )
+func ( handlers *Handlers ) listTeam( c fiber.Ctx , in *Page ) ( reply *listTeamReply , err error ) {
 	users , err := models.ListUsers( handlers.Store )
 	if err != nil { return }
-
-	members = []fiber.Map{}
+	members := []teamMember{}
 	for _ , user := range users {
 		if user.Disabled() { continue }
-		members = append( members , fiber.Map{ "id": user.ID , "display_name": user.DisplayName } )
+		members = append( members , teamMember{ ID: user.ID , DisplayName: user.DisplayName } )
 	}
+	reply = &listTeamReply{}
+	reply.Members , reply.Paged = cutPage( members , *in )
 	return
 }

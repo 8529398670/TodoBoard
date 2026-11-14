@@ -269,7 +269,7 @@ const History = {
     sendCard( before , args , result ) {
       const card = this.findCard( before , args[ 0 ] );
       if ( !card ) return null;
-      const home = { board: String( before.board.id ) , list_id: card.list_id , position: card.position };
+      const home = { to_board: String( before.board.id ) , list_id: card.list_id , position: card.position };
       const away = result.board_id;
       return {
         undo: () => BoardApi.member( away ).sendCard( card.id , Object.assign( {} , home , { list_id: this.id( "list" , home.list_id ) } ) ),

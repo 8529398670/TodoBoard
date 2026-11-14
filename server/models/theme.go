@@ -30,10 +30,10 @@ type DisplayTheme struct {
 	Mode       string            `json:"mode"`
 	Accent     string            `json:"accent"`
 	Second     string            `json:"second,omitempty"`
-	Background string            `json:"background"`
-	Surface    string            `json:"surface"`
-	Column     string            `json:"column"`
-	Card       string            `json:"card"`
+	Background string            `json:"background,omitempty"`
+	Surface    string            `json:"surface,omitempty"`
+	Column     string            `json:"column,omitempty"`
+	Card       string            `json:"card,omitempty"`
 	Overrides  map[string]string `json:"overrides,omitempty"`
 	Button     *ThemeButton      `json:"button,omitempty"`
 	Light      *ThemeColors      `json:"light,omitempty"`

@@ -126,9 +126,16 @@ func TestLimitedKeyOverREST( t *testing.T ) {
 			}
 		}
 
-		refused := []string{ "/api/notify/prefs" , "/api/folders" , "/api/folders/order" , "/api/folders/1/parent" , "/api/boards/" + open + "/folder" }
-		for _ , path := range refused {
-			status , text = fixture.call( t , http.MethodPost , path , key , "" , `{"pushover_user_key":"stolen","name":"x"}` )
+		refused := [][2]string{
+			{ "/api/notify/prefs" , strings.Replace( notifyForm( "stolen" ) , `"stolen"` , `"` + strings.Repeat( "s" , 30 ) + `"` , 1 ) },
+			{ "/api/folders" , `{"name":"x"}` },
+			{ "/api/folders/order" , `{"ids":[]}` },
+			{ "/api/folders/1/parent" , `{"parent_id":0}` },
+			{ "/api/boards/" + open + "/folder" , `{"folder_id":0}` },
+		}
+		for _ , item := range refused {
+			path := item[ 0 ]
+			status , text = fixture.call( t , http.MethodPost , path , key , "" , item[ 1 ] )
 			if status != 403 {
 				t.Errorf( "%s: POST %s: %d %s" , name , path , status , text )
 			}
@@ -206,10 +213,11 @@ func TestSessionAndEditingALimit( t *testing.T ) {
 	edit := "/api/keys/" + key.ID + "/boards"
 	widen := `{"csrf_token":"` + csrf + `","board_access":"only","board_ids":[` + itoa( fixture.open.ID ) + `,` + itoa( fixture.blocked.ID ) + `]}`
 
-	// The limit is the key's. The same account in a browser is not held to it,
-	// even when the request also carries the limited key.
+	// The limit is the key's. The same account in a browser is not held to it;
+	// a request carrying the key as well is the key's (a Bearer header wins
+	// over the cookie), so the limit holds there.
 	if status , text := fixture.call( t , http.MethodGet , blocked , "" , cookie , "" ); status != 200 { t.Errorf( "session: %d %s" , status , text ) }
-	if status , text := fixture.call( t , http.MethodGet , blocked , credential , cookie , "" ); status != 200 { t.Errorf( "session and key: %d %s" , status , text ) }
+	if status , text := fixture.call( t , http.MethodGet , blocked , credential , cookie , "" ); status != 404 { t.Errorf( "session and key: %d %s" , status , text ) }
 	if status , text := fixture.call( t , http.MethodGet , "/api/boards" , "" , cookie , "" ); status != 200 || strings.Contains( text , "Secret folder" ) == false {
 		t.Errorf( "session list: %d %s" , status , text )
 	}
@@ -237,11 +245,11 @@ func TestKeyListsAndBoards( t *testing.T ) {
 	fixture := newKeyBoards( t )
 	_ , key := fixture.key( t , models.BoardAccessOnly , fixture.open.ID )
 	own := ownKeyRow( key )
-	if own[ "board_access" ] != "only" || len( own[ "board_ids" ].( []uint64 ) ) != 1 {
+	if own.BoardAccess != "only" || len( own.BoardIDs ) != 1 {
 		t.Errorf( "own row: %v" , own )
 	}
-	admin := apiKeyRow( key , "Member" )
-	if _ , present := admin[ "board_ids" ]; present || admin[ "board_count" ] != 1 {
+	admin := newAPIKeyRow( key , "Member" )
+	if admin.BoardIDs != nil || admin.BoardCount != 1 {
 		t.Errorf( "admin row: %v" , admin )
 	}
 }

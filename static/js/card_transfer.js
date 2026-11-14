@@ -101,7 +101,7 @@ const CardTransfer = {
       form.addEventListener( "submit" , async ( event ) => {
         event.preventDefault();
         const target = choices.find( function ( board ) { return board.id === Number( boardSelect.value ); } );
-        const fields = { board: String( target.id ) , list_id: Number( listSelect.value ) , top: placeSelect.value === "top" };
+        const fields = { to_board: String( target.id ) , list_id: Number( listSelect.value ) , top: placeSelect.value === "top" };
         if ( mirror ) fields.mirror = mirror.querySelector( "input:checked" ).value;
         submit.disabled = true;
         const result = await ctx.mutate( function () {

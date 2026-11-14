@@ -18,7 +18,7 @@ func TestCardTransferAccess( t *testing.T ) {
 	card , _ := models.CreateCard( store , home.ID , home.Lists[ 0 ].ID , "Errand" , nil , fixture.owner.ID , "Owner" )
 	base := "/api/boards/" + itoa( home.ID ) + "/cards/" + itoa( card.ID )
 	to := func( board *models.Board , extra string ) string {
-		return `{"board":"` + itoa( board.ID ) + `","list_id":` + itoa( board.Lists[ 0 ].ID ) + extra + `}`
+		return `{"to_board":"` + itoa( board.ID ) + `","list_id":` + itoa( board.Lists[ 0 ].ID ) + extra + `}`
 	}
 
 	if status , _ := commentCall( t , fixture , "POST" , base+"/send" , to( away , "" ) , "" , key , "" ); status != 403 { t.Errorf( "send to a board you only view: %d" , status ) }

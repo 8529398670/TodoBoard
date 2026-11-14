@@ -4,13 +4,13 @@ import (
 	bufio "bufio"
 	json "encoding/json"
 	errors "errors"
-	strconv "strconv"
 	strings "strings"
 	sync "sync"
 	time "time"
 
 	fiber "github.com/gofiber/fiber/v3"
 
+	apidoc "todoboard/server/apidoc"
 	logs "todoboard/server/logs"
 	models "todoboard/server/models"
 	security "todoboard/server/security"
@@ -21,6 +21,17 @@ import (
 // alone, under /api/owner/logs (Guard.RequireOwner); writing to it from the
 // page -- what track.js sends -- is any signed-in user's, at
 // /api/logs/events, since what they do is what gets logged.
+
+// RequireLogs makes the log's routes answer 404 while the log is off
+// (logs.enabled, or no log at all). Per request, like RequireWebhooks.
+func ( handlers *Handlers ) RequireLogs( c fiber.Ctx ) ( err error ) {
+	if handlers.Logs.Enabled() == false {
+		err = notFound( c , "not found" )
+		return
+	}
+	err = c.Next()
+	return
+}
 
 const (
 	// Page events a browser may send per call, and per session per minute.
@@ -60,78 +71,87 @@ func ( handlers *Handlers ) logQuery( text string ) ( query logs.Query , err err
 	return
 }
 
-func ( handlers *Handlers ) ListLogDays( c fiber.Ctx ) ( err error ) {
-	query , query_err := handlers.logQuery( c.Query( "q" ) )
-	if query_err != nil {
-		err = serverError( c , query_err )
-		return
-	}
-	days , total , list_err := handlers.Logs.Days( query )
-	if list_err != nil {
-		err = serverError( c , list_err )
-		return
-	}
-	err = c.JSON( fiber.Map{
-		"days":        days,
-		"total_bytes": total,
-		"dropped":     handlers.Logs.Dropped(),
-		"settings":    handlers.logSettings(),
-	} )
+// logSearch is the Logs screen's search, which the routes that read the log
+// take.
+type logSearch struct {
+	Q string `json:"q,omitempty" query:"q" jsonschema_description:"The Logs screen's search."`
+}
+
+type logDaysReply struct {
+	Days       []map[string]any `json:"days"`
+	TotalBytes int64            `json:"total_bytes"`
+	Dropped    int64            `json:"dropped"`
+	Settings   map[string]any   `json:"settings"`
+}
+
+func ( logDaysReply ) APIName() ( name string ) { name = "LogDays"; return }
+
+// @route("GET /api/owner/logs/days", summary="The days on record", tag="Owner", role=OWNER, feature="logs")
+func ( handlers *Handlers ) listLogDays( c fiber.Ctx , in *logSearch ) ( reply *logDaysReply , err error ) {
+	query , err := handlers.logQuery( in.Q )
+	if err != nil { return }
+	days , total , err := handlers.Logs.Days( query )
+	if err != nil { return }
+	reply = &logDaysReply{ TotalBytes: total , Dropped: handlers.Logs.Dropped() , Settings: handlers.logSettings() }
+	reply.Days , err = jsonObjects( days )
 	return
 }
 
-func ( handlers *Handlers ) GetLogDay( c fiber.Ctx ) ( err error ) {
-	day := c.Params( "date" )
-	if logs.ValidDay( day ) == false {
-		err = badRequest( c , "bad_day" )
+// logDayPath is the day a route under .../days/{date} reads.
+type logDayPath struct {
+	Date string `json:"date" path:"date" jsonschema_description:"The day's date, from GET /api/owner/logs/days."`
+}
+
+type logDayRequest struct {
+	logDayPath
+	logSearch
+	Before *int `json:"before,omitempty" query:"before" jsonschema:"minimum=0" error:"before must be a line number"`
+	Limit  int  `json:"limit,omitempty" query:"limit" jsonschema:"minimum=1,maximum=1000,default=200" jsonschema_description:"Rows to return. Default 200." error:"limit must be 1-1000"`
+}
+
+type logDayReply struct {
+	Date    string           `json:"date"`
+	Entries []map[string]any `json:"entries"`
+	Next    *int             `json:"next"`
+}
+
+func ( logDayReply ) APIName() ( name string ) { name = "LogDay"; return }
+
+// @route("GET /api/owner/logs/days/{date}", summary="One day's entries",
+//     tag="Owner", role=OWNER, feature="logs",
+// )
+func ( handlers *Handlers ) getLogDay( c fiber.Ctx , in *logDayRequest ) ( reply *logDayReply , err error ) {
+	if logs.ValidDay( in.Date ) == false {
+		err = refuse( fiber.StatusBadRequest , "bad_day" )
 		return
 	}
-	before := -1
-	if raw := c.Query( "before" ); raw != "" {
-		parsed , parse_err := strconv.Atoi( raw )
-		if parse_err != nil || parsed < 0 {
-			err = badRequest( c , "before must be a line number" )
-			return
-		}
-		before = parsed
-	}
-	limit := pageDefault
-	if raw := c.Query( "limit" ); raw != "" {
-		parsed , parse_err := strconv.Atoi( raw )
-		if parse_err != nil || parsed < 1 || parsed > pageMax {
-			err = badRequest( c , pageLimitMessage )
-			return
-		}
-		limit = parsed
-	}
-	query , query_err := handlers.logQuery( c.Query( "q" ) )
-	if query_err != nil {
-		err = serverError( c , query_err )
-		return
-	}
-	records , next , read_err := handlers.Logs.ReadDay( day , query , before , limit )
-	if read_err != nil {
-		err = serverError( c , read_err )
-		return
-	}
-	err = c.JSON( fiber.Map{ "date": day , "entries": records , "next": next } )
+	before , limit := -1 , pageDefault
+	if in.Before != nil { before = *in.Before }
+	if in.Limit != 0 { limit = in.Limit }
+	query , err := handlers.logQuery( in.Q )
+	if err != nil { return }
+	records , next , err := handlers.Logs.ReadDay( in.Date , query , before , limit )
+	if err != nil { return }
+	reply = &logDayReply{ Date: in.Date , Next: next }
+	reply.Entries , err = jsonObjects( records )
 	return
 }
 
-// DownloadLogDay streams a day as plain JSON lines, decrypted: the file a
+// downloadLogDay streams a day as plain JSON lines, decrypted: the file a
 // person can grep, or hand to whatever reads logs. Each line has ip_name beside
 // the address, as named when this was asked for.
-func ( handlers *Handlers ) DownloadLogDay( c fiber.Ctx ) ( err error ) {
-	day := c.Params( "date" )
+//
+// @route("GET /api/owner/logs/days/{date}/download", summary="One day's entries as a file",
+//     tag="Owner", role=OWNER, feature="logs", reply_type="application/x-ndjson",
+// )
+func ( handlers *Handlers ) downloadLogDay( c fiber.Ctx , in *logDayPath ) ( err error ) {
+	day := in.Date
 	if logs.ValidDay( day ) == false {
-		err = badRequest( c , "bad_day" )
+		err = refuse( fiber.StatusBadRequest , "bad_day" )
 		return
 	}
-	query , query_err := handlers.logQuery( "" )
-	if query_err != nil {
-		err = serverError( c , query_err )
-		return
-	}
+	query , err := handlers.logQuery( "" )
+	if err != nil { return }
 	c.Set( fiber.HeaderContentType , "application/x-ndjson" )
 	c.Set( fiber.HeaderContentDisposition , `attachment; filename="logs-`+day+`.jsonl"` )
 	c.Response().SetBodyStreamWriter( func( writer *bufio.Writer ) {
@@ -141,15 +161,19 @@ func ( handlers *Handlers ) DownloadLogDay( c fiber.Ctx ) ( err error ) {
 	return
 }
 
-// StreamLogs tells the Logs screen when there is something new, so Live needs
+// streamLogs tells the Logs screen when there is something new, so Live needs
 // no timer. It sends a nudge, not the entries: the page reads them the way it
 // always does, which is what keeps its search, paging and decryption in one
 // place. Watching cannot feed itself, since nothing under /api/owner/logs is
 // logged.
-func ( handlers *Handlers ) StreamLogs( c fiber.Ctx ) ( err error ) {
+//
+// @route("GET /api/owner/logs/stream", summary="New log entries as they happen",
+//     tag="Owner", role=OWNER, feature="logs", reply_type="text/event-stream",
+// )
+func ( handlers *Handlers ) streamLogs( c fiber.Ctx , in *logSearch ) ( err error ) {
 	credential , cookie_err := handlers.Guard.DecryptCookie( c.Cookies( handlers.cfg().CookieName ) )
 	if cookie_err != nil {
-		err = notFound( c , "not found" )
+		err = refuse( fiber.StatusNotFound , "not found" )
 		return
 	}
 	err = stream.Serve( c , handlers.LogStream , func() bool {
@@ -158,123 +182,121 @@ func ( handlers *Handlers ) StreamLogs( c fiber.Ctx ) ( err error ) {
 	return
 }
 
-func ( handlers *Handlers ) DeleteLogDay( c fiber.Ctx ) ( err error ) {
-	var body csrfOnlyRequest
-	if c.Bind().JSON( &body ) != nil {
-		err = badRequest( c , "malformed request body" )
-		return
-	}
-	if handlers.Guard.CheckCSRF( c , body.CSRFToken ) == false {
-		err = forbidden( c , "invalid csrf token" )
-		return
-	}
-	day := c.Params( "date" )
-	delete_err := handlers.Logs.DeleteDay( day )
+type logDayDeletedReply struct {
+	Deleted bool `json:"deleted"`
+}
+
+// @route("POST /api/owner/logs/days/{date}/delete", summary="Delete one day",
+//     tag="Owner", role=OWNER, feature="logs", errors=(409,),
+// )
+func ( handlers *Handlers ) deleteLogDay( c fiber.Ctx , in *logDayPath ) ( reply *logDayDeletedReply , err error ) {
+	delete_err := handlers.Logs.DeleteDay( in.Date )
 	switch {
 	case errors.Is( delete_err , logs.ErrBadDay ):
-		err = badRequest( c , "bad_day" )
+		err = refuse( fiber.StatusBadRequest , "bad_day" )
 	case errors.Is( delete_err , logs.ErrToday ):
-		err = conflict( c , logs.ErrToday.Error() , nil )
+		err = refuse( fiber.StatusConflict , logs.ErrToday.Error() )
 	case delete_err != nil:
-		err = serverError( c , delete_err )
+		err = delete_err
 	default:
-		handlers.audit( c , logs.KindAdmin , "log day deleted" , fiber.Map{ "date": day } )
-		err = c.JSON( fiber.Map{ "deleted": true } )
+		handlers.audit( c , logs.KindAdmin , "log day deleted" , fiber.Map{ "date": in.Date } )
+		reply = &logDayDeletedReply{ Deleted: true }
 	}
 	return
 }
 
-func ( handlers *Handlers ) PruneLogs( c fiber.Ctx ) ( err error ) {
-	var body csrfOnlyRequest
-	if c.Bind().JSON( &body ) != nil {
-		err = badRequest( c , "malformed request body" )
-		return
-	}
-	if handlers.Guard.CheckCSRF( c , body.CSRFToken ) == false {
-		err = forbidden( c , "invalid csrf token" )
-		return
-	}
-	result , prune_err := handlers.Logs.Prune()
-	if prune_err != nil {
-		err = serverError( c , prune_err )
-		return
-	}
+// pruneResult is what a prune did, as the model says it.
+type pruneResult logs.PruneResult
+
+func ( pruneResult ) APIName() ( name string ) { name = "PruneResult"; return }
+
+// @route("POST /api/owner/logs/prune", summary="Apply the retention rules now",
+//     tag="Owner", role=OWNER, feature="logs",
+// )
+func ( handlers *Handlers ) pruneLogs( c fiber.Ctx , in *apidoc.None ) ( reply *pruneResult , err error ) {
+	result , err := handlers.Logs.Prune()
+	if err != nil { return }
 	handlers.audit( c , logs.KindAdmin , "logs pruned" , fiber.Map{ "compressed": result.Compressed , "deleted": result.Deleted } )
-	err = c.JSON( result )
+	pruned := pruneResult( result )
+	reply = &pruned
 	return
+}
+
+type ipNamesReply struct {
+	Names []*models.IPName `json:"names"`
+}
+
+func ( ipNamesReply ) APIName() ( name string ) { name = "IPNames"; return }
+
+// listIPNames is everything the owner has named. It is short by nature, so
+// unlike the lists people's activity grows, it comes whole.
+//
+// @route("GET /api/owner/logs/ip-names", summary="What the owner calls addresses",
+//     tag="Owner", role=OWNER, feature="logs", errors=(403,),
+// )
+func ( handlers *Handlers ) listIPNames( c fiber.Ctx , in *apidoc.None ) ( reply *ipNamesReply , err error ) {
+	names , err := models.ListIPNames( handlers.Store )
+	if err != nil { return }
+	reply = &ipNamesReply{ Names: names }
+	return
+}
+
+// ipTarget is the address or range an IP name is for. It rides in the body,
+// because a range has a slash in it.
+type ipTarget struct {
+	Target string `json:"target" jsonschema:"example=10.0.0.0/24" jsonschema_description:"An address, or a range such as 10.0.0.0/24." error:"bad_ip_target"`
 }
 
 type ipNameRequest struct {
-	Target    string `json:"target"`
-	Name      string `json:"name"`
-	CSRFToken string `json:"csrf_token"`
+	ipTarget
+	Name string `json:"name" jsonschema:"minLength=1,maxLength=80" error:"bad_ip_name"`
 }
 
-// ListIPNames is everything the owner has named. It is short by nature, so
-// unlike the lists people's activity grows, it comes whole.
-func ( handlers *Handlers ) ListIPNames( c fiber.Ctx ) ( err error ) {
-	names , list_err := models.ListIPNames( handlers.Store )
-	if list_err != nil {
-		err = serverError( c , list_err )
-		return
-	}
-	err = c.JSON( fiber.Map{ "names": names } )
-	return
+type ipNameReply struct {
+	Target string `json:"target"`
+	Name   string `json:"name"`
 }
 
-// SetIPName names an address or a range, or renames one. The answer gives the
+// setIPName names an address or a range, or renames one. The answer gives the
 // target as stored, which may not be how it was typed.
-func ( handlers *Handlers ) SetIPName( c fiber.Ctx ) ( err error ) {
-	var body ipNameRequest
-	if c.Bind().JSON( &body ) != nil {
-		err = badRequest( c , "malformed request body" )
-		return
-	}
-	if handlers.Guard.CheckCSRF( c , body.CSRFToken ) == false {
-		err = forbidden( c , "invalid csrf token" )
-		return
-	}
-	target , ok := models.CleanIPTarget( body.Target )
+//
+// @route("POST /api/owner/logs/ip-names", summary="Name an address or a range, or rename one",
+//     tag="Owner", role=OWNER, feature="logs",
+// )
+func ( handlers *Handlers ) setIPName( c fiber.Ctx , in *ipNameRequest ) ( reply *ipNameReply , err error ) {
+	target , ok := models.CleanIPTarget( in.Target )
 	if ok == false {
-		err = badRequest( c , "bad_ip_target" )
+		err = refuse( fiber.StatusBadRequest , "bad_ip_target" )
 		return
 	}
-	if models.ValidIPName( body.Name ) == false {
-		err = badRequest( c , "bad_ip_name" )
+	if models.ValidIPName( in.Name ) == false {
+		err = refuse( fiber.StatusBadRequest , "bad_ip_name" )
 		return
 	}
-	if set_err := models.SetIPName( handlers.Store , target , body.Name ); set_err != nil {
-		err = serverError( c , set_err )
-		return
-	}
+	if err = models.SetIPName( handlers.Store , target , in.Name ); err != nil { return }
 	handlers.audit( c , logs.KindAdmin , "ip name set" , fiber.Map{ "target": target } )
-	err = c.JSON( fiber.Map{ "target": target , "name": strings.TrimSpace( body.Name ) } )
+	reply = &ipNameReply{ Target: target , Name: strings.TrimSpace( in.Name ) }
 	return
 }
 
-// DeleteIPName takes a name away. Its target is in the body, because a range has
-// a slash in it.
-func ( handlers *Handlers ) DeleteIPName( c fiber.Ctx ) ( err error ) {
-	var body ipNameRequest
-	if c.Bind().JSON( &body ) != nil {
-		err = badRequest( c , "malformed request body" )
-		return
-	}
-	if handlers.Guard.CheckCSRF( c , body.CSRFToken ) == false {
-		err = forbidden( c , "invalid csrf token" )
-		return
-	}
-	target , ok := models.CleanIPTarget( body.Target )
+type ipNameDeletedReply struct {
+	Deleted bool `json:"deleted"`
+}
+
+// deleteIPName takes a name away.
+//
+// @route("POST /api/owner/logs/ip-names/delete", summary="Take a name off an address or a range",
+//     tag="Owner", role=OWNER, feature="logs",
+// )
+func ( handlers *Handlers ) deleteIPName( c fiber.Ctx , in *ipTarget ) ( reply *ipNameDeletedReply , err error ) {
+	target , ok := models.CleanIPTarget( in.Target )
 	if ok == false {
-		err = badRequest( c , "bad_ip_target" )
+		err = refuse( fiber.StatusBadRequest , "bad_ip_target" )
 		return
 	}
-	if delete_err := models.DeleteIPName( handlers.Store , target ); delete_err != nil {
-		err = serverError( c , delete_err )
-		return
-	}
+	if err = models.DeleteIPName( handlers.Store , target ); err != nil { return }
 	handlers.audit( c , logs.KindAdmin , "ip name removed" , fiber.Map{ "target": target } )
-	err = c.JSON( fiber.Map{ "deleted": true } )
+	reply = &ipNameDeletedReply{ Deleted: true }
 	return
 }
 
@@ -291,32 +313,38 @@ type uiEvent struct {
 }
 
 type uiEventsRequest struct {
-	Tab       string    `json:"tab"`
-	Events    []uiEvent `json:"events"`
-	CSRFToken string    `json:"csrf_token"`
+	Tab    string           `json:"tab"`
+	Events []map[string]any `json:"events"`
 }
 
-// RecordUIEvents takes a batch from track.js. The server stamps each with
+type uiEventsReply struct {
+	Accepted int `json:"accepted"`
+}
+
+// recordUIEvents takes a batch from track.js. The server stamps each with
 // its own time, the signed-in account, the address and the user agent, so a
 // browser can describe what it did but not who did it or when it arrived.
-func ( handlers *Handlers ) RecordUIEvents( c fiber.Ctx ) ( err error ) {
-	var body uiEventsRequest
-	if c.Bind().JSON( &body ) != nil {
-		err = badRequest( c , "malformed request body" )
+//
+// @route("POST /api/logs/events", summary="Record what happened on the page",
+//     tag="Account", feature="logs",
+//     mcp_http="The browser's own activity reports (track.js), not an action.",
+// )
+func ( handlers *Handlers ) recordUIEvents( c fiber.Ctx , in *uiEventsRequest ) ( reply *uiEventsReply , err error ) {
+	events := []uiEvent{}
+	encoded , err := json.Marshal( in.Events )
+	if err != nil { return }
+	if json.Unmarshal( encoded , &events ) != nil {
+		err = refuse( fiber.StatusBadRequest , "malformed request body" )
 		return
 	}
-	if handlers.Guard.CheckCSRF( c , body.CSRFToken ) == false {
-		err = forbidden( c , "invalid csrf token" )
-		return
-	}
-	if len( body.Events ) > logEventsPerCall {
-		body.Events = body.Events[ :logEventsPerCall ]
+	if len( events ) > logEventsPerCall {
+		events = events[ :logEventsPerCall ]
 	}
 	actor := security.ActorFrom( c )
-	allowed := handlers.uiEventBudget.take( actor.User.ID , len( body.Events ) )
-	tab := logs.Truncate( body.Tab , 32 )
+	allowed := handlers.uiEventBudget.take( actor.User.ID , len( events ) )
+	tab := logs.Truncate( in.Tab , 32 )
 	accepted := 0
-	for index , event := range body.Events {
+	for index , event := range events {
 		if index >= allowed || logUIActions[ event.Action ] == false { continue }
 		entry := logs.Entry{
 			Kind:  logs.KindUI,
@@ -345,7 +373,7 @@ func ( handlers *Handlers ) RecordUIEvents( c fiber.Ctx ) ( err error ) {
 		handlers.Logs.Log( entry )
 		accepted += 1
 	}
-	err = c.JSON( fiber.Map{ "accepted": accepted } )
+	reply = &uiEventsReply{ Accepted: accepted }
 	return
 }
 

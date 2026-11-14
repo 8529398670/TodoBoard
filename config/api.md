@@ -1,0 +1,8265 @@
+# TodoBoard API
+
+Every route this server answers, apart from the pages at /login/* and /join/*. Generated from the code by scripts/api_docs.sh: an app's own routes get their docs the same way, and a test fails until they do.
+
+This file is generated: do not edit it. Change the docs next to the handlers and run `scripts/api_docs.sh`.
+
+## Contents
+
+- [Calling the API](#calling-the-api)
+- [Errors](#errors)
+- [Account](#account)
+- [Sign-in](#sign-in)
+- [API keys](#api-keys)
+- [Admin](#admin)
+- [Invite links](#invite-links)
+- [Owner](#owner)
+- [Monitoring](#monitoring)
+- [Backup](#backup)
+- [Boards](#boards)
+- [Cards](#cards)
+- [Comments](#comments)
+- [Folders](#folders)
+- [Notifications](#notifications)
+- [Shared](#shared)
+- [Sharing](#sharing)
+- [Trash](#trash)
+- [Schemas](#schemas)
+- [MCP tools](#mcp-tools)
+
+## Calling the API
+
+| Way in | How |
+|---|---|
+| Browser session | A browser session. Its POSTs carry csrf_token in the body. The cookie's name is server.cookie_name. |
+| API key | An API key, as Authorization: Bearer <id>.<secret>. |
+
+## Errors
+
+An error reply is a JSON object whose `error` says what went wrong.
+
+| Status | Meaning | Body |
+|---|---|---|
+| 400 | The request was refused as it stands. | [`Error`](#error) |
+| 401 | Not signed in. | [`Error`](#error) |
+| 403 | Not allowed, or a bad csrf_token. | [`Error`](#error) |
+| 404 | No such thing, or this feature is switched off. | [`Error`](#error) |
+| 409 | The record has moved on: an undo too late, or a stale edit. | [`Error`](#error) |
+| 429 | Too many requests. | [`Error`](#error) |
+| 503 | In maintenance mode. Retry-After says when to try again. | [`Maintenance`](#maintenance) |
+
+## Account
+
+| Method | Path | Summary | Who may call |
+|---|---|---|---|
+| POST | [`/api/account/display`](#post-apiaccountdisplay) | Save your display settings | browser session or API key, anyone signed in |
+| POST | [`/api/account/label-colors`](#post-apiaccountlabel-colors) | Save your label colours | browser session or API key, anyone signed in |
+| POST | [`/api/account/login-link`](#post-apiaccountlogin-link) | A login link for yourself | browser session or API key, anyone signed in |
+| POST | [`/api/account/login-link/cancel`](#post-apiaccountlogin-linkcancel) | Stop your own login link working | browser session or API key, anyone signed in |
+| POST | [`/api/account/password`](#post-apiaccountpassword) | Set or clear your password | browser session only, anyone signed in |
+| POST | [`/api/account/pin`](#post-apiaccountpin) | Set or clear your PIN | browser session only, anyone signed in |
+| POST | [`/api/account/rename`](#post-apiaccountrename) | Rename your account | browser session or API key, anyone signed in |
+| GET | [`/api/account/sessions`](#get-apiaccountsessions) | Your signed-in devices | browser session or API key, anyone signed in |
+| POST | [`/api/account/sessions/revoke-others`](#post-apiaccountsessionsrevoke-others) | Sign out every other device | browser session or API key, anyone signed in |
+| POST | [`/api/account/sessions/{session_id}/label`](#post-apiaccountsessionssession_idlabel) | Name one of your devices | browser session or API key, anyone signed in |
+| POST | [`/api/account/sessions/{session_id}/revoke`](#post-apiaccountsessionssession_idrevoke) | Sign out one of your devices | browser session or API key, anyone signed in |
+| POST | [`/api/account/theme`](#post-apiaccounttheme) | Pick your theme | browser session or API key, anyone signed in |
+| POST | [`/api/account/themes`](#post-apiaccountthemes) | Replace your own themes | browser session or API key, anyone signed in |
+| POST | [`/api/account/two-factor/confirm`](#post-apiaccounttwo-factorconfirm) | Turn two-factor on | browser session only, anyone signed in |
+| POST | [`/api/account/two-factor/disable`](#post-apiaccounttwo-factordisable) | Turn two-factor off | browser session only, anyone signed in |
+| POST | [`/api/account/two-factor/start`](#post-apiaccounttwo-factorstart) | Begin two-factor setup | browser session only, anyone signed in |
+| GET | [`/api/language`](#get-apilanguage) | The UI's text | anyone |
+| POST | [`/api/logout`](#post-apilogout) | Sign out | browser session or API key, anyone signed in |
+| POST | [`/api/logs/events`](#post-apilogsevents) | Record what happened on the page | browser session or API key, anyone signed in |
+| GET | [`/api/me`](#get-apime) | Who am I | browser session or API key, anyone signed in |
+| GET | [`/api/team`](#get-apiteam) | List team | browser session or API key, anyone signed in |
+
+### POST /api/account/display
+
+Save your display settings
+
+How times and boards are shown to you. timezone (empty for the browser's own) and hour12 (null for the locale's) are always set from what is sent; every other field changes only when sent: number_cards, plain_icons (grey status icons), done_on_top, add_on_top, theme (clear_theme goes back to plain light), own_theme_on_boards (keep your theme on boards that have their own), swipe_columns (phones) and folder_sort. Answers your display settings.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`set_display`](#set_display) |
+| Errors | 400, 401, 403, 429, 503 |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `add_on_top` | boolean or null | no |  |  |
+| `clear_theme` | boolean | no |  |  |
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `done_on_top` | boolean or null | no |  |  |
+| `folder_sort` | string or null | no |  |  |
+| `hour12` | boolean or null | no |  |  |
+| `number_cards` | boolean or null | no |  |  |
+| `own_theme_on_boards` | boolean or null | no |  |  |
+| `plain_icons` | boolean or null | no |  |  |
+| `swipe_columns` | boolean or null | no |  |  |
+| `theme` | object or null | no |  |  |
+| `theme.accent` | string | yes |  |  |
+| `theme.background` | string | no |  |  |
+| `theme.button` | object or null | no |  |  |
+| `theme.button.case` | string | no | one of `normal`, `upper` |  |
+| `theme.button.depth` | string | no | one of `flat`, `raised`, `glossy` |  |
+| `theme.button.shape` | string | no | one of `square`, `soft`, `rounded`, `pill` |  |
+| `theme.button.weight` | string | no | one of `normal`, `medium`, `bold` |  |
+| `theme.card` | string | no |  |  |
+| `theme.column` | string | no |  |  |
+| `theme.dark` | object or null | no |  |  |
+| `theme.dark.accent` | string | yes |  | The main color: what you can press. |
+| `theme.dark.background` | string | no |  | The page. Left out: the mode's own. |
+| `theme.dark.overrides` | map of string | no |  | Worked-out colors replaced by name: text, accent, accentFg, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back. |
+| `theme.dark.second` | string | yes |  | Says where you are: active nav item, headings, info. |
+| `theme.dark.surface` | string | no |  | Cards. Left out: the mode's own. |
+| `theme.light` | object or null | no |  |  |
+| `theme.light.accent` | string | yes |  | The main color: what you can press. |
+| `theme.light.background` | string | no |  | The page. Left out: the mode's own. |
+| `theme.light.overrides` | map of string | no |  | Worked-out colors replaced by name: text, accent, accentFg, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back. |
+| `theme.light.second` | string | yes |  | Says where you are: active nav item, headings, info. |
+| `theme.light.surface` | string | no |  | Cards. Left out: the mode's own. |
+| `theme.mode` | string | yes |  |  |
+| `theme.overrides` | map of string | no |  |  |
+| `theme.second` | string | no |  |  |
+| `theme.surface` | string | no |  |  |
+| `timezone` | string | no |  |  |
+
+**Reply 200**: Success
+
+An empty object.
+
+### POST /api/account/label-colors
+
+Save your label colours
+
+Replace your own saved label colours with this list, in its order. Labels already using a colour you leave out keep it. Answers your display settings.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`set_label_colors`](#set_label_colors) |
+| Errors | 400, 401, 403, 429, 503 |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `colors` | array of object | yes |  | Your whole list of saved label colours, in order; it replaces the one stored. |
+| `colors[].color` | string | yes |  |  |
+| `colors[].name` | string | yes |  |  |
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+
+**Reply 200**: Success
+
+An empty object.
+
+### POST /api/account/login-link
+
+A login link for yourself
+
+A link that signs your own account in on a browser or another device. Only a key with your account's full role may ask: one scoped down to user on an admin account is refused.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`create_my_login_link`](#create_my_login_link) |
+| Errors | 400, 401, 403, 429, 503 |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `expires_in_minutes` | integer or null | no | 0 to 525600 | 0 never expires. Default auth.login_token_ttl_seconds for a link that works once, auth.multi_use_login_token_ttl_seconds otherwise. |
+| `max_uses` | integer or null | no | 0 to 1000 | Sign-ins the link allows: 1-1000, or 0 for unlimited. Default 1. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `expires_at` | string (date-time) or null | yes |  | null when it never expires. |
+| `expires_in_seconds` | integer | yes |  | 0 when it never expires. |
+| `login_path` | string | yes |  | Path of the login link. A credential: treat it like a password. |
+| `max_uses` | integer | yes |  | 0 when unlimited. |
+| `unlimited` | boolean | yes |  |  |
+
+### POST /api/account/login-link/cancel
+
+Stop your own login link working
+
+Void your account's live login link without making a new one. Devices it already signed in stay signed in. Answers with removed: 0 or 1.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`cancel_my_login_link`](#cancel_my_login_link) |
+| Errors | 400, 401, 403, 429, 503 |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `ok` | boolean | yes |  |  |
+| `removed` | integer | yes |  | Links removed: 0 or 1. |
+
+### POST /api/account/password
+
+Set or clear your password
+
+|  |  |
+|---|---|
+| Who may call | browser session only, anyone signed in |
+| Errors | 400, 401, 403, 404, 409, 429, 503 |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `code` | string | no |  |  |
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `password_digest` | string | yes |  |  |
+| `username` | string | yes |  |  |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `has_password` | boolean | yes |  |  |
+| `ok` | boolean | yes |  |  |
+
+### POST /api/account/pin
+
+Set or clear your PIN
+
+|  |  |
+|---|---|
+| Who may call | browser session only, anyone signed in |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `pin` | string | yes |  |  |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `has_pin` | boolean | yes |  |  |
+| `ok` | boolean | yes |  |  |
+
+### POST /api/account/rename
+
+Rename your account
+
+Change your own display name (1-80 characters). expect, when given, is the name you think it has now; if someone changed it meanwhile the rename is refused with the current name, so nothing is overwritten unseen.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`rename_account`](#rename_account) |
+| Errors | 400, 401, 403, 409, 429, 503 |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `display_name` | string | yes | 1 to 80 characters |  |
+| `expect` | string or null | no |  |  |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `display_name` | string | yes |  |  |
+| `ok` | boolean | yes |  |  |
+
+### GET /api/account/sessions
+
+Your signed-in devices
+
+Where your account is signed in, a page at a time: id, when it started and was last seen, the browser, and the name you gave it. Through an API key no device is current. next is the offset of the following page, or null on the last one.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`list_my_sessions`](#list_my_sessions) |
+| Errors | 400, 401, 403, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `limit` | query | integer | no | 1 to 1000; default `200` | Rows to return. Default 200. |
+| `offset` | query | integer | no | at least 0 | Rows to skip: the next value of the previous page. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `next` | integer or null | yes |  | Offset of the next page, or null on the last one. |
+| `sessions` | array of [`Session`](#session) | yes |  |  |
+| `total` | integer | yes |  |  |
+
+### POST /api/account/sessions/revoke-others
+
+Sign out every other device
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`revoke_my_other_sessions`](#revoke_my_other_sessions) |
+| Errors | 400, 401, 403, 429, 503 |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `ok` | boolean | yes |  |  |
+| `removed` | integer | yes |  |  |
+
+### POST /api/account/sessions/{session_id}/label
+
+Name one of your devices
+
+Give one of your devices a name (at most 80 characters; empty clears it). expect, when given, is the name you think it has now.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`label_my_session`](#label_my_session) |
+| Errors | 400, 401, 403, 404, 409, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `session_id` | path | string | yes |  | The device's id, from GET /api/account/sessions or GET /api/admin/users/{user_id}/sessions (list_my_sessions or admin_list_user_sessions over MCP). |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `expect` | string or null | no |  | The name you think it has. Answers 409 if it has another. |
+| `label` | string | yes | at most 80 characters | At most 80 characters. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `label` | string | yes |  |  |
+| `ok` | boolean | yes |  |  |
+
+### POST /api/account/sessions/{session_id}/revoke
+
+Sign out one of your devices
+
+End one of your signed-in sessions; that browser has to sign in again.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`revoke_my_session`](#revoke_my_session) |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `session_id` | path | string | yes |  | The device's id, from GET /api/account/sessions or GET /api/admin/users/{user_id}/sessions (list_my_sessions or admin_list_user_sessions over MCP). |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `ok` | boolean | yes |  |  |
+
+### POST /api/account/theme
+
+Pick your theme
+
+Switch to another theme from your list (or the defaults), by its id.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`set_theme`](#set_theme) |
+| Errors | 400, 401, 403, 429, 503 |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `theme_id` | string | yes |  | A theme's id. Empty for the first in the list. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `ok` | boolean | yes |  |  |
+| `theme_id` | string | yes |  |  |
+
+### POST /api/account/themes
+
+Replace your own themes
+
+Replace your whole list of color themes (1 to 40) and pick the one you use. themes: null goes back to following the app's defaults. A theme is the Theme schema in the API reference (config/openapi.json): id, name, mode light|dark, accent, second, and optional colors as #rrggbb.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`set_themes`](#set_themes) |
+| Errors | 400, 401, 403, 429, 503 |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `theme_id` | string | no |  | The theme you use. |
+| `themes` | array of [`Theme`](#theme) or null | no |  | Your whole list, 1 to 40 themes. null goes back to following the app's defaults. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `ok` | boolean | yes |  |  |
+| `theme_id` | string | yes |  |  |
+| `themes` | array of [`Theme`](#theme) or null | yes |  | What you now see; null while the built-in themes apply. |
+| `themes_custom` | boolean | yes |  |  |
+
+### POST /api/account/two-factor/confirm
+
+Turn two-factor on
+
+|  |  |
+|---|---|
+| Who may call | browser session only, anyone signed in |
+| Errors | 400, 401, 403, 404, 409, 429, 503 |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `code` | string | yes |  |  |
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `recovery_codes` | array of string | yes |  |  |
+
+### POST /api/account/two-factor/disable
+
+Turn two-factor off
+
+|  |  |
+|---|---|
+| Who may call | browser session only, anyone signed in |
+| Errors | 400, 401, 403, 404, 409, 429, 503 |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `code` | string | yes |  |  |
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `ok` | boolean | yes |  |  |
+
+### POST /api/account/two-factor/start
+
+Begin two-factor setup
+
+|  |  |
+|---|---|
+| Who may call | browser session only, anyone signed in |
+| Errors | 400, 401, 403, 404, 409, 429, 503 |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `secret` | string | yes |  |  |
+
+### GET /api/language
+
+The UI's text
+
+|  |  |
+|---|---|
+| Who may call | anyone |
+| Errors | 429, 503 |
+
+**Reply 200**: Success
+
+An empty object.
+
+### POST /api/logout
+
+Sign out
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | None, HTTP only: Ends a browser session; a key has none to end. |
+| Errors | 400, 401, 403, 429, 503 |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `ok` | boolean | yes |  |  |
+
+### POST /api/logs/events
+
+Record what happened on the page
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | None, HTTP only: The browser's own activity reports (track.js), not an action. |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `events` | array of object | yes |  |  |
+| `tab` | string | yes |  |  |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `accepted` | integer | yes |  |  |
+
+### GET /api/me
+
+Who am I
+
+The account this API key belongs to, the role it acts with (role -- never higher than the key's own scope), and the account's own role.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`whoami`](#whoami) |
+| Errors | 401, 429, 503 |
+
+**Reply 200**: Success
+
+[`Me`](#me).
+
+### GET /api/team
+
+List team
+
+People with an active account, a page at a time: id and display name.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`list_team`](#list_team) |
+| Errors | 400, 401, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `limit` | query | integer | no | 1 to 1000; default `200` | Rows to return. Default 200. |
+| `offset` | query | integer | no | at least 0 | Rows to skip: the next value of the previous page. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `members` | array of [`Member`](#member) | yes |  |  |
+| `next` | integer or null | yes |  | Offset of the next page, or null on the last one. |
+| `total` | integer | yes |  |  |
+
+## Sign-in
+
+| Method | Path | Summary | Who may call |
+|---|---|---|---|
+| POST | [`/api/login`](#post-apilogin) | Redeem a login link | anyone |
+| GET | [`/api/login/options`](#get-apiloginoptions) | What sign-in offers | anyone |
+| POST | [`/api/login/password`](#post-apiloginpassword) | Sign in with a password | anyone |
+| POST | [`/api/login/two-factor`](#post-apilogintwo-factor) | Finish a sign-in with a code | anyone |
+
+### POST /api/login
+
+Redeem a login link
+
+|  |  |
+|---|---|
+| Who may call | anyone |
+| Errors | 400, 403, 429, 503 |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `credential` | string | yes |  |  |
+
+**Reply 200**: Success
+
+[`SignIn`](#signin).
+
+### GET /api/login/options
+
+What sign-in offers
+
+|  |  |
+|---|---|
+| Who may call | anyone |
+| Errors | 429, 503 |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `passwords` | boolean | yes |  |  |
+| `salt` | string | no |  |  |
+| `two_factor` | boolean | yes |  |  |
+
+### POST /api/login/password
+
+Sign in with a password
+
+|  |  |
+|---|---|
+| Who may call | anyone |
+| Errors | 400, 403, 404, 429, 503 |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `password_digest` | string | yes |  |  |
+| `username` | string | yes |  |  |
+
+**Reply 200**: Success
+
+[`SignIn`](#signin).
+
+### POST /api/login/two-factor
+
+Finish a sign-in with a code
+
+|  |  |
+|---|---|
+| Who may call | anyone |
+| Errors | 400, 403, 429, 503 |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `challenge` | string | yes |  |  |
+| `code` | string | yes |  |  |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `ok` | boolean | yes |  |  |
+
+## API keys
+
+| Method | Path | Summary | Who may call |
+|---|---|---|---|
+| GET | [`/api/admin/keys`](#get-apiadminkeys) | Every key in the app | browser session only, admins |
+| POST | [`/api/admin/keys`](#post-apiadminkeys) | Create a key that acts as someone else | browser session only, admins |
+| POST | [`/api/admin/keys/{key_id}/delete`](#post-apiadminkeyskey_iddelete) | Delete anyone's key | browser session only, admins |
+| POST | [`/api/admin/keys/{key_id}/expiry`](#post-apiadminkeyskey_idexpiry) | Change when anyone's key expires | browser session only, admins |
+| POST | [`/api/admin/keys/{key_id}/rename`](#post-apiadminkeyskey_idrename) | Rename anyone's key | browser session only, admins |
+| POST | [`/api/admin/keys/{key_id}/restore`](#post-apiadminkeyskey_idrestore) | Undo deleting anyone's key | browser session only, admins |
+| POST | [`/api/admin/keys/{key_id}/revoke`](#post-apiadminkeyskey_idrevoke) | Revoke anyone's key | browser session only, admins |
+| GET | [`/api/keys`](#get-apikeys) | Your API keys | browser session only, anyone signed in |
+| POST | [`/api/keys`](#post-apikeys) | Create an API key | browser session only, anyone signed in |
+| POST | [`/api/keys/{key_id}/boards`](#post-apikeyskey_idboards) | Limit one of your keys to some boards | browser session only, anyone signed in |
+| POST | [`/api/keys/{key_id}/delete`](#post-apikeyskey_iddelete) | Delete one of your keys | browser session only, anyone signed in |
+| POST | [`/api/keys/{key_id}/expiry`](#post-apikeyskey_idexpiry) | Change when one of your keys expires | browser session only, anyone signed in |
+| POST | [`/api/keys/{key_id}/rename`](#post-apikeyskey_idrename) | Rename one of your keys | browser session only, anyone signed in |
+| POST | [`/api/keys/{key_id}/restore`](#post-apikeyskey_idrestore) | Undo deleting one of your keys | browser session only, anyone signed in |
+| POST | [`/api/keys/{key_id}/revoke`](#post-apikeyskey_idrevoke) | Revoke one of your keys | browser session only, anyone signed in |
+
+### GET /api/admin/keys
+
+Every key in the app
+
+|  |  |
+|---|---|
+| Who may call | browser session only, admins |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `limit` | query | integer | no | 1 to 1000; default `200` | Rows to return. Default 200. |
+| `offset` | query | integer | no | at least 0 | Rows to skip: the next value of the previous page. |
+| `q` | query | string | no |  | Keep keys whose name or owner contains this, in any case. |
+| `live` | query | string | no | one of `true` | Leave out revoked and expired keys. |
+| `sort` | query | string | no | one of `display_name`, `name`, `role`, `last_used_at`, `expires_at`, `created_at` | Field to sort the whole list by. Rows without it go last. |
+| `dir` | query | string | no | one of `asc`, `desc` | Default asc. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `keys` | array of [`APIKey`](#apikey) | yes |  |  |
+| `next` | integer or null | yes |  | Offset of the next page, or null on the last one. |
+| `total` | integer | yes |  |  |
+
+### POST /api/admin/keys
+
+Create a key that acts as someone else
+
+Any admin may do this for an ordinary user, and only the owner for another admin. Nobody may do it for the owner. The key records who made it and shows that to the person it acts as.
+
+|  |  |
+|---|---|
+| Who may call | browser session only, admins |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `board_access` | string | no | one of ``, `only`, `except` | Empty: every board. only/except: just, or all but, board_ids. Not for admin keys. |
+| `board_ids` | array of integer | no |  |  |
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `expires_in_days` | integer or null | no | 0 to 3650 | Absent or null: the configured default. 0: never expires. |
+| `name` | string | yes | 1 to 80 characters |  |
+| `role` | string | no | one of `admin`, `user`; default `user` |  |
+| `user_id` | integer | yes | at least 1 |  |
+
+**Reply 201**: Success
+
+[`NewAPIKey`](#newapikey).
+
+### POST /api/admin/keys/{key_id}/delete
+
+Delete anyone's key
+
+|  |  |
+|---|---|
+| Who may call | browser session only, admins |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `key_id` | path | string | yes |  | The key's id, from GET /api/keys (GET /api/admin/keys for anyone's). |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `ok` | boolean | yes |  |  |
+
+### POST /api/admin/keys/{key_id}/expiry
+
+Change when anyone's key expires
+
+|  |  |
+|---|---|
+| Who may call | browser session only, admins |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `key_id` | path | string | yes |  | The key's id, from GET /api/keys (GET /api/admin/keys for anyone's). |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `expires_in_days` | integer | yes | 0 to 3650 | Counted from now. 0 means it never expires. |
+
+**Reply 200**: Success
+
+[`APIKey`](#apikey).
+
+### POST /api/admin/keys/{key_id}/rename
+
+Rename anyone's key
+
+|  |  |
+|---|---|
+| Who may call | browser session only, admins |
+| Errors | 400, 401, 403, 404, 409, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `key_id` | path | string | yes |  | The key's id, from GET /api/keys (GET /api/admin/keys for anyone's). |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `expect` | string or null | no |  | The name you think it has. Answers 409 if it has another. |
+| `name` | string | yes | 1 to 80 characters | 1-80 characters. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `name` | string | yes |  |  |
+| `ok` | boolean | yes |  |  |
+
+### POST /api/admin/keys/{key_id}/restore
+
+Undo deleting anyone's key
+
+|  |  |
+|---|---|
+| Who may call | browser session only, admins |
+| Errors | 400, 401, 403, 404, 409, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `key_id` | path | string | yes |  | The key's id, from GET /api/keys (GET /api/admin/keys for anyone's). |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+
+**Reply 200**: Success
+
+[`APIKey`](#apikey).
+
+### POST /api/admin/keys/{key_id}/revoke
+
+Revoke anyone's key
+
+|  |  |
+|---|---|
+| Who may call | browser session only, admins |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `key_id` | path | string | yes |  | The key's id, from GET /api/keys (GET /api/admin/keys for anyone's). |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `ok` | boolean | yes |  |  |
+
+### GET /api/keys
+
+Your API keys
+
+|  |  |
+|---|---|
+| Who may call | browser session only, anyone signed in |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `limit` | query | integer | no | 1 to 1000; default `200` | Rows to return. Default 200. |
+| `offset` | query | integer | no | at least 0 | Rows to skip: the next value of the previous page. |
+| `q` | query | string | no |  | Keep keys whose name contains this, in any case. |
+| `live` | query | string | no | one of `true` | Leave out revoked and expired keys. |
+| `sort` | query | string | no | one of `name`, `role`, `last_used_at`, `expires_at`, `created_at` | Field to sort the whole list by. Rows without it go last. |
+| `dir` | query | string | no | one of `asc`, `desc` | Default asc. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `keys` | array of [`APIKey`](#apikey) | yes |  |  |
+| `next` | integer or null | yes |  | Offset of the next page, or null on the last one. |
+| `total` | integer | yes |  |  |
+
+### POST /api/keys
+
+Create an API key
+
+|  |  |
+|---|---|
+| Who may call | browser session only, anyone signed in |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `board_access` | string | no | one of ``, `only`, `except` | Empty: every board. only/except: just, or all but, board_ids. Not for admin keys. |
+| `board_ids` | array of integer | no |  |  |
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `expires_in_days` | integer or null | no | 0 to 3650 | Absent or null: the configured default. 0: never expires. |
+| `name` | string | yes | 1 to 80 characters |  |
+| `role` | string | no | one of `admin`, `user`; default `user` |  |
+
+**Reply 201**: Success
+
+[`NewAPIKey`](#newapikey).
+
+### POST /api/keys/{key_id}/boards
+
+Limit one of your keys to some boards
+
+board_access empty reaches every board; only or except, with board_ids, just those or all but those. Admin keys cannot be limited.
+
+|  |  |
+|---|---|
+| Who may call | browser session only, anyone signed in |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `key_id` | path | string | yes |  | The key's id, from GET /api/keys (GET /api/admin/keys for anyone's). |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `board_access` | string | yes | one of ``, `only`, `except` |  |
+| `board_ids` | array of integer | yes |  |  |
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `ok` | boolean | yes |  |  |
+
+### POST /api/keys/{key_id}/delete
+
+Delete one of your keys
+
+|  |  |
+|---|---|
+| Who may call | browser session only, anyone signed in |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `key_id` | path | string | yes |  | The key's id, from GET /api/keys (GET /api/admin/keys for anyone's). |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `ok` | boolean | yes |  |  |
+
+### POST /api/keys/{key_id}/expiry
+
+Change when one of your keys expires
+
+|  |  |
+|---|---|
+| Who may call | browser session only, anyone signed in |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `key_id` | path | string | yes |  | The key's id, from GET /api/keys (GET /api/admin/keys for anyone's). |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `expires_in_days` | integer | yes | 0 to 3650 | Counted from now. 0 means it never expires. |
+
+**Reply 200**: Success
+
+[`APIKey`](#apikey).
+
+### POST /api/keys/{key_id}/rename
+
+Rename one of your keys
+
+|  |  |
+|---|---|
+| Who may call | browser session only, anyone signed in |
+| Errors | 400, 401, 403, 404, 409, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `key_id` | path | string | yes |  | The key's id, from GET /api/keys (GET /api/admin/keys for anyone's). |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `expect` | string or null | no |  | The name you think it has. Answers 409 if it has another. |
+| `name` | string | yes | 1 to 80 characters | 1-80 characters. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `name` | string | yes |  |  |
+| `ok` | boolean | yes |  |  |
+
+### POST /api/keys/{key_id}/restore
+
+Undo deleting one of your keys
+
+|  |  |
+|---|---|
+| Who may call | browser session only, anyone signed in |
+| Errors | 400, 401, 403, 404, 409, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `key_id` | path | string | yes |  | The key's id, from GET /api/keys (GET /api/admin/keys for anyone's). |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+
+**Reply 200**: Success
+
+[`APIKey`](#apikey).
+
+### POST /api/keys/{key_id}/revoke
+
+Revoke one of your keys
+
+|  |  |
+|---|---|
+| Who may call | browser session only, anyone signed in |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `key_id` | path | string | yes |  | The key's id, from GET /api/keys (GET /api/admin/keys for anyone's). |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `ok` | boolean | yes |  |  |
+
+## Admin
+
+| Method | Path | Summary | Who may call |
+|---|---|---|---|
+| GET | [`/api/admin/theme-defaults`](#get-apiadmintheme-defaults) | Default themes | browser session or API key, admins |
+| POST | [`/api/admin/theme-defaults`](#post-apiadmintheme-defaults) | Replace the default themes | browser session or API key, admins |
+| GET | [`/api/admin/users`](#get-apiadminusers) | List users | browser session or API key, admins |
+| POST | [`/api/admin/users`](#post-apiadminusers) | Create an account | browser session or API key, admins |
+| POST | [`/api/admin/users/{user_id}/cancel-login-link`](#post-apiadminusersuser_idcancel-login-link) | Stop an account's login link working | browser session or API key, admins |
+| POST | [`/api/admin/users/{user_id}/delete`](#post-apiadminusersuser_iddelete) | Delete an account | browser session or API key, admins |
+| POST | [`/api/admin/users/{user_id}/disabled`](#post-apiadminusersuser_iddisabled) | Disable or enable a user | browser session or API key, admins |
+| POST | [`/api/admin/users/{user_id}/reissue-login`](#post-apiadminusersuser_idreissue-login) | A new login link for an account | browser session or API key, admins |
+| POST | [`/api/admin/users/{user_id}/rename`](#post-apiadminusersuser_idrename) | Rename someone | browser session or API key, admins |
+| POST | [`/api/admin/users/{user_id}/reset-two-factor`](#post-apiadminusersuser_idreset-two-factor) | Turn off an account's two-factor | browser session or API key, admins |
+| POST | [`/api/admin/users/{user_id}/revoke-access`](#post-apiadminusersuser_idrevoke-access) | Revoke a user's access | browser session or API key, admins |
+| POST | [`/api/admin/users/{user_id}/role`](#post-apiadminusersuser_idrole) | Change an account's role | browser session or API key, admins |
+| GET | [`/api/admin/users/{user_id}/sessions`](#get-apiadminusersuser_idsessions) | An account's signed-in devices | browser session or API key, admins |
+| POST | [`/api/admin/users/{user_id}/sessions/{session_id}/revoke`](#post-apiadminusersuser_idsessionssession_idrevoke) | Sign out one of an account's devices | browser session or API key, admins |
+
+### GET /api/admin/theme-defaults
+
+Default themes
+
+The theme list everyone without their own list sees. themes is null while the built-in ones apply.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, admins |
+| MCP tool | [`admin_get_theme_defaults`](#admin_get_theme_defaults) |
+| Errors | 401, 403, 404, 429, 503 |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `themes` | array of [`Theme`](#theme) or null | yes |  | null while the built-in themes apply. |
+
+### POST /api/admin/theme-defaults
+
+Replace the default themes
+
+Replace the theme list everyone without their own list sees, 1 to 40 themes in the Theme schema of the API reference. null puts the built-in themes back.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, admins |
+| MCP tool | [`admin_set_theme_defaults`](#admin_set_theme_defaults) |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `themes` | array of [`Theme`](#theme) or null | no |  | 1 to 40 themes. null goes back to the built-in ones. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `ok` | boolean | yes |  |  |
+| `themes` | array of [`Theme`](#theme) or null | yes |  |  |
+
+### GET /api/admin/users
+
+List users
+
+Accounts, a page at a time, including disabled ones, with each one's role and which is the owner. next is the offset of the following page, or null on the last one.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, admins |
+| MCP tool | [`admin_list_users`](#admin_list_users) |
+| Errors | 400, 401, 403, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `limit` | query | integer | no | 1 to 1000; default `200` | Rows to return. Default 200. |
+| `offset` | query | integer | no | at least 0 | Rows to skip: the next value of the previous page. |
+| `q` | query | string | no |  | Keep accounts whose name or username contains this, in any case. |
+| `sort` | query | string | no | one of `display_name`, `role`, `disabled`, `created_at` | Field to sort the whole list by. Rows without it go last. |
+| `dir` | query | string | no | one of `asc`, `desc` | Default asc. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `next` | integer or null | yes |  | Offset of the next page, or null on the last one. |
+| `total` | integer | yes |  |  |
+| `users` | array of [`User`](#user) | yes |  |  |
+
+### POST /api/admin/users
+
+Create an account
+
+Make a new account and its first login link, to hand to the person. role is admin or user. Answers with user_id and the link.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, admins |
+| MCP tool | [`admin_create_user`](#admin_create_user) |
+| Errors | 400, 401, 403, 429, 503 |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `display_name` | string | yes | 1 to 80 characters |  |
+| `expires_in_minutes` | integer or null | no | 0 to 525600 | 0 never expires. Default auth.login_token_ttl_seconds for a link that works once, auth.multi_use_login_token_ttl_seconds otherwise. |
+| `max_uses` | integer or null | no | 0 to 1000 | Sign-ins the link allows: 1-1000, or 0 for unlimited. Default 1. |
+| `role` | string | yes | one of `admin`, `user` |  |
+
+**Reply 201**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `expires_at` | string (date-time) or null | yes |  | null when it never expires. |
+| `expires_in_seconds` | integer | yes |  | 0 when it never expires. |
+| `login_path` | string | yes |  | Path of the login link. A credential: treat it like a password. |
+| `max_uses` | integer | yes |  | 0 when unlimited. |
+| `unlimited` | boolean | yes |  |  |
+| `user_id` | integer | yes |  |  |
+
+### POST /api/admin/users/{user_id}/cancel-login-link
+
+Stop an account's login link working
+
+Void an account's live login link without making a new one: a link that went somewhere it should not have.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, admins |
+| MCP tool | [`admin_cancel_login_link`](#admin_cancel_login_link) |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `user_id` | path | integer | yes | at least 1 | The account's id, from GET /api/admin/users (admin_list_users over MCP). |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `ok` | boolean | yes |  |  |
+| `removed` | integer | yes |  | Links removed: 0 or 1. |
+
+### POST /api/admin/users/{user_id}/delete
+
+Delete an account
+
+Remove an account for good, with its sessions, login link and API keys.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, admins |
+| MCP tool | [`admin_delete_user`](#admin_delete_user) |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `user_id` | path | integer | yes | at least 1 | The account's id, from GET /api/admin/users (admin_list_users over MCP). |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `ok` | boolean | yes |  |  |
+| `removed` | [`Revoked`](#revoked) | yes |  |  |
+
+### POST /api/admin/users/{user_id}/disabled
+
+Disable or enable a user
+
+Switch an account off (disabled: true) or back on (false). Disabling signs it out everywhere and voids its live login link; its API keys stop working while it is off. Reversible. The owner and your own account cannot be disabled.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, admins |
+| MCP tool | [`admin_set_user_disabled`](#admin_set_user_disabled) |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `user_id` | path | integer | yes | at least 1 | The account's id, from GET /api/admin/users (admin_list_users over MCP). |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `disabled` | boolean | yes |  |  |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `ok` | boolean | yes |  |  |
+
+### POST /api/admin/users/{user_id}/reissue-login
+
+A new login link for an account
+
+For someone who lost their device or their link: a fresh login link for their account.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, admins |
+| MCP tool | [`admin_reissue_login`](#admin_reissue_login) |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `user_id` | path | integer | yes | at least 1 | The account's id, from GET /api/admin/users (admin_list_users over MCP). |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `expires_in_minutes` | integer or null | no | 0 to 525600 | 0 never expires. Default auth.login_token_ttl_seconds for a link that works once, auth.multi_use_login_token_ttl_seconds otherwise. |
+| `max_uses` | integer or null | no | 0 to 1000 | Sign-ins the link allows: 1-1000, or 0 for unlimited. Default 1. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `expires_at` | string (date-time) or null | yes |  | null when it never expires. |
+| `expires_in_seconds` | integer | yes |  | 0 when it never expires. |
+| `login_path` | string | yes |  | Path of the login link. A credential: treat it like a password. |
+| `max_uses` | integer | yes |  | 0 when unlimited. |
+| `unlimited` | boolean | yes |  |  |
+
+### POST /api/admin/users/{user_id}/rename
+
+Rename someone
+
+Change another account's display name (1-80 characters). Only the owner renames an admin. expect, when given, is the name you think it has now; if it changed meanwhile the rename is refused with the current name.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, admins |
+| MCP tool | [`admin_rename_user`](#admin_rename_user) |
+| Errors | 400, 401, 403, 404, 409, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `user_id` | path | integer | yes | at least 1 | The account's id, from GET /api/admin/users (admin_list_users over MCP). |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `display_name` | string | yes | 1 to 80 characters | 1-80 characters. |
+| `expect` | string or null | no |  | The name you think they have. Answers 409 if it is another. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `display_name` | string | yes |  |  |
+| `ok` | boolean | yes |  |  |
+
+### POST /api/admin/users/{user_id}/reset-two-factor
+
+Turn off an account's two-factor
+
+For someone who lost both their phone and their recovery codes: switches their two-factor sign-in off so a login link lets them in again. Only the owner resets an admin's; the owner's is reset from a shell.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, admins |
+| MCP tool | [`admin_reset_two_factor`](#admin_reset_two_factor) |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `user_id` | path | integer | yes | at least 1 | The account's id, from GET /api/admin/users (admin_list_users over MCP). |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `ok` | boolean | yes |  |  |
+
+### POST /api/admin/users/{user_id}/revoke-access
+
+Revoke a user's access
+
+For an account that may be compromised: ends every session and voids its live login link and every API key it holds, at once.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, admins |
+| MCP tool | [`admin_revoke_access`](#admin_revoke_access) |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `user_id` | path | integer | yes | at least 1 | The account's id, from GET /api/admin/users (admin_list_users over MCP). |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `ok` | boolean | yes |  |  |
+| `revoked` | [`Revoked`](#revoked) | yes |  |  |
+
+### POST /api/admin/users/{user_id}/role
+
+Change an account's role
+
+Make an account an admin or an ordinary user. Only the owner takes an admin's rights away; the owner is always an admin, and nobody changes their own role. Becoming an admin ends the account's sessions and live login link.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, admins |
+| MCP tool | [`admin_set_user_role`](#admin_set_user_role) |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `user_id` | path | integer | yes | at least 1 | The account's id, from GET /api/admin/users (admin_list_users over MCP). |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `role` | string | yes | one of `admin`, `user` |  |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `ok` | boolean | yes |  |  |
+| `role` | string | yes |  |  |
+
+### GET /api/admin/users/{user_id}/sessions
+
+An account's signed-in devices
+
+Where an account is signed in: every session, with when it started and was last seen. Addresses are shown to the owner only, and only the owner sees the owner's.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, admins |
+| MCP tool | [`admin_list_user_sessions`](#admin_list_user_sessions) |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `user_id` | path | integer | yes | at least 1 | The account's id, from GET /api/admin/users (admin_list_users over MCP). |
+| `limit` | query | integer | no | 1 to 1000; default `200` | Rows to return. Default 200. |
+| `offset` | query | integer | no | at least 0 | Rows to skip: the next value of the previous page. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `next` | integer or null | yes |  | Offset of the next page, or null on the last one. |
+| `sessions` | array of [`Session`](#session) | yes |  |  |
+| `total` | integer | yes |  |  |
+
+### POST /api/admin/users/{user_id}/sessions/{session_id}/revoke
+
+Sign out one of an account's devices
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, admins |
+| MCP tool | [`admin_revoke_user_session`](#admin_revoke_user_session) |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `user_id` | path | integer | yes | at least 1 | The account's id, from GET /api/admin/users (admin_list_users over MCP). |
+| `session_id` | path | string | yes |  | The device's id, from GET /api/account/sessions or GET /api/admin/users/{user_id}/sessions (list_my_sessions or admin_list_user_sessions over MCP). |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `ok` | boolean | yes |  |  |
+
+## Invite links
+
+| Method | Path | Summary | Who may call |
+|---|---|---|---|
+| GET | [`/api/admin/invite-links`](#get-apiadmininvite-links) | List invite links | browser session or API key, admins |
+| POST | [`/api/admin/invite-links`](#post-apiadmininvite-links) | Create an invite link | browser session or API key, admins |
+| POST | [`/api/admin/invite-links/{link_id}/delete`](#post-apiadmininvite-linkslink_iddelete) | Delete an invite link | browser session or API key, admins |
+| POST | [`/api/admin/invite-links/{link_id}/limits`](#post-apiadmininvite-linkslink_idlimits) | Change an invite link's places and expiry | browser session or API key, admins |
+| POST | [`/api/admin/invite-links/{link_id}/rename`](#post-apiadmininvite-linkslink_idrename) | Rename an invite link | browser session or API key, admins |
+| POST | [`/api/admin/invite-links/{link_id}/restore`](#post-apiadmininvite-linkslink_idrestore) | Undo deleting an invite link | browser session or API key, admins |
+| POST | [`/api/admin/invite-links/{link_id}/revoke`](#post-apiadmininvite-linkslink_idrevoke) | Switch off an invite link | browser session or API key, admins |
+| POST | [`/api/admin/invite-links/{link_id}/switch-on`](#post-apiadmininvite-linkslink_idswitch-on) | Switch an invite link back on | browser session or API key, admins |
+| POST | [`/api/join/claim`](#post-apijoinclaim) | Sign in as an existing account | anyone |
+| POST | [`/api/join/create`](#post-apijoincreate) | Join as a new account | anyone |
+| POST | [`/api/join/info`](#post-apijoininfo) | What an invite link is | anyone |
+| POST | [`/api/join/match`](#post-apijoinmatch) | Accounts matching a name | anyone |
+
+### GET /api/admin/invite-links
+
+List invite links
+
+Group invite links, a page at a time: label, places used and left, expiry, and whether each still works. The links themselves are never shown again after creation. next is the offset of the following page, or null on the last one.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, admins |
+| MCP tool | [`admin_list_invite_links`](#admin_list_invite_links) |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `limit` | query | integer | no | 1 to 1000; default `200` | Rows to return. Default 200. |
+| `offset` | query | integer | no | at least 0 | Rows to skip: the next value of the previous page. |
+| `q` | query | string | no |  | Keep links whose label or maker contains this, in any case. |
+| `sort` | query | string | no | one of `label`, `used`, `expires_at` | Field to sort the whole list by. Rows without it go last. |
+| `dir` | query | string | no | one of `asc`, `desc` | Default asc. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `invite_links` | array of [`InviteLink`](#invitelink) | yes |  |  |
+| `next` | integer or null | yes |  | Offset of the next page, or null on the last one. |
+| `total` | integer | yes |  |  |
+
+### POST /api/admin/invite-links
+
+Create an invite link
+
+One link for a group: each person who opens it joins as a new user, up to max_uses people, for days days.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, admins |
+| MCP tool | [`admin_create_invite_link`](#admin_create_invite_link) |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `days` | integer | yes | 1 to 365 |  |
+| `label` | string | yes | 1 to 80 characters |  |
+| `max_uses` | integer | yes | 1 to 1000 |  |
+
+**Reply 201**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `created_by` | integer | yes |  |  |
+| `created_by_name` | string | no |  |  |
+| `expires_at` | string (date-time) | yes |  |  |
+| `id` | string | yes |  |  |
+| `join_path` | string | yes |  | The link to hand out, shown in this response only. A credential: treat it like a password. |
+| `label` | string | yes |  |  |
+| `live` | boolean | yes |  |  |
+| `max_uses` | integer | yes |  |  |
+| `remaining` | integer | yes |  |  |
+| `revoked` | boolean | yes |  |  |
+| `used` | integer | yes |  |  |
+
+### POST /api/admin/invite-links/{link_id}/delete
+
+Delete an invite link
+
+Take an invite link off the list and stop it working. The accounts it made stay.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, admins |
+| MCP tool | [`admin_delete_invite_link`](#admin_delete_invite_link) |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `link_id` | path | string | yes |  | The link's id, from GET /api/admin/invite-links (admin_list_invite_links over MCP). |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `ok` | boolean | yes |  |  |
+
+### POST /api/admin/invite-links/{link_id}/limits
+
+Change an invite link's places and expiry
+
+Set how many people the link may take in (never fewer than have joined) and, when days is given, a new expiry counted from now. The link then counts as this key's: revoking the key switches it off.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, admins |
+| MCP tool | [`admin_set_invite_link_limits`](#admin_set_invite_link_limits) |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `link_id` | path | string | yes |  | The link's id, from GET /api/admin/invite-links (admin_list_invite_links over MCP). |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `days` | integer or null | no | 1 to 365 | Counted from now. Leave out to keep the expiry. |
+| `max_uses` | integer | yes | 1 to 1000 | Not fewer than have joined. |
+
+**Reply 200**: Success
+
+[`InviteLink`](#invitelink).
+
+### POST /api/admin/invite-links/{link_id}/rename
+
+Rename an invite link
+
+Change the label people see on an invite link's join page (1-80 characters). expect, when given, is the label you think it has now.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, admins |
+| MCP tool | [`admin_rename_invite_link`](#admin_rename_invite_link) |
+| Errors | 400, 401, 403, 404, 409, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `link_id` | path | string | yes |  | The link's id, from GET /api/admin/invite-links (admin_list_invite_links over MCP). |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `expect` | string or null | no |  | The label you think it has. Answers 409 if it has another. |
+| `label` | string | yes | 1 to 80 characters | 1-80 characters. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `label` | string | yes |  |  |
+| `ok` | boolean | yes |  |  |
+
+### POST /api/admin/invite-links/{link_id}/restore
+
+Undo deleting an invite link
+
+Bring back an invite link deleted in the last few minutes, working as before. The link then counts as this key's: revoking the key switches it off.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, admins |
+| MCP tool | [`admin_restore_invite_link`](#admin_restore_invite_link) |
+| Errors | 400, 401, 403, 404, 409, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `link_id` | path | string | yes |  | The link's id, from GET /api/admin/invite-links (admin_list_invite_links over MCP). |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+
+**Reply 200**: Success
+
+[`InviteLink`](#invitelink).
+
+### POST /api/admin/invite-links/{link_id}/revoke
+
+Switch off an invite link
+
+Stop an invite link from letting anyone else join or sign in through it. Accounts it already made keep working. Cannot be switched back on.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, admins |
+| MCP tool | [`admin_revoke_invite_link`](#admin_revoke_invite_link) |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `link_id` | path | string | yes |  | The link's id, from GET /api/admin/invite-links (admin_list_invite_links over MCP). |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `ok` | boolean | yes |  |  |
+
+### POST /api/admin/invite-links/{link_id}/switch-on
+
+Switch an invite link back on
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, admins |
+| MCP tool | [`admin_switch_on_invite_link`](#admin_switch_on_invite_link) |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `link_id` | path | string | yes |  | The link's id, from GET /api/admin/invite-links (admin_list_invite_links over MCP). |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+
+**Reply 200**: Success
+
+[`InviteLink`](#invitelink).
+
+### POST /api/join/claim
+
+Sign in as an existing account
+
+|  |  |
+|---|---|
+| Who may call | anyone |
+| Errors | 400, 403, 404, 429, 503 |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `credential` | string | yes |  |  |
+| `display_name` | string | no |  |  |
+| `pin` | string | no |  |  |
+| `user_id` | integer | no |  |  |
+
+**Reply 200**: Success
+
+[`Joined`](#joined).
+
+### POST /api/join/create
+
+Join as a new account
+
+|  |  |
+|---|---|
+| Who may call | anyone |
+| Errors | 400, 403, 404, 409, 429, 503 |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `credential` | string | yes |  |  |
+| `display_name` | string | no |  |  |
+| `pin` | string | no |  |  |
+| `user_id` | integer | no |  |  |
+
+**Reply 201**: Success
+
+[`Joined`](#joined).
+
+### POST /api/join/info
+
+What an invite link is
+
+|  |  |
+|---|---|
+| Who may call | anyone |
+| Errors | 400, 403, 404, 429, 503 |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `credential` | string | yes |  |  |
+| `display_name` | string | no |  |  |
+| `pin` | string | no |  |  |
+| `user_id` | integer | no |  |  |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `label` | string | yes |  |  |
+| `remaining` | integer | yes |  |  |
+
+### POST /api/join/match
+
+Accounts matching a name
+
+|  |  |
+|---|---|
+| Who may call | anyone |
+| Errors | 400, 403, 404, 429, 503 |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `credential` | string | yes |  |  |
+| `display_name` | string | no |  |  |
+| `pin` | string | no |  |  |
+| `user_id` | integer | no |  |  |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `can_create` | boolean | yes |  |  |
+| `matches` | array of object | yes |  |  |
+| `matches[].display_name` | string | yes |  |  |
+| `matches[].has_pin` | boolean | yes |  |  |
+| `matches[].id` | integer | yes |  |  |
+
+## Owner
+
+| Method | Path | Summary | Who may call |
+|---|---|---|---|
+| GET | [`/api/owner/jobs`](#get-apiownerjobs) | Background jobs | browser session only, the owner |
+| POST | [`/api/owner/jobs/{name}/run`](#post-apiownerjobsnamerun) | Run a job now | browser session only, the owner |
+| GET | [`/api/owner/logs/days`](#get-apiownerlogsdays) | The days on record | browser session only, the owner |
+| GET | [`/api/owner/logs/days/{date}`](#get-apiownerlogsdaysdate) | One day's entries | browser session only, the owner |
+| POST | [`/api/owner/logs/days/{date}/delete`](#post-apiownerlogsdaysdatedelete) | Delete one day | browser session only, the owner |
+| GET | [`/api/owner/logs/days/{date}/download`](#get-apiownerlogsdaysdatedownload) | One day's entries as a file | browser session only, the owner |
+| GET | [`/api/owner/logs/ip-names`](#get-apiownerlogsip-names) | What the owner calls addresses | browser session only, the owner |
+| POST | [`/api/owner/logs/ip-names`](#post-apiownerlogsip-names) | Name an address or a range, or rename one | browser session only, the owner |
+| POST | [`/api/owner/logs/ip-names/delete`](#post-apiownerlogsip-namesdelete) | Take a name off an address or a range | browser session only, the owner |
+| POST | [`/api/owner/logs/prune`](#post-apiownerlogsprune) | Apply the retention rules now | browser session only, the owner |
+| GET | [`/api/owner/logs/stream`](#get-apiownerlogsstream) | New log entries as they happen | browser session only, the owner |
+| GET | [`/api/owner/settings`](#get-apiownersettings) | config.yaml, as a form | browser session only, the owner |
+| POST | [`/api/owner/settings`](#post-apiownersettings) | Save settings | browser session only, the owner |
+| POST | [`/api/owner/users/{user_id}/password-access`](#post-apiownerusersuser_idpassword-access) | Allow or block an account's password | browser session only, the owner |
+
+### GET /api/owner/jobs
+
+Background jobs
+
+|  |  |
+|---|---|
+| Who may call | browser session only, the owner |
+| Errors | 404, 429, 503 |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `jobs` | array of [`Job`](#job) | yes |  |  |
+
+### POST /api/owner/jobs/{name}/run
+
+Run a job now
+
+|  |  |
+|---|---|
+| Who may call | browser session only, the owner |
+| Errors | 400, 403, 404, 409, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `name` | path | string | yes |  | The job's name, from GET /api/owner/jobs. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+
+**Reply 202**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `ok` | boolean | yes |  |  |
+
+### GET /api/owner/logs/days
+
+The days on record
+
+|  |  |
+|---|---|
+| Who may call | browser session only, the owner |
+| Errors | 400, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `q` | query | string | no |  | The Logs screen's search. |
+
+**Reply 200**: Success
+
+[`LogDays`](#logdays).
+
+### GET /api/owner/logs/days/{date}
+
+One day's entries
+
+|  |  |
+|---|---|
+| Who may call | browser session only, the owner |
+| Errors | 400, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `date` | path | string | yes |  | The day's date, from GET /api/owner/logs/days. |
+| `q` | query | string | no |  | The Logs screen's search. |
+| `before` | query | integer or null | no | at least 0 |  |
+| `limit` | query | integer | no | 1 to 1000; default `200` | Rows to return. Default 200. |
+
+**Reply 200**: Success
+
+[`LogDay`](#logday).
+
+### POST /api/owner/logs/days/{date}/delete
+
+Delete one day
+
+|  |  |
+|---|---|
+| Who may call | browser session only, the owner |
+| Errors | 400, 403, 404, 409, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `date` | path | string | yes |  | The day's date, from GET /api/owner/logs/days. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `deleted` | boolean | yes |  |  |
+
+### GET /api/owner/logs/days/{date}/download
+
+One day's entries as a file
+
+|  |  |
+|---|---|
+| Who may call | browser session only, the owner |
+| Errors | 400, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `date` | path | string | yes |  | The day's date, from GET /api/owner/logs/days. |
+
+**Reply 200**: Success
+
+Text, as `application/x-ndjson`.
+
+### GET /api/owner/logs/ip-names
+
+What the owner calls addresses
+
+|  |  |
+|---|---|
+| Who may call | browser session only, the owner |
+| Errors | 403, 404, 429, 503 |
+
+**Reply 200**: Success
+
+[`IPNames`](#ipnames).
+
+### POST /api/owner/logs/ip-names
+
+Name an address or a range, or rename one
+
+|  |  |
+|---|---|
+| Who may call | browser session only, the owner |
+| Errors | 400, 403, 404, 429, 503 |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `name` | string | yes | 1 to 80 characters |  |
+| `target` | string | yes | e.g. `10.0.0.0/24` | An address, or a range such as 10.0.0.0/24. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `name` | string | yes |  |  |
+| `target` | string | yes |  |  |
+
+### POST /api/owner/logs/ip-names/delete
+
+Take a name off an address or a range
+
+|  |  |
+|---|---|
+| Who may call | browser session only, the owner |
+| Errors | 400, 403, 404, 429, 503 |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `target` | string | yes | e.g. `10.0.0.0/24` | An address, or a range such as 10.0.0.0/24. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `deleted` | boolean | yes |  |  |
+
+### POST /api/owner/logs/prune
+
+Apply the retention rules now
+
+|  |  |
+|---|---|
+| Who may call | browser session only, the owner |
+| Errors | 400, 403, 404, 429, 503 |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+
+**Reply 200**: Success
+
+[`PruneResult`](#pruneresult).
+
+### GET /api/owner/logs/stream
+
+New log entries as they happen
+
+|  |  |
+|---|---|
+| Who may call | browser session only, the owner |
+| Errors | 400, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `q` | query | string | no |  | The Logs screen's search. |
+
+**Reply 200**: Success
+
+Text, as `text/event-stream`.
+
+### GET /api/owner/settings
+
+config.yaml, as a form
+
+|  |  |
+|---|---|
+| Who may call | browser session only, the owner |
+| Errors | 404, 429, 503 |
+
+**Reply 200**: Success
+
+[`SettingsSnapshot`](#settingssnapshot).
+
+### POST /api/owner/settings
+
+Save settings
+
+|  |  |
+|---|---|
+| Who may call | browser session only, the owner |
+| Errors | 400, 403, 404, 409, 429, 503 |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `changes` | object | yes |  | Setting paths and their new values. |
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `version` | string | yes |  |  |
+
+**Reply 200**: Success
+
+[`SettingsResult`](#settingsresult).
+
+### POST /api/owner/users/{user_id}/password-access
+
+Allow or block an account's password
+
+|  |  |
+|---|---|
+| Who may call | browser session only, the owner |
+| Errors | 400, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `user_id` | path | integer | yes | at least 1 | The account's id, from GET /api/admin/users (admin_list_users over MCP). |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `allowed` | boolean | yes |  |  |
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `ok` | boolean | yes |  |  |
+| `password_blocked` | boolean | yes |  |  |
+
+## Monitoring
+
+| Method | Path | Summary | Who may call |
+|---|---|---|---|
+| GET | [`/api/health`](#get-apihealth) | Is the process up | anyone |
+| GET | [`/api/mcp.json`](#get-apimcpjson) | The MCP tools: every tool /mcp has, its arguments, and the route it stands for | browser session or API key, anyone signed in |
+| GET | [`/api/openapi.json`](#get-apiopenapijson) | This document | browser session or API key, anyone signed in |
+| GET | [`/api/ready`](#get-apiready) | Can the server do real work | anyone |
+| GET | [`/mcp`](#get-mcp) | Refused: this server has no stream | anyone |
+| POST | [`/mcp`](#post-mcp) | Model Context Protocol, at the key's role | API key only, anyone signed in |
+| DELETE | [`/mcp`](#delete-mcp) | Refused: this server keeps no sessions | anyone |
+
+### GET /api/health
+
+Is the process up
+
+|  |  |
+|---|---|
+| Who may call | anyone |
+| Errors | 429, 503 |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `ok` | boolean | yes |  |  |
+
+### GET /api/mcp.json
+
+The MCP tools: every tool /mcp has, its arguments, and the route it stands for
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | None, HTTP only: The MCP reference itself; tools/list gives the same list. |
+| Errors | 401, 404, 429, 503 |
+
+**Reply 200**: Success
+
+An empty object.
+
+### GET /api/openapi.json
+
+This document
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | None, HTTP only: The API reference itself; GET /api/mcp.json is the MCP one. |
+| Errors | 401, 404, 429, 503 |
+
+**Reply 200**: Success
+
+An empty object.
+
+### GET /api/ready
+
+Can the server do real work
+
+|  |  |
+|---|---|
+| Who may call | anyone |
+| Errors | 429, 503 |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `ok` | boolean | yes |  |  |
+
+### GET /mcp
+
+Refused: this server has no stream
+
+|  |  |
+|---|---|
+| Who may call | anyone |
+| Errors | 404, 429, 503 |
+
+**Reply 405**: Success
+
+### POST /mcp
+
+Model Context Protocol, at the key's role
+
+|  |  |
+|---|---|
+| Who may call | API key only, anyone signed in |
+| MCP tool | None, HTTP only: The MCP endpoint itself. |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Request body**
+
+An empty object.
+
+**Reply 200**: Success
+
+An empty object.
+
+### DELETE /mcp
+
+Refused: this server keeps no sessions
+
+|  |  |
+|---|---|
+| Who may call | anyone |
+| Errors | 404, 429, 503 |
+
+**Reply 405**: Success
+
+## Backup
+
+| Method | Path | Summary | Who may call |
+|---|---|---|---|
+| GET | [`/api/backup`](#get-apibackup) | Download a backup of your boards | browser session or API key, anyone signed in |
+| POST | [`/api/backup/board`](#post-apibackupboard) | Restore a board from a backup | browser session or API key, anyone signed in |
+| GET | [`/api/boards/{board_id}/lists/{list_id}/export`](#get-apiboardsboard_idlistslist_idexport) | Download a column | browser session or API key, anyone signed in |
+| POST | [`/api/boards/{board_id}/lists/{list_id}/import`](#post-apiboardsboard_idlistslist_idimport) | Add cards to a column from a file | browser session or API key, anyone signed in |
+
+### GET /api/backup
+
+Download a backup of your boards
+
+Every board you are on, as one JSON file to keep: each as much of it as you can see, with its columns, labels and cards. Boards reached through a single shared card are left out.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | None, HTTP only: A file (a picture, a spreadsheet or a backup), which travels over HTTP rather than as a tool answer. |
+| Errors | 401, 429, 503 |
+
+**Reply 200**: Success
+
+An empty object.
+
+### POST /api/backup/board
+
+Restore a board from a backup
+
+Make a new board you own from one board of a backup file, with its columns and labels but no cards yet: add those a batch at a time with POST /api/boards/{board_id}/lists/{list_id}/import, using the list ids answered (in the backup's order). Never overwrites anything.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | None, HTTP only: A backup file's contents, which the page sends in steps; deliberately not a tool. |
+| Errors | 400, 401, 403, 429, 503 |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `board` | object or null | yes |  |  |
+| `board.carry_over` | boolean or null | no |  |  |
+| `board.center_columns` | boolean | no |  |  |
+| `board.color` | string | yes |  |  |
+| `board.default_view` | string | yes |  |  |
+| `board.labels` | array of object | yes |  |  |
+| `board.labels[].color` | string | yes |  |  |
+| `board.labels[].name` | string | yes |  |  |
+| `board.labels[].ref` | integer | yes |  |  |
+| `board.layout` | string | yes |  |  |
+| `board.lists` | array of object | yes |  |  |
+| `board.lists[].archived` | boolean | yes |  |  |
+| `board.lists[].cards` | array of object | yes |  |  |
+| `board.lists[].cards[].archived` | boolean | yes |  |  |
+| `board.lists[].cards[].assignees` | array of string | no |  |  |
+| `board.lists[].cards[].checklist` | array of object | yes |  |  |
+| `board.lists[].cards[].checklist[].done` | boolean | yes |  |  |
+| `board.lists[].cards[].checklist[].text` | string | yes |  |  |
+| `board.lists[].cards[].day` | string | no |  |  |
+| `board.lists[].cards[].description` | string | yes |  |  |
+| `board.lists[].cards[].doing` | boolean | no |  |  |
+| `board.lists[].cards[].done` | boolean | yes |  |  |
+| `board.lists[].cards[].done_at` | string (date-time) or null | yes |  |  |
+| `board.lists[].cards[].due_all_day` | boolean | yes |  |  |
+| `board.lists[].cards[].due_at` | string (date-time) or null | yes |  |  |
+| `board.lists[].cards[].labels` | array of integer | yes |  |  |
+| `board.lists[].cards[].price` | string | no |  |  |
+| `board.lists[].cards[].rank` | number | no |  |  |
+| `board.lists[].cards[].start_at` | string (date-time) or null | yes |  |  |
+| `board.lists[].cards[].start_timed` | boolean | yes |  |  |
+| `board.lists[].cards[].title` | string | yes |  |  |
+| `board.lists[].shopping` | boolean | no |  |  |
+| `board.lists[].stage_tabs` | string | no |  |  |
+| `board.lists[].stage_view` | string | no |  |  |
+| `board.lists[].title` | string | yes |  |  |
+| `board.notes` | string | no |  |  |
+| `board.numbering` | string | yes |  |  |
+| `board.purpose` | string | no |  |  |
+| `board.purpose_enabled` | boolean | no |  |  |
+| `board.shopping` | boolean | no |  |  |
+| `board.slug` | string | yes |  |  |
+| `board.stage_doing` | string | no |  |  |
+| `board.stage_done` | string | no |  |  |
+| `board.stage_tabs` | boolean | no |  |  |
+| `board.stage_todo` | string | no |  |  |
+| `board.theme` | object or null | yes |  |  |
+| `board.theme.accent` | string | yes |  |  |
+| `board.theme.background` | string | no |  |  |
+| `board.theme.button` | object or null | no |  |  |
+| `board.theme.button.case` | string | no | one of `normal`, `upper` |  |
+| `board.theme.button.depth` | string | no | one of `flat`, `raised`, `glossy` |  |
+| `board.theme.button.shape` | string | no | one of `square`, `soft`, `rounded`, `pill` |  |
+| `board.theme.button.weight` | string | no | one of `normal`, `medium`, `bold` |  |
+| `board.theme.card` | string | no |  |  |
+| `board.theme.column` | string | no |  |  |
+| `board.theme.dark` | object or null | no |  |  |
+| `board.theme.dark.accent` | string | yes |  | The main color: what you can press. |
+| `board.theme.dark.background` | string | no |  | The page. Left out: the mode's own. |
+| `board.theme.dark.overrides` | map of string | no |  | Worked-out colors replaced by name: text, accent, accentFg, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back. |
+| `board.theme.dark.second` | string | yes |  | Says where you are: active nav item, headings, info. |
+| `board.theme.dark.surface` | string | no |  | Cards. Left out: the mode's own. |
+| `board.theme.light` | object or null | no |  |  |
+| `board.theme.light.accent` | string | yes |  | The main color: what you can press. |
+| `board.theme.light.background` | string | no |  | The page. Left out: the mode's own. |
+| `board.theme.light.overrides` | map of string | no |  | Worked-out colors replaced by name: text, accent, accentFg, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back. |
+| `board.theme.light.second` | string | yes |  | Says where you are: active nav item, headings, info. |
+| `board.theme.light.surface` | string | no |  | Cards. Left out: the mode's own. |
+| `board.theme.mode` | string | yes |  |  |
+| `board.theme.overrides` | map of string | no |  |  |
+| `board.theme.second` | string | no |  |  |
+| `board.theme.surface` | string | no |  |  |
+| `board.title` | string | yes |  |  |
+| `csrf_token` | string | no |  |  |
+
+**Reply 200**: Success
+
+An empty object.
+
+### GET /api/boards/{board_id}/lists/{list_id}/export
+
+Download a column
+
+One column as a JSON file: its cards you can see, and the labels they use.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | None, HTTP only: A file (a picture, a spreadsheet or a backup), which travels over HTTP rather than as a tool answer. |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `list_id` | path | integer | yes |  | A column's id, from get_board (board.lists). |
+
+**Reply 200**: Success
+
+An empty object.
+
+### POST /api/boards/{board_id}/lists/{list_id}/import
+
+Add cards to a column from a file
+
+Append the cards of a column's file (or a batch of a backup board's cards) to a column, with the labels they use. Needs the rights to add a card there. Never overwrites anything. Answers how many cards were added.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | None, HTTP only: A backup file's contents, which the page sends in steps; deliberately not a tool. |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `list_id` | path | integer | yes |  | A column's id, from get_board (board.lists). |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `cards` | array of object | yes |  |  |
+| `cards[].archived` | boolean | yes |  |  |
+| `cards[].assignees` | array of string | no |  |  |
+| `cards[].checklist` | array of object | yes |  |  |
+| `cards[].checklist[].done` | boolean | yes |  |  |
+| `cards[].checklist[].text` | string | yes |  |  |
+| `cards[].day` | string | no |  |  |
+| `cards[].description` | string | yes |  |  |
+| `cards[].doing` | boolean | no |  |  |
+| `cards[].done` | boolean | yes |  |  |
+| `cards[].done_at` | string (date-time) or null | yes |  |  |
+| `cards[].due_all_day` | boolean | yes |  |  |
+| `cards[].due_at` | string (date-time) or null | yes |  |  |
+| `cards[].labels` | array of integer | yes |  |  |
+| `cards[].price` | string | no |  |  |
+| `cards[].rank` | number | no |  |  |
+| `cards[].start_at` | string (date-time) or null | yes |  |  |
+| `cards[].start_timed` | boolean | yes |  |  |
+| `cards[].title` | string | yes |  |  |
+| `csrf_token` | string | no |  |  |
+| `labels` | array of object | yes |  |  |
+| `labels[].color` | string | yes |  |  |
+| `labels[].name` | string | yes |  |  |
+| `labels[].ref` | integer | yes |  |  |
+
+**Reply 200**: Success
+
+An empty object.
+
+## Boards
+
+| Method | Path | Summary | Who may call |
+|---|---|---|---|
+| GET | [`/api/boards`](#get-apiboards) | List my boards | browser session or API key, anyone signed in |
+| POST | [`/api/boards`](#post-apiboards) | Create a board | browser session or API key, anyone signed in |
+| GET | [`/api/boards/{board_id}`](#get-apiboardsboard_id) | Read a board | browser session or API key, anyone signed in |
+| POST | [`/api/boards/{board_id}`](#post-apiboardsboard_id) | Change a board's settings | browser session or API key, anyone signed in |
+| POST | [`/api/boards/{board_id}/archive`](#post-apiboardsboard_idarchive) | Archive or unarchive a board | browser session or API key, anyone signed in |
+| POST | [`/api/boards/{board_id}/carry-over`](#post-apiboardsboard_idcarry-over) | Carry unfinished cards over to today | browser session or API key, anyone signed in |
+| POST | [`/api/boards/{board_id}/delete`](#post-apiboardsboard_iddelete) | Delete a board | browser session only, anyone signed in |
+| POST | [`/api/boards/{board_id}/duplicate`](#post-apiboardsboard_idduplicate) | Duplicate a board | browser session or API key, anyone signed in |
+| GET | [`/api/boards/{board_id}/export`](#get-apiboardsboard_idexport) | Download a board as a spreadsheet | browser session or API key, anyone signed in |
+| POST | [`/api/boards/{board_id}/labels`](#post-apiboardsboard_idlabels) | Add a label | browser session or API key, anyone signed in |
+| POST | [`/api/boards/{board_id}/labels/{label_id}`](#post-apiboardsboard_idlabelslabel_id) | Change a label | browser session or API key, anyone signed in |
+| POST | [`/api/boards/{board_id}/labels/{label_id}/delete`](#post-apiboardsboard_idlabelslabel_iddelete) | Delete a label | browser session or API key, anyone signed in |
+| POST | [`/api/boards/{board_id}/leave`](#post-apiboardsboard_idleave) | Leave a board | browser session or API key, anyone signed in |
+| POST | [`/api/boards/{board_id}/lists`](#post-apiboardsboard_idlists) | Add a column | browser session or API key, anyone signed in |
+| POST | [`/api/boards/{board_id}/lists/{list_id}`](#post-apiboardsboard_idlistslist_id) | Rename, move or archive a column | browser session or API key, anyone signed in |
+| POST | [`/api/boards/{board_id}/lists/{list_id}/delete`](#post-apiboardsboard_idlistslist_iddelete) | Delete a column | browser session or API key, anyone signed in |
+| POST | [`/api/boards/{board_id}/my-view`](#post-apiboardsboard_idmy-view) | Your own view of a board | browser session or API key, anyone signed in |
+| POST | [`/api/boards/{board_id}/my-view/collapsed`](#post-apiboardsboard_idmy-viewcollapsed) | Your collapsed columns | browser session or API key, anyone signed in |
+| GET | [`/api/boards/{board_id}/notes`](#get-apiboardsboard_idnotes) | Read a board's purpose and notes | browser session or API key, anyone signed in |
+| POST | [`/api/boards/{board_id}/notes`](#post-apiboardsboard_idnotes) | Change a board's purpose or notes | browser session or API key, anyone signed in |
+| GET | [`/api/boards/{board_id}/stamp`](#get-apiboardsboard_idstamp) | A board's revision | browser session or API key, anyone signed in |
+
+### GET /api/boards
+
+List my boards
+
+Every board you own or are a member of (id, slug, title, your role, folder, and whether it is archived for everyone -- read-only -- or archived_for_me), your home-page folders, and single cards shared with you from boards you are not on.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`list_boards`](#list_boards) |
+| Errors | 401, 429, 503 |
+
+**Reply 200**: Success
+
+An empty object.
+
+### POST /api/boards
+
+Create a board
+
+A new board owned by you, with the given columns in order (for example ["To do", "Doing", "Done"]); a board always gets at least three, so fewer are padded out. Returns its id and slug. A key held to some boards cannot make one.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`create_board`](#create_board) |
+| Errors | 400, 401, 403, 429, 503 |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `lists` | array of string | no |  | Its columns, in order, for example ["To do", "Doing", "Done"]. A board always gets at least three, so fewer are padded out. |
+| `title` | string | yes | at most 120 characters | The new board's title. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `id` | integer | yes |  |  |
+| `slug` | string | yes |  | Its URL name, the part after /b/. |
+
+### GET /api/boards/{board_id}
+
+Read a board
+
+A board as you can see it: its notes, its purpose if the board has that section on (board.purpose says what the board is for and how to work on it, so read it first), columns (board.lists), labels, members, and the cards you may see, with each card's column, labels, assignees, dates, checklist and rev. people maps user ids to names. access is what you may do.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`get_board`](#get_board) |
+| Errors | 400, 401, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `include_archived` | query | boolean or null | no |  | Include archived cards. The page gets them unless this is false; an agent's get_board leaves them out unless it is true. |
+
+**Reply 200**: Success
+
+An empty object.
+
+### POST /api/boards/{board_id}
+
+Change a board's settings
+
+Change any of a board's settings; leave out what should not change: its title, URL name (slug), layout (free, three, staged or calendar), default view, colour, theme, card numbering, where finished cards and the add-card box go, the stage names and buttons of a staged board, carry-over on a calendar board, shopping, ranking, and its purpose and notes. Needs edit rights on the whole board. The purpose and notes are for members, not share links; the quick-share and anonymous-comment switches are the owner's, from a browser. Answers the board's new revs.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`update_board`](#update_board) |
+| Errors | 400, 401, 403, 404, 409, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `add_placement` | string or null | no | one of ``, `top`, `bottom` | Where the add-card box sits in a column: top, bottom, or "" for each person's account setting. |
+| `allow_anon_comments` | boolean or null | no |  | Let guests comment without giving a name. The owner's, from a browser only: refused through a key. |
+| `allow_quick_share` | boolean or null | no |  | Let the board's cards be shared by quick link. The owner's, from a browser only: refused through a key. |
+| `carry_over` | boolean or null | no |  | On a calendar board, move unfinished cards from past days to today. |
+| `center_columns` | boolean or null | no |  | Centre the columns on wide screens. |
+| `clear_theme` | boolean | no |  | true drops the board's own theme: everyone sees their own again. |
+| `color` | string or null | no | one of ``, `blue`, `green`, `orange`, `red`, `purple`, `pink`, `teal`, `gray`, `yellow` | The board's colour; empty for none. |
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `default_view` | string or null | no | one of `kanban`, `todo`, `timeline` | The view the board opens in for someone who has not picked one. |
+| `done_placement` | string or null | no | one of ``, `top`, `bottom` | Where finished cards go in a column: top, bottom, or "" for each person's account setting. |
+| `layout` | string or null | no | one of ``, `three`, `staged`, `calendar` | "" (free: any number of columns), "three" (pinned to three columns: to do, doing, done), "staged" (each column has its own To do / Doing / Done, with an All view ranked board-wide), or "calendar" (cards filed by day; columns titled with dates are filed under those days). |
+| `list_titles` | array of string | no |  | With layout "three": the titles of the columns added if the board has fewer than three open ones. |
+| `notes` | string or null | no |  | Markdown: links, documents, an index. Members only. |
+| `notes_rev` | integer or null | no |  | The notes_rev the notes were read at, as purpose_rev. |
+| `numbering` | string or null | no | one of ``, `on`, `off` | Card numbers for everyone on the board: on, off, or "" to leave it to each person's account setting. |
+| `purpose` | string or null | no |  | Markdown: what the board is for and how to work on it. Only while the Purpose section is on (409 purpose_off otherwise). Members only. |
+| `purpose_enabled` | boolean or null | no |  | Switch the board's Purpose section on or off. Members only. |
+| `purpose_rev` | integer or null | no |  | The purpose_rev the purpose was read at: if it moved since, 409 board_text_stale instead of writing over someone's change. |
+| `shopping` | boolean or null | no |  | A shopping board: cards carry products and prices. |
+| `show_rank` | boolean or null | no |  | Show each card's place in the board-wide ranking. |
+| `slug` | string or null | no |  | The board's URL name (the part after /b/). Empty picks one from the title. 409 slug_taken if another board has it. |
+| `stage_doing` | string or null | no |  | What the Doing stage is called on this board; empty for the default. |
+| `stage_done` | string or null | no |  | What the Done stage is called on this board; empty for the default. |
+| `stage_tabs` | boolean or null | no |  | On a staged board, give every column its own To do / Doing / Done buttons. |
+| `stage_todo` | string or null | no |  | What the To do stage is called on this board; empty for the default. |
+| `theme` | object or null | no |  | The board's own theme, shown to everyone on it. |
+| `theme.accent` | string | yes |  |  |
+| `theme.background` | string | no |  |  |
+| `theme.button` | object or null | no |  |  |
+| `theme.button.case` | string | no | one of `normal`, `upper` |  |
+| `theme.button.depth` | string | no | one of `flat`, `raised`, `glossy` |  |
+| `theme.button.shape` | string | no | one of `square`, `soft`, `rounded`, `pill` |  |
+| `theme.button.weight` | string | no | one of `normal`, `medium`, `bold` |  |
+| `theme.card` | string | no |  |  |
+| `theme.column` | string | no |  |  |
+| `theme.dark` | object or null | no |  |  |
+| `theme.dark.accent` | string | yes |  | The main color: what you can press. |
+| `theme.dark.background` | string | no |  | The page. Left out: the mode's own. |
+| `theme.dark.overrides` | map of string | no |  | Worked-out colors replaced by name: text, accent, accentFg, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back. |
+| `theme.dark.second` | string | yes |  | Says where you are: active nav item, headings, info. |
+| `theme.dark.surface` | string | no |  | Cards. Left out: the mode's own. |
+| `theme.light` | object or null | no |  |  |
+| `theme.light.accent` | string | yes |  | The main color: what you can press. |
+| `theme.light.background` | string | no |  | The page. Left out: the mode's own. |
+| `theme.light.overrides` | map of string | no |  | Worked-out colors replaced by name: text, accent, accentFg, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back. |
+| `theme.light.second` | string | yes |  | Says where you are: active nav item, headings, info. |
+| `theme.light.surface` | string | no |  | Cards. Left out: the mode's own. |
+| `theme.mode` | string | yes |  |  |
+| `theme.overrides` | map of string | no |  |  |
+| `theme.second` | string | no |  |  |
+| `theme.surface` | string | no |  |  |
+| `title` | string or null | no | at most 120 characters |  |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `notes_rev` | integer | yes |  |  |
+| `purpose_rev` | integer | yes |  |  |
+| `rev` | integer | yes |  |  |
+| `slug` | string | yes |  |  |
+
+### POST /api/boards/{board_id}/archive
+
+Archive or unarchive a board
+
+scope "everyone" (the owner only): the board leaves every member's home page and becomes read-only -- every change is refused with board_archived -- until it is unarchived the same way. scope "me" (anyone on the board, but not a key held to some boards): it only leaves your own home page. list_boards says which applies (archived, archived_for_me).
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`archive_board`](#archive_board) |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `archived` | boolean or null | yes |  | true archives, false unarchives. |
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `scope` | string | yes | one of `everyone`, `me` | everyone (the owner only) or me (just your own home page). |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `ok` | boolean | yes |  |  |
+
+### POST /api/boards/{board_id}/carry-over
+
+Carry unfinished cards over to today
+
+On a calendar board with carry-over on, move the unfinished cards of past days to today (yours, within a day of the server's). Asking again the same day moves nothing; a board with carry-over off, or not a calendar, moves nothing. Needs edit rights on the whole board.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`carry_over`](#carry_over) |
+| Errors | 400, 401, 403, 404, 409, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `today` | string | yes |  | Your today, as 2026-11-07: within a day of the server's. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `moved` | integer | yes |  | How many cards moved to today. |
+
+### POST /api/boards/{board_id}/delete
+
+Delete a board
+
+Move one of your own boards to your board trash, where it stays until you restore it or delete it for good. The owner only, from a browser.
+
+|  |  |
+|---|---|
+| Who may call | browser session only, anyone signed in |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `ok` | boolean | yes |  |  |
+
+### POST /api/boards/{board_id}/duplicate
+
+Duplicate a board
+
+A new board owned by you, copied from one you can open: its settings, notes, labels, columns, and the cards you can see with their checklists. Comments, card pictures, members and share links are not copied. Returns the copy's id and slug. A key held to some boards cannot make one.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`duplicate_board`](#duplicate_board) |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `title` | string | yes | at most 120 characters | The copy's title. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `id` | integer | yes |  |  |
+| `slug` | string | yes |  | Its URL name, the part after /b/. |
+
+### GET /api/boards/{board_id}/export
+
+Download a board as a spreadsheet
+
+The board as an xlsx or csv spreadsheet (format): one row per card you can see, column by column, in board order. archived=1 adds archived cards and columns; tz is the timezone timed dates are written in.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | None, HTTP only: A file (a picture, a spreadsheet or a backup), which travels over HTTP rather than as a tool answer. |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `format` | query | string | no |  | xlsx or csv. |
+| `archived` | query | string | no |  | 1 adds archived cards and columns, with an Archived column. |
+| `tz` | query | string | no |  | The timezone timed dates are written in (an IANA name); defaults to your own, else UTC. |
+
+**Reply 200**: Success
+
+Raw bytes, as `application/octet-stream`.
+
+### POST /api/boards/{board_id}/labels
+
+Add a label
+
+Add a label to a board, to put on cards with update_card's label_ids. Needs edit rights on the whole board.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`create_label`](#create_label) |
+| Errors | 400, 401, 403, 404, 409, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `color` | string | yes |  | A palette name (blue, green, orange, red, purple, pink, teal, gray, yellow) or a #rrggbb colour. |
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `name` | string or null | no | at most 40 characters |  |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `color` | string | yes |  |  |
+| `id` | integer | yes |  |  |
+| `name` | string | yes |  |  |
+
+### POST /api/boards/{board_id}/labels/{label_id}
+
+Change a label
+
+Rename a label or change its colour; leave out what should not change. Needs edit rights on the whole board.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`update_label`](#update_label) |
+| Errors | 400, 401, 403, 404, 409, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `label_id` | path | integer | yes |  | A label's id, from get_board (board.labels). |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `color` | string or null | no |  | A palette name (blue, green, orange, red, purple, pink, teal, gray, yellow) or a #rrggbb colour. |
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `name` | string or null | no | at most 40 characters |  |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `ok` | boolean | yes |  |  |
+
+### POST /api/boards/{board_id}/labels/{label_id}/delete
+
+Delete a label
+
+Delete a label; it comes off every card it was on. Needs edit rights on the whole board.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`delete_label`](#delete_label) |
+| Errors | 400, 401, 403, 404, 409, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `label_id` | path | integer | yes |  | A label's id, from get_board (board.labels). |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `ok` | boolean | yes |  |  |
+
+### POST /api/boards/{board_id}/leave
+
+Leave a board
+
+Take yourself off a board you are a member of; it leaves your home page and you lose access until someone adds you again. The owner cannot leave (400 owner_cannot_leave).
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`leave_board`](#leave_board) |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `ok` | boolean | yes |  |  |
+
+### POST /api/boards/{board_id}/lists
+
+Add a column
+
+Add a column (list) to a board, at the end or at position. Needs edit rights on the whole board.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`create_list`](#create_list) |
+| Errors | 400, 401, 403, 404, 409, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `position` | number or null | no |  | Sort position among the columns; lower comes first. Leave out to put it at the end. |
+| `title` | string | yes | at most 120 characters |  |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `archived` | boolean | yes |  |  |
+| `id` | integer | yes |  |  |
+| `position` | number | yes |  |  |
+| `shopping` | boolean | yes |  |  |
+| `stage_tabs` | string | yes |  |  |
+| `stage_view` | string | yes |  |  |
+| `title` | string | yes |  |  |
+| `width` | integer | yes |  |  |
+
+### POST /api/boards/{board_id}/lists/{list_id}
+
+Rename, move or archive a column
+
+Change a column's title, position or width, archive it (archived: true hides it; false brings it back), make it a shopping column, or on a staged board fix the stage it shows for everyone (stage_view; empty follows the navbar) or give it its own To do/Doing/Done buttons (stage_tabs: on, off, or empty to follow the board's setting). Leave out what should not change. Needs edit rights on the whole board.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`update_list`](#update_list) |
+| Errors | 400, 401, 403, 404, 409, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `list_id` | path | integer | yes |  | A column's id, from get_board (board.lists). |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `archived` | boolean or null | no |  | true hides the column; false brings it back. |
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `position` | number or null | no |  | Sort position among the columns; lower comes first. |
+| `shopping` | boolean or null | no |  | A shopping column: its cards carry products and prices. |
+| `stage_tabs` | string or null | no | one of ``, `on`, `off` | On a staged board, this column's own To do / Doing / Done buttons: on, off, or empty to follow the board's setting. |
+| `stage_view` | string or null | no | one of ``, `todo`, `doing`, `done` | On a staged board, the stage this column shows for everyone; empty follows the navbar. |
+| `title` | string or null | no | at most 120 characters |  |
+| `width` | integer or null | no |  | The column's width in pixels (200-800); 0 puts it back to the standard width. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `ok` | boolean | yes |  |  |
+
+### POST /api/boards/{board_id}/lists/{list_id}/delete
+
+Delete a column
+
+Delete a column and its share links; its cards go to the board's trash, where they can be restored into another column. Archiving it (update_list, archived: true) is the gentler way to put one away. Needs edit rights on the whole board.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`delete_list`](#delete_list) |
+| Errors | 400, 401, 403, 404, 409, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `list_id` | path | integer | yes |  | A column's id, from get_board (board.lists). |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `ok` | boolean | yes |  |  |
+
+### POST /api/boards/{board_id}/my-view
+
+Your own view of a board
+
+How a board looks to you alone: greyscale status icons (plain_icons), or null to follow your account default. Nobody else on the board sees it.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`set_my_board_view`](#set_my_board_view) |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `plain_icons` | boolean or null | no |  | true for greyscale status icons on this board, false for coloured; null or left out follows your account default. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `plain_icons` | boolean or null | yes |  |  |
+
+### POST /api/boards/{board_id}/my-view/collapsed
+
+Your collapsed columns
+
+Which columns of a board you keep collapsed, for you alone: the whole set each time.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`set_my_collapsed_lists`](#set_my_collapsed_lists) |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `list_ids` | array of integer | no |  | Every column you keep collapsed on this board (the whole set; ids from get_board's board.lists). Empty expands them all. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `collapsed_lists` | array of integer | yes |  | The ids kept: ones that are not columns of this board are dropped. |
+
+### GET /api/boards/{board_id}/notes
+
+Read a board's purpose and notes
+
+Just the board's notes and purpose, without its cards. notes holds links, documents and reference material. purpose says what the board is for and how to work on it, and is only there when purpose_enabled is true. Both are markdown, and may be empty. Read them before working on a board. The revs go back to update_board_notes.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`get_board_notes`](#get_board_notes) |
+| Errors | 400, 401, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+
+**Reply 200**: Success
+
+An empty object.
+
+### POST /api/boards/{board_id}/notes
+
+Change a board's purpose or notes
+
+Replace a board's notes, its purpose, or both; leave out what should not change. A board's purpose can only be written while its Purpose section is on, which a person does in Board settings (409 purpose_off otherwise). Each is the whole new markdown text, so to add a link, send the old notes with it added. Each needs the rev it was read at, from get_board_notes or get_board: if someone edited the text since, the change is refused (409 board_text_stale) rather than written over theirs; read it again and redo the change on top. Needs edit rights on the board.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`update_board_notes`](#update_board_notes) |
+| Errors | 400, 401, 403, 404, 409, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `notes` | string or null | no |  | Markdown: links, documents, an index. The whole new text. |
+| `notes_rev` | integer or null | no |  | Required with notes: the notes_rev they were read at. |
+| `purpose` | string or null | no |  | Markdown: what the board is for and how to work on it. The whole new text. |
+| `purpose_rev` | integer or null | no |  | Required with purpose: the purpose_rev it was read at. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `notes_rev` | integer | yes |  |  |
+| `purpose_rev` | integer | yes |  |  |
+
+### GET /api/boards/{board_id}/stamp
+
+A board's revision
+
+The board's revision alone, which the page polls to know when to read the board again.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | None, HTTP only: The board page's cheap change poll; get_board reads the board itself. |
+| Errors | 400, 401, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `rev` | integer | yes |  | Moves whenever anything the caller can see on the board changes. |
+
+## Cards
+
+| Method | Path | Summary | Who may call |
+|---|---|---|---|
+| POST | [`/api/boards/{board_id}/cards`](#post-apiboardsboard_idcards) | Add a card | browser session or API key, anyone signed in |
+| GET | [`/api/boards/{board_id}/cards/{card_id}`](#get-apiboardsboard_idcardscard_id) | Read a card | browser session or API key, anyone signed in |
+| POST | [`/api/boards/{board_id}/cards/{card_id}`](#post-apiboardsboard_idcardscard_id) | Change a card | browser session or API key, anyone signed in |
+| POST | [`/api/boards/{board_id}/cards/{card_id}/checklist`](#post-apiboardsboard_idcardscard_idchecklist) | Add a checklist item | browser session or API key, anyone signed in |
+| POST | [`/api/boards/{board_id}/cards/{card_id}/checklist/{item_id}`](#post-apiboardsboard_idcardscard_idchecklistitem_id) | Tick or edit a checklist item | browser session or API key, anyone signed in |
+| POST | [`/api/boards/{board_id}/cards/{card_id}/checklist/{item_id}/delete`](#post-apiboardsboard_idcardscard_idchecklistitem_iddelete) | Delete a checklist item | browser session or API key, anyone signed in |
+| POST | [`/api/boards/{board_id}/cards/{card_id}/copy`](#post-apiboardsboard_idcardscard_idcopy) | Copy a card to a board | browser session or API key, anyone signed in |
+| POST | [`/api/boards/{board_id}/cards/{card_id}/delete`](#post-apiboardsboard_idcardscard_iddelete) | Delete a card | browser session or API key, anyone signed in |
+| GET | [`/api/boards/{board_id}/cards/{card_id}/image`](#get-apiboardsboard_idcardscard_idimage) | A card's picture | browser session or API key, anyone signed in |
+| POST | [`/api/boards/{board_id}/cards/{card_id}/image`](#post-apiboardsboard_idcardscard_idimage) | Put a picture on a card | browser session or API key, anyone signed in |
+| POST | [`/api/boards/{board_id}/cards/{card_id}/image/delete`](#post-apiboardsboard_idcardscard_idimagedelete) | Take a card's picture off | browser session or API key, anyone signed in |
+| GET | [`/api/boards/{board_id}/cards/{card_id}/links`](#get-apiboardsboard_idcardscard_idlinks) | List a card's mirrors | browser session or API key, anyone signed in |
+| POST | [`/api/boards/{board_id}/cards/{card_id}/links/{link_id}/delete`](#post-apiboardsboard_idcardscard_idlinkslink_iddelete) | Stop mirroring a card | browser session or API key, anyone signed in |
+| GET | [`/api/boards/{board_id}/cards/{card_id}/product-image`](#get-apiboardsboard_idcardscard_idproduct-image) | A card's product photo | browser session or API key, anyone signed in |
+| POST | [`/api/boards/{board_id}/cards/{card_id}/product/delete`](#post-apiboardsboard_idcardscard_idproductdelete) | Take a card's product off | browser session or API key, anyone signed in |
+| POST | [`/api/boards/{board_id}/cards/{card_id}/product/refresh`](#post-apiboardsboard_idcardscard_idproductrefresh) | Look a card's product up again | browser session or API key, anyone signed in |
+| POST | [`/api/boards/{board_id}/cards/{card_id}/send`](#post-apiboardsboard_idcardscard_idsend) | Send a card to another board | browser session or API key, anyone signed in |
+| POST | [`/api/boards/{board_id}/lists/{list_id}/archive-cards`](#post-apiboardsboard_idlistslist_idarchive-cards) | Archive a column's cards | browser session or API key, anyone signed in |
+| GET | [`/api/cards`](#get-apicards) | Find cards | browser session or API key, anyone signed in |
+
+### POST /api/boards/{board_id}/cards
+
+Add a card
+
+Add a card to a column. The other fields are optional and set in the same call. Needs edit rights on that column.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`create_card`](#create_card) |
+| Errors | 400, 401, 403, 404, 409, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `assignees` | array of integer or null | no |  | User ids, from get_board's members or list_team. |
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `day` | string or null | no |  | On a calendar board (layout calendar), the day the card is filed under: 2026-11-07, or an empty string for none. |
+| `description` | string or null | no |  | Markdown. |
+| `doing` | boolean or null | no |  | On a staged board, the Doing stage. true starts the card (reopening it if done); done: true moves it on to Done. |
+| `done` | boolean or null | no |  | true makes it complete from the start. |
+| `due_at` | string or null | no |  | 2026-10-30 for an all-day date, an RFC 3339 timestamp for a time, an empty string to clear. |
+| `label_ids` | array of integer or null | no |  | Label ids, from get_board (board.labels). |
+| `list_id` | integer | yes |  | The column's id, from get_board (board.lists). |
+| `position` | number or null | no |  | Sort position within the column; lower comes first. Leave out to put it at the end. |
+| `rank_place` | integer or null | no | at least 0 | Importance across the whole board: 1 is the most important, and other cards shift to make room. 0 takes the card out of the ranking. Needs edit rights on the board. |
+| `start_at` | string or null | no |  | 2026-10-30 for an all-day date, an RFC 3339 timestamp for a time, an empty string to clear. |
+| `title` | string | yes |  |  |
+
+**Reply 200**: Success
+
+An empty object.
+
+### GET /api/boards/{board_id}/cards/{card_id}
+
+Read a card
+
+One card in full: title, description, column, labels, assignees, dates, checklist, its place in the board's ranking (rank_place, 0 for none), and rev (pass rev back to update_card when changing the title or description).
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`get_card`](#get_card) |
+| Errors | 400, 401, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | path | integer | yes |  | A card's id, from get_board or find_cards. |
+
+**Reply 200**: Success
+
+An empty object.
+
+### POST /api/boards/{board_id}/cards/{card_id}
+
+Change a card
+
+Change any of a card's fields; leave out what should not change. Moving it (list_id, position) or archiving it needs edit rights on its column, and on the whole board to move it to another column. done marks it complete; doing and rank_place are the Doing stage and board-wide importance of a staged board. archived: true hides it from the board (reversible). Pass the card's rev when changing title or description: if someone edited it since, the change is refused (409 card_stale, with the card as it now stands) rather than written over theirs.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`update_card`](#update_card) |
+| Errors | 400, 401, 403, 404, 409, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | path | integer | yes |  | A card's id, from get_board or find_cards. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `archived` | boolean or null | no |  | true hides it from the board (reversible); false brings it back. |
+| `assignees` | array of integer or null | no |  | The full set of user ids; replaces the current assignees. |
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `day` | string or null | no |  | On a calendar board (layout calendar), the day the card is filed under: 2026-11-07, or an empty string for none. |
+| `description` | string or null | no |  | Markdown. |
+| `doing` | boolean or null | no |  | On a staged board, the Doing stage. true starts the card (reopening it if done); done: true moves it on to Done. |
+| `done` | boolean or null | no |  | Marks it complete, or not. |
+| `due_at` | string or null | no |  | 2026-10-30 for an all-day date, an RFC 3339 timestamp for a time, an empty string to clear. |
+| `label_ids` | array of integer or null | no |  | The full set of label ids; replaces the current labels. |
+| `list_id` | integer or null | no |  | The column to move it to, from get_board (board.lists). |
+| `position` | number or null | no |  | Sort position within the column; lower comes first. |
+| `price` | string or null | no |  | The price shown on the card, as text; an empty string clears it. |
+| `rank` | number or null | no |  | The stored rank value itself (the rank from get_card), for putting a card back exactly as it was; rank_place is the usual way. Needs edit rights on the board. |
+| `rank_place` | integer or null | no | at least 0 | Importance across the whole board: 1 is the most important, and other cards shift to make room. 0 takes the card out of the ranking. Needs edit rights on the board. |
+| `rev` | integer or null | no |  | The rev from get_card / get_board. Pass it when changing title or description: if someone edited the card since, the change is refused rather than written over theirs. |
+| `start_at` | string or null | no |  | 2026-10-30 for an all-day date, an RFC 3339 timestamp for a time, an empty string to clear. |
+| `title` | string or null | no |  |  |
+
+**Reply 200**: Success
+
+An empty object.
+
+### POST /api/boards/{board_id}/cards/{card_id}/checklist
+
+Add a checklist item
+
+Add an item to the end of a card's checklist. Returns the card. Needs edit rights on the card.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`add_checklist_item`](#add_checklist_item) |
+| Errors | 400, 401, 403, 404, 409, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | path | integer | yes |  | A card's id, from get_board or find_cards. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `text` | string | yes |  |  |
+
+**Reply 200**: Success
+
+An empty object.
+
+### POST /api/boards/{board_id}/cards/{card_id}/checklist/{item_id}
+
+Tick or edit a checklist item
+
+Tick an item off (done: true) or back on, change its text, or move it. Item ids are in the card's checklist. Returns the card. Needs edit rights on the card.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`update_checklist_item`](#update_checklist_item) |
+| Errors | 400, 401, 403, 404, 409, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | path | integer | yes |  | A card's id, from get_board or find_cards. |
+| `item_id` | path | integer | yes |  | A checklist item's id, from get_card. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `done` | boolean or null | no |  | true ticks it off, false back on. |
+| `position` | number or null | no |  | Its place in the checklist; lower comes first. |
+| `text` | string or null | no |  |  |
+
+**Reply 200**: Success
+
+An empty object.
+
+### POST /api/boards/{board_id}/cards/{card_id}/checklist/{item_id}/delete
+
+Delete a checklist item
+
+Remove an item from a card's checklist, for good. Returns the card. Needs edit rights on the card.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`delete_checklist_item`](#delete_checklist_item) |
+| Errors | 400, 401, 403, 404, 409, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | path | integer | yes |  | A card's id, from get_board or find_cards. |
+| `item_id` | path | integer | yes |  | A checklist item's id, from get_card. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+
+**Reply 200**: Success
+
+An empty object.
+
+### POST /api/boards/{board_id}/cards/{card_id}/copy
+
+Copy a card to a board
+
+Copy a card onto any board (its own included) with its content, comments and picture, optionally kept in step with the original (mirror). Needs edit rights where the copy goes, and on the card for a mirror. Answers the copy, with card_path and board_title.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`copy_card`](#copy_card) |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | path | integer | yes |  | A card's id, from get_board or find_cards. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `list_id` | integer | yes |  | The column on that board it goes into, from get_board (board.lists). |
+| `mirror` | string | no | one of ``, `one_way`, `two_way` | Copy only. Empty for a plain copy; one_way keeps the copy following the original (the copy's synced fields become read-only); two_way keeps both in step. Synced: title, description, checklist, dates, price, picture, To do/Doing/Done, comments. |
+| `position` | number or null | no |  | An exact place in the column, for putting a card back where it was; wins over top. |
+| `to_board` | string or integer | yes |  | The board it goes to: id or URL slug, from list_boards. |
+| `top` | boolean | no |  | Put it at the top of the column instead of the end. |
+
+**Reply 200**: Success
+
+An empty object.
+
+### POST /api/boards/{board_id}/cards/{card_id}/delete
+
+Delete a card
+
+Move a card to the board's trash. Not permanent: restore_card brings it back, until purge_card or empty_trash removes it for good. Needs edit rights on its column.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`delete_card`](#delete_card) |
+| Errors | 400, 401, 403, 404, 409, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | path | integer | yes |  | A card's id, from get_board or find_cards. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `ok` | boolean | yes |  |  |
+
+### GET /api/boards/{board_id}/cards/{card_id}/image
+
+A card's picture
+
+The picture on a card, as the image file itself.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | None, HTTP only: A file (a picture, a spreadsheet or a backup), which travels over HTTP rather than as a tool answer. |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | path | integer | yes |  | A card's id, from get_board or find_cards. |
+
+**Reply 200**: Success
+
+Raw bytes, as `application/octet-stream`.
+
+### POST /api/boards/{board_id}/cards/{card_id}/image
+
+Put a picture on a card
+
+Store a picture on a card (base64 in data), replacing any it had, and answer with the card.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | None, HTTP only: A file (a picture, a spreadsheet or a backup), which travels over HTTP rather than as a tool answer. |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | path | integer | yes |  | A card's id, from get_board or find_cards. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `data` | string | yes |  | The picture's bytes, base64: a PNG, JPEG, GIF or WebP. |
+
+**Reply 200**: Success
+
+An empty object.
+
+### POST /api/boards/{board_id}/cards/{card_id}/image/delete
+
+Take a card's picture off
+
+Remove the picture from a card and answer with the card. The card itself is not touched.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`remove_card_image`](#remove_card_image) |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | path | integer | yes |  | A card's id, from get_board or find_cards. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+
+**Reply 200**: Success
+
+An empty object.
+
+### GET /api/boards/{board_id}/cards/{card_id}/links
+
+List a card's mirrors
+
+The cards this one is kept in step with: each link's id, mode (one_way / two_way), direction (out: this card's changes flow there; in: this card follows that one; both), and the other card, named only when you can open it.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`list_card_links`](#list_card_links) |
+| Errors | 400, 401, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | path | integer | yes |  | A card's id, from get_board or find_cards. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `links` | array of object | yes |  |  |
+| `links[].board_id` | integer | yes |  |  |
+| `links[].board_title` | string | yes |  |  |
+| `links[].card_id` | integer | yes |  |  |
+| `links[].card_path` | string | yes |  |  |
+| `links[].card_title` | string | yes |  |  |
+| `links[].direction` | string | yes |  |  |
+| `links[].id` | integer | yes |  |  |
+| `links[].list_title` | string | yes |  |  |
+| `links[].mode` | string | yes |  |  |
+
+### POST /api/boards/{board_id}/cards/{card_id}/links/{link_id}/delete
+
+Stop mirroring a card
+
+End one of a card's mirror links (link_id from list_card_links). Both cards stay as they are. Needs edit rights on the card.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`unlink_card`](#unlink_card) |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | path | integer | yes |  | A card's id, from get_board or find_cards. |
+| `link_id` | path | integer | yes |  | A mirror link's id, from list_card_links. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `ok` | boolean | yes |  |  |
+
+### GET /api/boards/{board_id}/cards/{card_id}/product-image
+
+A card's product photo
+
+The photo of the product looked up for a card, as the image file itself.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | None, HTTP only: A file (a picture, a spreadsheet or a backup), which travels over HTTP rather than as a tool answer. |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | path | integer | yes |  | A card's id, from get_board or find_cards. |
+
+**Reply 200**: Success
+
+Raw bytes, as `application/octet-stream`.
+
+### POST /api/boards/{board_id}/cards/{card_id}/product/delete
+
+Take a card's product off
+
+Remove the product (name, price, photo) looked up for a card. The link in its text stays. Answers with the card.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`remove_product`](#remove_product) |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | path | integer | yes |  | A card's id, from get_board or find_cards. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+
+**Reply 200**: Success
+
+An empty object.
+
+### POST /api/boards/{board_id}/cards/{card_id}/product/refresh
+
+Look a card's product up again
+
+Read the shop link in a card's title or description (or the one it was last looked up from) again now, and store the product's name, price and photo on the card. Works for any shop's link, shopping column or not. Answers with the card; product.status is failed when the page could not be read.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`refresh_product`](#refresh_product) |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | path | integer | yes |  | A card's id, from get_board or find_cards. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+
+**Reply 200**: Success
+
+An empty object.
+
+### POST /api/boards/{board_id}/cards/{card_id}/send
+
+Send a card to another board
+
+Move a card to another board, whole: it keeps its link, comments and picture. Labels are matched by name there (made if missing), assignees kept only if they are on that board, and per-person shares dropped. Needs edit rights on both boards. Answers the card where it landed, with card_path and board_title.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`send_card`](#send_card) |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | path | integer | yes |  | A card's id, from get_board or find_cards. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `list_id` | integer | yes |  | The column on that board it goes into, from get_board (board.lists). |
+| `mirror` | string | no | one of ``, `one_way`, `two_way` | Copy only. Empty for a plain copy; one_way keeps the copy following the original (the copy's synced fields become read-only); two_way keeps both in step. Synced: title, description, checklist, dates, price, picture, To do/Doing/Done, comments. |
+| `position` | number or null | no |  | An exact place in the column, for putting a card back where it was; wins over top. |
+| `to_board` | string or integer | yes |  | The board it goes to: id or URL slug, from list_boards. |
+| `top` | boolean | no |  | Put it at the top of the column instead of the end. |
+
+**Reply 200**: Success
+
+An empty object.
+
+### POST /api/boards/{board_id}/lists/{list_id}/archive-cards
+
+Archive a column's cards
+
+Archive a column's open cards, all of them or the ones named in card_ids: clearing out a Done column, say. Archived cards are hidden, not deleted (update_card with archived: false brings one back). Needs edit rights on that column.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`archive_list_cards`](#archive_list_cards) |
+| Errors | 400, 401, 403, 404, 409, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `list_id` | path | integer | yes |  | A column's id, from get_board (board.lists). |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `card_ids` | array of integer | no |  | The cards to archive; leave out to archive every open card in the column. |
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `archived` | array of integer | yes |  | The ids of the cards archived. |
+
+### GET /api/cards
+
+Find cards
+
+Search the cards you can see, across all your boards or one (board_id). query matches title and description (case-insensitive). Done and archived cards are left out unless asked for. Returns compact rows, soonest due first, with total and whether the list was cut at limit; use get_card for the full card.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`find_cards`](#find_cards) |
+| Errors | 400, 401, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `query` | query | string | no |  | Matches title and description, in any case. |
+| `board` | query | string or integer | no |  | Search one board only: its id or URL slug, from list_boards. |
+| `assigned_to_me` | query | boolean | no |  | Only cards assigned to you. |
+| `due_before` | query | string | no |  | Only cards due before this: "2026-10-30" or an RFC 3339 timestamp. |
+| `include_done` | query | boolean | no |  | Include done cards. |
+| `include_archived` | query | boolean | no |  | Include archived cards. |
+| `limit` | query | integer | no | 1 to 200; default `50` | At most this many rows (default 50). |
+
+**Reply 200**: Success
+
+An empty object.
+
+## Comments
+
+| Method | Path | Summary | Who may call |
+|---|---|---|---|
+| GET | [`/api/boards/{board_id}/cards/{card_id}/comments`](#get-apiboardsboard_idcardscard_idcomments) | Read a card's comments | browser session or API key, anyone signed in |
+| POST | [`/api/boards/{board_id}/cards/{card_id}/comments`](#post-apiboardsboard_idcardscard_idcomments) | Comment on a card | browser session or API key, anyone signed in |
+| POST | [`/api/boards/{board_id}/cards/{card_id}/comments/{comment_id}`](#post-apiboardsboard_idcardscard_idcommentscomment_id) | Edit a comment | browser session or API key, anyone signed in |
+| POST | [`/api/boards/{board_id}/cards/{card_id}/comments/{comment_id}/remove`](#post-apiboardsboard_idcardscard_idcommentscomment_idremove) | Remove a comment | browser session or API key, anyone signed in |
+
+### GET /api/boards/{board_id}/cards/{card_id}/comments
+
+Read a card's comments
+
+A card's comments, oldest first: who wrote each (by: a member's name, guest:Name for a guest, guest: alone for an anonymous one) and when, and whether you may post one (can_comment).
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`list_comments`](#list_comments) |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | path | integer | yes |  | A card's id, from get_board or find_cards. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `can_comment` | boolean | yes |  | Whether the caller may post one. |
+| `comments` | array of object | yes |  | Oldest first. |
+
+### POST /api/boards/{board_id}/cards/{card_id}/comments
+
+Comment on a card
+
+Post a comment on a card, signed with your name. Markdown, up to 4000 characters. Needs edit rights on the card, or a card shared with you to comment on.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`add_comment`](#add_comment) |
+| Errors | 400, 401, 403, 404, 409, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | path | integer | yes |  | A card's id, from get_board or find_cards. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `text` | string | yes | at most 4000 characters | Markdown, up to 4000 characters. |
+
+**Reply 200**: Success
+
+An empty object.
+
+### POST /api/boards/{board_id}/cards/{card_id}/comments/{comment_id}
+
+Edit a comment
+
+Change the text of a comment you wrote. Comment ids are in list_comments.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`edit_comment`](#edit_comment) |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | path | integer | yes |  | A card's id, from get_board or find_cards. |
+| `comment_id` | path | integer | yes |  | A comment's id, from list_comments. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `text` | string | yes | at most 4000 characters | Markdown, up to 4000 characters; replaces the comment's text. |
+
+**Reply 200**: Success
+
+An empty object.
+
+### POST /api/boards/{board_id}/cards/{card_id}/comments/{comment_id}/remove
+
+Remove a comment
+
+Delete a comment for good: one you wrote, or anyone's on a board you manage. This cannot be undone.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`remove_comment`](#remove_comment) |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | path | integer | yes |  | A card's id, from get_board or find_cards. |
+| `comment_id` | path | integer | yes |  | A comment's id, from list_comments. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `ok` | boolean | yes |  |  |
+
+## Folders
+
+| Method | Path | Summary | Who may call |
+|---|---|---|---|
+| POST | [`/api/boards/{board_id}/folder`](#post-apiboardsboard_idfolder) | File a board in a folder | browser session or API key, anyone signed in |
+| POST | [`/api/folders`](#post-apifolders) | Make a folder | browser session or API key, anyone signed in |
+| POST | [`/api/folders/order`](#post-apifoldersorder) | Order your folders | browser session or API key, anyone signed in |
+| POST | [`/api/folders/{folder_id}`](#post-apifoldersfolder_id) | Rename a folder | browser session or API key, anyone signed in |
+| POST | [`/api/folders/{folder_id}/delete`](#post-apifoldersfolder_iddelete) | Delete a folder | browser session or API key, anyone signed in |
+| POST | [`/api/folders/{folder_id}/parent`](#post-apifoldersfolder_idparent) | Move a folder | browser session or API key, anyone signed in |
+
+### POST /api/boards/{board_id}/folder
+
+File a board in a folder
+
+File one of your boards in one of your folders on your home page, or take it out (folder_id 0).
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`set_board_folder`](#set_board_folder) |
+| Errors | 400, 401, 403, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `folder_id` | integer | yes |  | The folder to file it in; 0: not in a folder. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `ok` | boolean | yes |  |  |
+
+### POST /api/folders
+
+Make a folder
+
+Make a folder on your own home page, at the top or inside another of yours (parent_id).
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`create_folder`](#create_folder) |
+| Errors | 400, 401, 403, 429, 503 |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `name` | string | yes |  |  |
+| `parent_id` | integer | no |  | The folder to make it in; 0 or absent: at the top. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `created_at` | string (date-time) | yes |  |  |
+| `id` | integer | yes |  |  |
+| `name` | string | yes |  |  |
+| `parent_id` | integer | yes |  |  |
+| `position` | number | yes |  |  |
+
+### POST /api/folders/order
+
+Order your folders
+
+Put your folders in this order, first to last.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`order_folders`](#order_folders) |
+| Errors | 400, 401, 403, 429, 503 |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `ids` | array of integer | yes |  | Your folder ids, first to last. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `ok` | boolean | yes |  |  |
+
+### POST /api/folders/{folder_id}
+
+Rename a folder
+
+Rename one of your home page folders.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`rename_folder`](#rename_folder) |
+| Errors | 400, 401, 403, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `folder_id` | path | integer | yes |  | A folder's id, from list_boards (folders). |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `name` | string | yes |  |  |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `created_at` | string (date-time) | yes |  |  |
+| `id` | integer | yes |  |  |
+| `name` | string | yes |  |  |
+| `parent_id` | integer | yes |  |  |
+| `position` | number | yes |  |  |
+
+### POST /api/folders/{folder_id}/delete
+
+Delete a folder
+
+Remove one of your folders. Boards in it are not touched: they go back to the top of your home page.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`delete_folder`](#delete_folder) |
+| Errors | 400, 401, 403, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `folder_id` | path | integer | yes |  | A folder's id, from list_boards (folders). |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `ok` | boolean | yes |  |  |
+
+### POST /api/folders/{folder_id}/parent
+
+Move a folder
+
+Put one of your folders inside another of yours, or back at the top (parent_id 0).
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`move_folder`](#move_folder) |
+| Errors | 400, 401, 403, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `folder_id` | path | integer | yes |  | A folder's id, from list_boards (folders). |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `parent_id` | integer | yes |  | The folder to put it in; 0: at the top. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `created_at` | string (date-time) | yes |  |  |
+| `id` | integer | yes |  |  |
+| `name` | string | yes |  |  |
+| `parent_id` | integer | yes |  |  |
+| `position` | number | yes |  |  |
+
+## Notifications
+
+| Method | Path | Summary | Who may call |
+|---|---|---|---|
+| GET | [`/api/boards/{board_id}/cards/{card_id}/subscription`](#get-apiboardsboard_idcardscard_idsubscription) | Your notifications for a card | browser session or API key, anyone signed in |
+| POST | [`/api/boards/{board_id}/cards/{card_id}/subscription`](#post-apiboardsboard_idcardscard_idsubscription) | Set your notifications for a card | browser session or API key, anyone signed in |
+| GET | [`/api/boards/{board_id}/subscription`](#get-apiboardsboard_idsubscription) | Your notifications for a board | browser session or API key, anyone signed in |
+| POST | [`/api/boards/{board_id}/subscription`](#post-apiboardsboard_idsubscription) | Set your notifications for a board | browser session or API key, anyone signed in |
+| GET | [`/api/notify/devices`](#get-apinotifydevices) | Your browsers that take notifications | browser session only, anyone signed in |
+| POST | [`/api/notify/devices`](#post-apinotifydevices) | Add or check in a browser for notifications | browser session only, anyone signed in |
+| POST | [`/api/notify/devices/{device_id}/delete`](#post-apinotifydevicesdevice_iddelete) | Remove a browser from notifications | browser session only, anyone signed in |
+| GET | [`/api/notify/prefs`](#get-apinotifyprefs) | Your notification settings | browser session or API key, anyone signed in |
+| POST | [`/api/notify/prefs`](#post-apinotifyprefs) | Save your notification settings | browser session or API key, anyone signed in |
+| POST | [`/api/notify/test`](#post-apinotifytest) | Send yourself a test notification | browser session or API key, anyone signed in |
+
+### GET /api/boards/{board_id}/cards/{card_id}/subscription
+
+Your notifications for a card
+
+Which of the card's events reach you and where that comes from (source: your defaults, the board's override or this card's), with whether push is on and whether anything would reach you.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`get_card_subscription`](#get_card_subscription) |
+| Errors | 400, 401, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | path | integer | yes |  | A card's id, from get_board or find_cards. |
+
+**Reply 200**: Success
+
+An empty object.
+
+### POST /api/boards/{board_id}/cards/{card_id}/subscription
+
+Set your notifications for a card
+
+Choose which of the card's events reach you, or clear your choice (events null) so the board's or your defaults apply again. Answers as get_card_subscription does.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`set_card_subscription`](#set_card_subscription) |
+| Errors | 400, 401, 403, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | path | integer | yes |  | A card's id, from get_board or find_cards. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `events` | object or null | yes |  | Which events to be told about; null or absent clears the override, so your defaults apply again. |
+| `events.activity` | boolean | no |  |  |
+| `events.assigned` | boolean | yes |  |  |
+| `events.changes` | boolean | yes |  |  |
+| `events.due` | boolean | yes |  |  |
+
+**Reply 200**: Success
+
+An empty object.
+
+### GET /api/boards/{board_id}/subscription
+
+Your notifications for a board
+
+Which of the board's events reach you (due dates, being assigned, changes, activity) and where that comes from (source: your defaults or this board's override), with whether push is on and whether anything would reach you.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`get_board_subscription`](#get_board_subscription) |
+| Errors | 400, 401, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+
+**Reply 200**: Success
+
+An empty object.
+
+### POST /api/boards/{board_id}/subscription
+
+Set your notifications for a board
+
+Choose which of the board's events reach you, or clear your choice (events null) so your defaults apply again. Answers as get_board_subscription does.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`set_board_subscription`](#set_board_subscription) |
+| Errors | 400, 401, 403, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `events` | object or null | yes |  | Which events to be told about; null or absent clears the override, so your defaults apply again. |
+| `events.activity` | boolean | no |  |  |
+| `events.assigned` | boolean | yes |  |  |
+| `events.changes` | boolean | yes |  |  |
+| `events.due` | boolean | yes |  |  |
+
+**Reply 200**: Success
+
+An empty object.
+
+### GET /api/notify/devices
+
+Your browsers that take notifications
+
+The browsers your notifications go to (id, label, when added and last reached), and the server's web push public key (empty when web push is off).
+
+|  |  |
+|---|---|
+| Who may call | browser session only, anyone signed in |
+| Errors | 401, 403, 429, 503 |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `devices` | array of object | yes |  |  |
+| `public_key` | string | yes |  |  |
+
+### POST /api/notify/devices
+
+Add or check in a browser for notifications
+
+Save this browser's web push subscription (endpoint and keys) so notifications reach it, or check it in again. push_disabled: web push is off; push_endpoint_refused: not a push service the server sends to; push_too_many_devices: remove one first.
+
+|  |  |
+|---|---|
+| Who may call | browser session only, anyone signed in |
+| Errors | 400, 401, 403, 429, 503 |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `auth` | string | yes |  |  |
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `endpoint` | string | yes |  |  |
+| `label` | string | no |  |  |
+| `p256dh` | string | yes |  |  |
+
+**Reply 200**: Success
+
+An empty object.
+
+### POST /api/notify/devices/{device_id}/delete
+
+Remove a browser from notifications
+
+Stop notifications going to one of your browsers.
+
+|  |  |
+|---|---|
+| Who may call | browser session only, anyone signed in |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `device_id` | path | string | yes | at least 1 characters |  |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `ok` | boolean | yes |  |  |
+
+### GET /api/notify/prefs
+
+Your notification settings
+
+How and when you are told about things: Pushover (the key only masked) or this browser's push, timezone, reminder lead times, the hour for all-day reminders, the events you hear about as an assignee or watcher, whether shares with you are announced, and whether it is all paused. Also whether the server can send push at all and whether anything would reach you.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`get_notify_prefs`](#get_notify_prefs) |
+| Errors | 401, 429, 503 |
+
+**Reply 200**: Success
+
+An empty object.
+
+### POST /api/notify/prefs
+
+Save your notification settings
+
+Replace your notification settings (display settings are kept). An empty pushover_user_key keeps the saved one; "-" removes it. notify_via left out stays as it is. Answers the settings as get_notify_prefs does.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`set_notify_prefs`](#set_notify_prefs) |
+| Errors | 400, 401, 403, 429, 503 |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `all_day_reminder_hour` | integer | no | 0 to 23 | The hour a card due on a day (no time) is reminded about. |
+| `assignee_defaults` | object | yes |  | What to be told about cards you are assigned to. |
+| `assignee_defaults.activity` | boolean | no |  |  |
+| `assignee_defaults.assigned` | boolean | yes |  |  |
+| `assignee_defaults.changes` | boolean | yes |  |  |
+| `assignee_defaults.due` | boolean | yes |  |  |
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `notify_via` | string | no |  | Which ways of reaching you are used. Left out, it stays as it is. |
+| `paused` | boolean | no |  |  |
+| `pushover_device` | string | no |  |  |
+| `pushover_user_key` | string | no |  | Empty or absent keeps the saved key; "-" removes it. |
+| `reminder_lead_minutes` | array of integer | no |  | How long before a due time to be reminded, in minutes. |
+| `shared_with_me` | boolean | no |  |  |
+| `timezone` | string | no |  | An IANA zone such as Europe/Paris, for when reminders fire. |
+| `watch_defaults` | object | yes |  | What to be told about every other card you can see. |
+| `watch_defaults.activity` | boolean | no |  |  |
+| `watch_defaults.assigned` | boolean | yes |  |  |
+| `watch_defaults.changes` | boolean | yes |  |  |
+| `watch_defaults.due` | boolean | yes |  |  |
+
+**Reply 200**: Success
+
+An empty object.
+
+### POST /api/notify/test
+
+Send yourself a test notification
+
+Send yourself a test notification the way your settings say. push_disabled: the server sends none; push_no_key: nothing set up to reach you; push_rejected: Pushover said no (detail has its words); push_unreachable: the push service could not be reached.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`send_test_notification`](#send_test_notification) |
+| Errors | 400, 401, 403, 429, 503 |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `ok` | boolean | yes |  |  |
+
+## Shared
+
+| Method | Path | Summary | Who may call |
+|---|---|---|---|
+| GET | [`/api/shared`](#get-apishared) | What a share link opens | anyone |
+| GET | [`/api/shared/{board_id}`](#get-apisharedboard_id) | Read a board (share link) | anyone |
+| POST | [`/api/shared/{board_id}`](#post-apisharedboard_id) | Change a board's settings (share link) | anyone |
+| POST | [`/api/shared/{board_id}/cards`](#post-apisharedboard_idcards) | Add a card (share link) | anyone |
+| POST | [`/api/shared/{board_id}/cards/{card_id}`](#post-apisharedboard_idcardscard_id) | Change a card (share link) | anyone |
+| POST | [`/api/shared/{board_id}/cards/{card_id}/checklist`](#post-apisharedboard_idcardscard_idchecklist) | Add a checklist item (share link) | anyone |
+| POST | [`/api/shared/{board_id}/cards/{card_id}/checklist/{item_id}`](#post-apisharedboard_idcardscard_idchecklistitem_id) | Tick or edit a checklist item (share link) | anyone |
+| POST | [`/api/shared/{board_id}/cards/{card_id}/checklist/{item_id}/delete`](#post-apisharedboard_idcardscard_idchecklistitem_iddelete) | Delete a checklist item (share link) | anyone |
+| GET | [`/api/shared/{board_id}/cards/{card_id}/comments`](#get-apisharedboard_idcardscard_idcomments) | Read a card's comments (share link) | anyone |
+| POST | [`/api/shared/{board_id}/cards/{card_id}/comments`](#post-apisharedboard_idcardscard_idcomments) | Comment on a card (share link) | anyone |
+| POST | [`/api/shared/{board_id}/cards/{card_id}/comments/{comment_id}`](#post-apisharedboard_idcardscard_idcommentscomment_id) | Edit a comment (share link) | anyone |
+| POST | [`/api/shared/{board_id}/cards/{card_id}/comments/{comment_id}/remove`](#post-apisharedboard_idcardscard_idcommentscomment_idremove) | Remove a comment (share link) | anyone |
+| POST | [`/api/shared/{board_id}/cards/{card_id}/delete`](#post-apisharedboard_idcardscard_iddelete) | Delete a card (share link) | anyone |
+| GET | [`/api/shared/{board_id}/cards/{card_id}/image`](#get-apisharedboard_idcardscard_idimage) | A card's picture (share link) | anyone |
+| POST | [`/api/shared/{board_id}/cards/{card_id}/image`](#post-apisharedboard_idcardscard_idimage) | Put a picture on a card (share link) | anyone |
+| POST | [`/api/shared/{board_id}/cards/{card_id}/image/delete`](#post-apisharedboard_idcardscard_idimagedelete) | Take a card's picture off (share link) | anyone |
+| GET | [`/api/shared/{board_id}/cards/{card_id}/product-image`](#get-apisharedboard_idcardscard_idproduct-image) | A card's product photo (share link) | anyone |
+| POST | [`/api/shared/{board_id}/cards/{card_id}/product/delete`](#post-apisharedboard_idcardscard_idproductdelete) | Take a card's product off (share link) | anyone |
+| POST | [`/api/shared/{board_id}/cards/{card_id}/product/refresh`](#post-apisharedboard_idcardscard_idproductrefresh) | Look a card's product up again (share link) | anyone |
+| POST | [`/api/shared/{board_id}/carry-over`](#post-apisharedboard_idcarry-over) | Carry unfinished cards over to today (share link) | anyone |
+| GET | [`/api/shared/{board_id}/export`](#get-apisharedboard_idexport) | Download a board as a spreadsheet (share link) | anyone |
+| POST | [`/api/shared/{board_id}/labels`](#post-apisharedboard_idlabels) | Add a label (share link) | anyone |
+| POST | [`/api/shared/{board_id}/labels/{label_id}`](#post-apisharedboard_idlabelslabel_id) | Change a label (share link) | anyone |
+| POST | [`/api/shared/{board_id}/labels/{label_id}/delete`](#post-apisharedboard_idlabelslabel_iddelete) | Delete a label (share link) | anyone |
+| POST | [`/api/shared/{board_id}/lists`](#post-apisharedboard_idlists) | Add a column (share link) | anyone |
+| POST | [`/api/shared/{board_id}/lists/{list_id}`](#post-apisharedboard_idlistslist_id) | Rename, move or archive a column (share link) | anyone |
+| POST | [`/api/shared/{board_id}/lists/{list_id}/archive-cards`](#post-apisharedboard_idlistslist_idarchive-cards) | Archive a column's cards (share link) | anyone |
+| POST | [`/api/shared/{board_id}/lists/{list_id}/delete`](#post-apisharedboard_idlistslist_iddelete) | Delete a column (share link) | anyone |
+| GET | [`/api/shared/{board_id}/lists/{list_id}/export`](#get-apisharedboard_idlistslist_idexport) | Download a column (share link) | anyone |
+| POST | [`/api/shared/{board_id}/lists/{list_id}/import`](#post-apisharedboard_idlistslist_idimport) | Add cards to a column from a file (share link) | anyone |
+| GET | [`/api/shared/{board_id}/stamp`](#get-apisharedboard_idstamp) | A board's revision (share link) | anyone |
+| GET | [`/api/shared/{board_id}/trash`](#get-apisharedboard_idtrash) | List a board's trash (share link) | anyone |
+| POST | [`/api/shared/{board_id}/trash/empty`](#post-apisharedboard_idtrashempty) | Empty a board's trash (share link) | anyone |
+| POST | [`/api/shared/{board_id}/trash/{card_id}/delete`](#post-apisharedboard_idtrashcard_iddelete) | Delete a card for good (share link) | anyone |
+| POST | [`/api/shared/{board_id}/trash/{card_id}/restore`](#post-apisharedboard_idtrashcard_idrestore) | Restore a card from the trash (share link) | anyone |
+
+### GET /api/shared
+
+What a share link opens
+
+For a guest holding a share link in X-Share-Token: the board (and its title), column or card it opens, its mode and label, and whether guests may comment. A quick card link answers board_id, card_id, mode and quick only.
+
+|  |  |
+|---|---|
+| Who may call | anyone |
+| Errors | 404, 429, 503 |
+
+**Reply 200**: Success
+
+An empty object.
+
+### GET /api/shared/{board_id}
+
+Read a board (share link)
+
+getBoard for a guest holding a share link in X-Share-Token: what the link shows.
+
+|  |  |
+|---|---|
+| Who may call | anyone |
+| Errors | 400, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `include_archived` | query | boolean or null | no |  | Include archived cards. The page gets them unless this is false; an agent's get_board leaves them out unless it is true. |
+
+**Reply 200**: Success
+
+An empty object.
+
+### POST /api/shared/{board_id}
+
+Change a board's settings (share link)
+
+updateBoard for a guest holding an edit share link in X-Share-Token. Never the purpose or notes.
+
+|  |  |
+|---|---|
+| Who may call | anyone |
+| Errors | 400, 403, 404, 409, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `add_placement` | string or null | no | one of ``, `top`, `bottom` | Where the add-card box sits in a column: top, bottom, or "" for each person's account setting. |
+| `allow_anon_comments` | boolean or null | no |  | Let guests comment without giving a name. The owner's, from a browser only: refused through a key. |
+| `allow_quick_share` | boolean or null | no |  | Let the board's cards be shared by quick link. The owner's, from a browser only: refused through a key. |
+| `carry_over` | boolean or null | no |  | On a calendar board, move unfinished cards from past days to today. |
+| `center_columns` | boolean or null | no |  | Centre the columns on wide screens. |
+| `clear_theme` | boolean | no |  | true drops the board's own theme: everyone sees their own again. |
+| `color` | string or null | no | one of ``, `blue`, `green`, `orange`, `red`, `purple`, `pink`, `teal`, `gray`, `yellow` | The board's colour; empty for none. |
+| `default_view` | string or null | no | one of `kanban`, `todo`, `timeline` | The view the board opens in for someone who has not picked one. |
+| `done_placement` | string or null | no | one of ``, `top`, `bottom` | Where finished cards go in a column: top, bottom, or "" for each person's account setting. |
+| `layout` | string or null | no | one of ``, `three`, `staged`, `calendar` | "" (free: any number of columns), "three" (pinned to three columns: to do, doing, done), "staged" (each column has its own To do / Doing / Done, with an All view ranked board-wide), or "calendar" (cards filed by day; columns titled with dates are filed under those days). |
+| `list_titles` | array of string | no |  | With layout "three": the titles of the columns added if the board has fewer than three open ones. |
+| `notes` | string or null | no |  | Markdown: links, documents, an index. Members only. |
+| `notes_rev` | integer or null | no |  | The notes_rev the notes were read at, as purpose_rev. |
+| `numbering` | string or null | no | one of ``, `on`, `off` | Card numbers for everyone on the board: on, off, or "" to leave it to each person's account setting. |
+| `purpose` | string or null | no |  | Markdown: what the board is for and how to work on it. Only while the Purpose section is on (409 purpose_off otherwise). Members only. |
+| `purpose_enabled` | boolean or null | no |  | Switch the board's Purpose section on or off. Members only. |
+| `purpose_rev` | integer or null | no |  | The purpose_rev the purpose was read at: if it moved since, 409 board_text_stale instead of writing over someone's change. |
+| `shopping` | boolean or null | no |  | A shopping board: cards carry products and prices. |
+| `show_rank` | boolean or null | no |  | Show each card's place in the board-wide ranking. |
+| `slug` | string or null | no |  | The board's URL name (the part after /b/). Empty picks one from the title. 409 slug_taken if another board has it. |
+| `stage_doing` | string or null | no |  | What the Doing stage is called on this board; empty for the default. |
+| `stage_done` | string or null | no |  | What the Done stage is called on this board; empty for the default. |
+| `stage_tabs` | boolean or null | no |  | On a staged board, give every column its own To do / Doing / Done buttons. |
+| `stage_todo` | string or null | no |  | What the To do stage is called on this board; empty for the default. |
+| `theme` | object or null | no |  | The board's own theme, shown to everyone on it. |
+| `theme.accent` | string | yes |  |  |
+| `theme.background` | string | no |  |  |
+| `theme.button` | object or null | no |  |  |
+| `theme.button.case` | string | no | one of `normal`, `upper` |  |
+| `theme.button.depth` | string | no | one of `flat`, `raised`, `glossy` |  |
+| `theme.button.shape` | string | no | one of `square`, `soft`, `rounded`, `pill` |  |
+| `theme.button.weight` | string | no | one of `normal`, `medium`, `bold` |  |
+| `theme.card` | string | no |  |  |
+| `theme.column` | string | no |  |  |
+| `theme.dark` | object or null | no |  |  |
+| `theme.dark.accent` | string | yes |  | The main color: what you can press. |
+| `theme.dark.background` | string | no |  | The page. Left out: the mode's own. |
+| `theme.dark.overrides` | map of string | no |  | Worked-out colors replaced by name: text, accent, accentFg, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back. |
+| `theme.dark.second` | string | yes |  | Says where you are: active nav item, headings, info. |
+| `theme.dark.surface` | string | no |  | Cards. Left out: the mode's own. |
+| `theme.light` | object or null | no |  |  |
+| `theme.light.accent` | string | yes |  | The main color: what you can press. |
+| `theme.light.background` | string | no |  | The page. Left out: the mode's own. |
+| `theme.light.overrides` | map of string | no |  | Worked-out colors replaced by name: text, accent, accentFg, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back. |
+| `theme.light.second` | string | yes |  | Says where you are: active nav item, headings, info. |
+| `theme.light.surface` | string | no |  | Cards. Left out: the mode's own. |
+| `theme.mode` | string | yes |  |  |
+| `theme.overrides` | map of string | no |  |  |
+| `theme.second` | string | no |  |  |
+| `theme.surface` | string | no |  |  |
+| `title` | string or null | no | at most 120 characters |  |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `notes_rev` | integer | yes |  |  |
+| `purpose_rev` | integer | yes |  |  |
+| `rev` | integer | yes |  |  |
+| `slug` | string | yes |  |  |
+
+### POST /api/shared/{board_id}/cards
+
+Add a card (share link)
+
+createCard for a guest holding a share link in X-Share-Token.
+
+|  |  |
+|---|---|
+| Who may call | anyone |
+| Errors | 400, 403, 404, 409, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `assignees` | array of integer or null | no |  | User ids, from get_board's members or list_team. |
+| `day` | string or null | no |  | On a calendar board (layout calendar), the day the card is filed under: 2026-11-07, or an empty string for none. |
+| `description` | string or null | no |  | Markdown. |
+| `doing` | boolean or null | no |  | On a staged board, the Doing stage. true starts the card (reopening it if done); done: true moves it on to Done. |
+| `done` | boolean or null | no |  | true makes it complete from the start. |
+| `due_at` | string or null | no |  | 2026-10-30 for an all-day date, an RFC 3339 timestamp for a time, an empty string to clear. |
+| `label_ids` | array of integer or null | no |  | Label ids, from get_board (board.labels). |
+| `list_id` | integer | yes |  | The column's id, from get_board (board.lists). |
+| `position` | number or null | no |  | Sort position within the column; lower comes first. Leave out to put it at the end. |
+| `rank_place` | integer or null | no | at least 0 | Importance across the whole board: 1 is the most important, and other cards shift to make room. 0 takes the card out of the ranking. Needs edit rights on the board. |
+| `start_at` | string or null | no |  | 2026-10-30 for an all-day date, an RFC 3339 timestamp for a time, an empty string to clear. |
+| `title` | string | yes |  |  |
+
+**Reply 200**: Success
+
+An empty object.
+
+### POST /api/shared/{board_id}/cards/{card_id}
+
+Change a card (share link)
+
+patchCard for a guest holding a share link in X-Share-Token.
+
+|  |  |
+|---|---|
+| Who may call | anyone |
+| Errors | 400, 403, 404, 409, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | path | integer | yes |  | A card's id, from get_board or find_cards. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `archived` | boolean or null | no |  | true hides it from the board (reversible); false brings it back. |
+| `assignees` | array of integer or null | no |  | The full set of user ids; replaces the current assignees. |
+| `day` | string or null | no |  | On a calendar board (layout calendar), the day the card is filed under: 2026-11-07, or an empty string for none. |
+| `description` | string or null | no |  | Markdown. |
+| `doing` | boolean or null | no |  | On a staged board, the Doing stage. true starts the card (reopening it if done); done: true moves it on to Done. |
+| `done` | boolean or null | no |  | Marks it complete, or not. |
+| `due_at` | string or null | no |  | 2026-10-30 for an all-day date, an RFC 3339 timestamp for a time, an empty string to clear. |
+| `label_ids` | array of integer or null | no |  | The full set of label ids; replaces the current labels. |
+| `list_id` | integer or null | no |  | The column to move it to, from get_board (board.lists). |
+| `position` | number or null | no |  | Sort position within the column; lower comes first. |
+| `price` | string or null | no |  | The price shown on the card, as text; an empty string clears it. |
+| `rank` | number or null | no |  | The stored rank value itself (the rank from get_card), for putting a card back exactly as it was; rank_place is the usual way. Needs edit rights on the board. |
+| `rank_place` | integer or null | no | at least 0 | Importance across the whole board: 1 is the most important, and other cards shift to make room. 0 takes the card out of the ranking. Needs edit rights on the board. |
+| `rev` | integer or null | no |  | The rev from get_card / get_board. Pass it when changing title or description: if someone edited the card since, the change is refused rather than written over theirs. |
+| `start_at` | string or null | no |  | 2026-10-30 for an all-day date, an RFC 3339 timestamp for a time, an empty string to clear. |
+| `title` | string or null | no |  |  |
+
+**Reply 200**: Success
+
+An empty object.
+
+### POST /api/shared/{board_id}/cards/{card_id}/checklist
+
+Add a checklist item (share link)
+
+addChecklistItem for a guest holding a share link in X-Share-Token.
+
+|  |  |
+|---|---|
+| Who may call | anyone |
+| Errors | 400, 403, 404, 409, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | path | integer | yes |  | A card's id, from get_board or find_cards. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `text` | string | yes |  |  |
+
+**Reply 200**: Success
+
+An empty object.
+
+### POST /api/shared/{board_id}/cards/{card_id}/checklist/{item_id}
+
+Tick or edit a checklist item (share link)
+
+updateChecklistItem for a guest holding a share link in X-Share-Token.
+
+|  |  |
+|---|---|
+| Who may call | anyone |
+| Errors | 400, 403, 404, 409, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | path | integer | yes |  | A card's id, from get_board or find_cards. |
+| `item_id` | path | integer | yes |  | A checklist item's id, from get_card. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `done` | boolean or null | no |  | true ticks it off, false back on. |
+| `position` | number or null | no |  | Its place in the checklist; lower comes first. |
+| `text` | string or null | no |  |  |
+
+**Reply 200**: Success
+
+An empty object.
+
+### POST /api/shared/{board_id}/cards/{card_id}/checklist/{item_id}/delete
+
+Delete a checklist item (share link)
+
+deleteChecklistItem for a guest holding a share link in X-Share-Token.
+
+|  |  |
+|---|---|
+| Who may call | anyone |
+| Errors | 400, 403, 404, 409, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | path | integer | yes |  | A card's id, from get_board or find_cards. |
+| `item_id` | path | integer | yes |  | A checklist item's id, from get_card. |
+
+**Reply 200**: Success
+
+An empty object.
+
+### GET /api/shared/{board_id}/cards/{card_id}/comments
+
+Read a card's comments (share link)
+
+listComments for a guest holding a share link in X-Share-Token.
+
+|  |  |
+|---|---|
+| Who may call | anyone |
+| Errors | 400, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | path | integer | yes |  | A card's id, from get_board or find_cards. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `can_comment` | boolean | yes |  | Whether the caller may post one. |
+| `comments` | array of object | yes |  | Oldest first. |
+
+### POST /api/shared/{board_id}/cards/{card_id}/comments
+
+Comment on a card (share link)
+
+addComment for a guest holding a share link in X-Share-Token.
+
+|  |  |
+|---|---|
+| Who may call | anyone |
+| Errors | 400, 403, 404, 409, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | path | integer | yes |  | A card's id, from get_board or find_cards. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `text` | string | yes | at most 4000 characters | Markdown, up to 4000 characters. |
+
+**Reply 200**: Success
+
+An empty object.
+
+### POST /api/shared/{board_id}/cards/{card_id}/comments/{comment_id}
+
+Edit a comment (share link)
+
+editComment for a guest holding a share link in X-Share-Token.
+
+|  |  |
+|---|---|
+| Who may call | anyone |
+| Errors | 400, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | path | integer | yes |  | A card's id, from get_board or find_cards. |
+| `comment_id` | path | integer | yes |  | A comment's id, from list_comments. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `text` | string | yes | at most 4000 characters | Markdown, up to 4000 characters; replaces the comment's text. |
+
+**Reply 200**: Success
+
+An empty object.
+
+### POST /api/shared/{board_id}/cards/{card_id}/comments/{comment_id}/remove
+
+Remove a comment (share link)
+
+removeComment for a guest holding a share link in X-Share-Token.
+
+|  |  |
+|---|---|
+| Who may call | anyone |
+| Errors | 400, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | path | integer | yes |  | A card's id, from get_board or find_cards. |
+| `comment_id` | path | integer | yes |  | A comment's id, from list_comments. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `ok` | boolean | yes |  |  |
+
+### POST /api/shared/{board_id}/cards/{card_id}/delete
+
+Delete a card (share link)
+
+deleteCard for a guest holding a share link in X-Share-Token.
+
+|  |  |
+|---|---|
+| Who may call | anyone |
+| Errors | 400, 403, 404, 409, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | path | integer | yes |  | A card's id, from get_board or find_cards. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `ok` | boolean | yes |  |  |
+
+### GET /api/shared/{board_id}/cards/{card_id}/image
+
+A card's picture (share link)
+
+cardImage for a guest holding a share link in X-Share-Token.
+
+|  |  |
+|---|---|
+| Who may call | anyone |
+| Errors | 400, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | path | integer | yes |  | A card's id, from get_board or find_cards. |
+
+**Reply 200**: Success
+
+Raw bytes, as `application/octet-stream`.
+
+### POST /api/shared/{board_id}/cards/{card_id}/image
+
+Put a picture on a card (share link)
+
+setCardImage for a guest holding a share link in X-Share-Token.
+
+|  |  |
+|---|---|
+| Who may call | anyone |
+| Errors | 400, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | path | integer | yes |  | A card's id, from get_board or find_cards. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `data` | string | yes |  | The picture's bytes, base64: a PNG, JPEG, GIF or WebP. |
+
+**Reply 200**: Success
+
+An empty object.
+
+### POST /api/shared/{board_id}/cards/{card_id}/image/delete
+
+Take a card's picture off (share link)
+
+removeCardImage for a guest holding a share link in X-Share-Token.
+
+|  |  |
+|---|---|
+| Who may call | anyone |
+| Errors | 400, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | path | integer | yes |  | A card's id, from get_board or find_cards. |
+
+**Reply 200**: Success
+
+An empty object.
+
+### GET /api/shared/{board_id}/cards/{card_id}/product-image
+
+A card's product photo (share link)
+
+productImage for a guest holding a share link in X-Share-Token.
+
+|  |  |
+|---|---|
+| Who may call | anyone |
+| Errors | 400, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | path | integer | yes |  | A card's id, from get_board or find_cards. |
+
+**Reply 200**: Success
+
+Raw bytes, as `application/octet-stream`.
+
+### POST /api/shared/{board_id}/cards/{card_id}/product/delete
+
+Take a card's product off (share link)
+
+removeProduct for a guest holding a share link in X-Share-Token.
+
+|  |  |
+|---|---|
+| Who may call | anyone |
+| Errors | 400, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | path | integer | yes |  | A card's id, from get_board or find_cards. |
+
+**Reply 200**: Success
+
+An empty object.
+
+### POST /api/shared/{board_id}/cards/{card_id}/product/refresh
+
+Look a card's product up again (share link)
+
+refreshProduct for a guest holding a share link in X-Share-Token.
+
+|  |  |
+|---|---|
+| Who may call | anyone |
+| Errors | 400, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | path | integer | yes |  | A card's id, from get_board or find_cards. |
+
+**Reply 200**: Success
+
+An empty object.
+
+### POST /api/shared/{board_id}/carry-over
+
+Carry unfinished cards over to today (share link)
+
+carryOver for a guest holding an edit share link in X-Share-Token.
+
+|  |  |
+|---|---|
+| Who may call | anyone |
+| Errors | 400, 403, 404, 409, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `today` | string | yes |  | Your today, as 2026-11-07: within a day of the server's. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `moved` | integer | yes |  | How many cards moved to today. |
+
+### GET /api/shared/{board_id}/export
+
+Download a board as a spreadsheet (share link)
+
+exportBoard for a guest holding a share link in X-Share-Token.
+
+|  |  |
+|---|---|
+| Who may call | anyone |
+| Errors | 400, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `format` | query | string | no |  | xlsx or csv. |
+| `archived` | query | string | no |  | 1 adds archived cards and columns, with an Archived column. |
+| `tz` | query | string | no |  | The timezone timed dates are written in (an IANA name); defaults to your own, else UTC. |
+
+**Reply 200**: Success
+
+Raw bytes, as `application/octet-stream`.
+
+### POST /api/shared/{board_id}/labels
+
+Add a label (share link)
+
+createLabel for a guest holding an edit share link in X-Share-Token.
+
+|  |  |
+|---|---|
+| Who may call | anyone |
+| Errors | 400, 403, 404, 409, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `color` | string | yes |  | A palette name (blue, green, orange, red, purple, pink, teal, gray, yellow) or a #rrggbb colour. |
+| `name` | string or null | no | at most 40 characters |  |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `color` | string | yes |  |  |
+| `id` | integer | yes |  |  |
+| `name` | string | yes |  |  |
+
+### POST /api/shared/{board_id}/labels/{label_id}
+
+Change a label (share link)
+
+updateLabel for a guest holding an edit share link in X-Share-Token.
+
+|  |  |
+|---|---|
+| Who may call | anyone |
+| Errors | 400, 403, 404, 409, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `label_id` | path | integer | yes |  | A label's id, from get_board (board.labels). |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `color` | string or null | no |  | A palette name (blue, green, orange, red, purple, pink, teal, gray, yellow) or a #rrggbb colour. |
+| `name` | string or null | no | at most 40 characters |  |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `ok` | boolean | yes |  |  |
+
+### POST /api/shared/{board_id}/labels/{label_id}/delete
+
+Delete a label (share link)
+
+deleteLabel for a guest holding an edit share link in X-Share-Token.
+
+|  |  |
+|---|---|
+| Who may call | anyone |
+| Errors | 400, 403, 404, 409, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `label_id` | path | integer | yes |  | A label's id, from get_board (board.labels). |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `ok` | boolean | yes |  |  |
+
+### POST /api/shared/{board_id}/lists
+
+Add a column (share link)
+
+createList for a guest holding an edit share link in X-Share-Token.
+
+|  |  |
+|---|---|
+| Who may call | anyone |
+| Errors | 400, 403, 404, 409, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `position` | number or null | no |  | Sort position among the columns; lower comes first. Leave out to put it at the end. |
+| `title` | string | yes | at most 120 characters |  |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `archived` | boolean | yes |  |  |
+| `id` | integer | yes |  |  |
+| `position` | number | yes |  |  |
+| `shopping` | boolean | yes |  |  |
+| `stage_tabs` | string | yes |  |  |
+| `stage_view` | string | yes |  |  |
+| `title` | string | yes |  |  |
+| `width` | integer | yes |  |  |
+
+### POST /api/shared/{board_id}/lists/{list_id}
+
+Rename, move or archive a column (share link)
+
+updateList for a guest holding an edit share link in X-Share-Token.
+
+|  |  |
+|---|---|
+| Who may call | anyone |
+| Errors | 400, 403, 404, 409, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `list_id` | path | integer | yes |  | A column's id, from get_board (board.lists). |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `archived` | boolean or null | no |  | true hides the column; false brings it back. |
+| `position` | number or null | no |  | Sort position among the columns; lower comes first. |
+| `shopping` | boolean or null | no |  | A shopping column: its cards carry products and prices. |
+| `stage_tabs` | string or null | no | one of ``, `on`, `off` | On a staged board, this column's own To do / Doing / Done buttons: on, off, or empty to follow the board's setting. |
+| `stage_view` | string or null | no | one of ``, `todo`, `doing`, `done` | On a staged board, the stage this column shows for everyone; empty follows the navbar. |
+| `title` | string or null | no | at most 120 characters |  |
+| `width` | integer or null | no |  | The column's width in pixels (200-800); 0 puts it back to the standard width. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `ok` | boolean | yes |  |  |
+
+### POST /api/shared/{board_id}/lists/{list_id}/archive-cards
+
+Archive a column's cards (share link)
+
+archiveListCards for a guest holding a share link in X-Share-Token.
+
+|  |  |
+|---|---|
+| Who may call | anyone |
+| Errors | 400, 403, 404, 409, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `list_id` | path | integer | yes |  | A column's id, from get_board (board.lists). |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `card_ids` | array of integer | no |  | The cards to archive; leave out to archive every open card in the column. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `archived` | array of integer | yes |  | The ids of the cards archived. |
+
+### POST /api/shared/{board_id}/lists/{list_id}/delete
+
+Delete a column (share link)
+
+deleteList for a guest holding an edit share link in X-Share-Token.
+
+|  |  |
+|---|---|
+| Who may call | anyone |
+| Errors | 400, 403, 404, 409, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `list_id` | path | integer | yes |  | A column's id, from get_board (board.lists). |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `ok` | boolean | yes |  |  |
+
+### GET /api/shared/{board_id}/lists/{list_id}/export
+
+Download a column (share link)
+
+exportColumn for a guest holding a share link in X-Share-Token.
+
+|  |  |
+|---|---|
+| Who may call | anyone |
+| Errors | 400, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `list_id` | path | integer | yes |  | A column's id, from get_board (board.lists). |
+
+**Reply 200**: Success
+
+An empty object.
+
+### POST /api/shared/{board_id}/lists/{list_id}/import
+
+Add cards to a column from a file (share link)
+
+importColumn for a guest holding a share link in X-Share-Token.
+
+|  |  |
+|---|---|
+| Who may call | anyone |
+| Errors | 400, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `list_id` | path | integer | yes |  | A column's id, from get_board (board.lists). |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `cards` | array of object | yes |  |  |
+| `cards[].archived` | boolean | yes |  |  |
+| `cards[].assignees` | array of string | no |  |  |
+| `cards[].checklist` | array of object | yes |  |  |
+| `cards[].checklist[].done` | boolean | yes |  |  |
+| `cards[].checklist[].text` | string | yes |  |  |
+| `cards[].day` | string | no |  |  |
+| `cards[].description` | string | yes |  |  |
+| `cards[].doing` | boolean | no |  |  |
+| `cards[].done` | boolean | yes |  |  |
+| `cards[].done_at` | string (date-time) or null | yes |  |  |
+| `cards[].due_all_day` | boolean | yes |  |  |
+| `cards[].due_at` | string (date-time) or null | yes |  |  |
+| `cards[].labels` | array of integer | yes |  |  |
+| `cards[].price` | string | no |  |  |
+| `cards[].rank` | number | no |  |  |
+| `cards[].start_at` | string (date-time) or null | yes |  |  |
+| `cards[].start_timed` | boolean | yes |  |  |
+| `cards[].title` | string | yes |  |  |
+| `csrf_token` | string | no |  |  |
+| `labels` | array of object | yes |  |  |
+| `labels[].color` | string | yes |  |  |
+| `labels[].name` | string | yes |  |  |
+| `labels[].ref` | integer | yes |  |  |
+
+**Reply 200**: Success
+
+An empty object.
+
+### GET /api/shared/{board_id}/stamp
+
+A board's revision (share link)
+
+getBoardStamp for a guest holding a share link in X-Share-Token.
+
+|  |  |
+|---|---|
+| Who may call | anyone |
+| Errors | 400, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `rev` | integer | yes |  | Moves whenever anything the caller can see on the board changes. |
+
+### GET /api/shared/{board_id}/trash
+
+List a board's trash (share link)
+
+listTrash for a guest holding a share link in X-Share-Token.
+
+|  |  |
+|---|---|
+| Who may call | anyone |
+| Errors | 400, 403, 404, 409, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `cards` | array of object | yes |  | The cards in the trash, each with deleted_at and deleted_by. |
+
+### POST /api/shared/{board_id}/trash/empty
+
+Empty a board's trash (share link)
+
+emptyTrash for a guest holding a share link in X-Share-Token.
+
+|  |  |
+|---|---|
+| Who may call | anyone |
+| Errors | 400, 403, 404, 409, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `removed` | integer | yes |  | How many cards were deleted for good. |
+
+### POST /api/shared/{board_id}/trash/{card_id}/delete
+
+Delete a card for good (share link)
+
+purgeCard for a guest holding a share link in X-Share-Token.
+
+|  |  |
+|---|---|
+| Who may call | anyone |
+| Errors | 400, 403, 404, 409, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | path | integer | yes |  | A card's id, from get_board or find_cards. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `ok` | boolean | yes |  |  |
+
+### POST /api/shared/{board_id}/trash/{card_id}/restore
+
+Restore a card from the trash (share link)
+
+restoreCard for a guest holding a share link in X-Share-Token.
+
+|  |  |
+|---|---|
+| Who may call | anyone |
+| Errors | 400, 403, 404, 409, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | path | integer | yes |  | A card's id, from get_board or find_cards. |
+
+**Reply 200**: Success
+
+An empty object.
+
+## Sharing
+
+| Method | Path | Summary | Who may call |
+|---|---|---|---|
+| POST | [`/api/boards/{board_id}/cards/{card_id}/quick-share`](#post-apiboardsboard_idcardscard_idquick-share) | Get a card's public link | browser session only, anyone signed in |
+| POST | [`/api/boards/{board_id}/cards/{card_id}/share-user`](#post-apiboardsboard_idcardscard_idshare-user) | Share a card with someone | browser session or API key, anyone signed in |
+| POST | [`/api/boards/{board_id}/members`](#post-apiboardsboard_idmembers) | Add, change or remove a board member | browser session or API key, anyone signed in |
+| GET | [`/api/boards/{board_id}/shares`](#get-apiboardsboard_idshares) | List a board's share links | browser session or API key, anyone signed in |
+| POST | [`/api/boards/{board_id}/shares`](#post-apiboardsboard_idshares) | Make a share link | browser session only, anyone signed in |
+| POST | [`/api/boards/{board_id}/shares/{link_id}/delete`](#post-apiboardsboard_idshareslink_iddelete) | Delete a share link | browser session or API key, anyone signed in |
+| POST | [`/api/boards/{board_id}/shares/{link_id}/revoke`](#post-apiboardsboard_idshareslink_idrevoke) | Revoke a share link | browser session or API key, anyone signed in |
+
+### POST /api/boards/{board_id}/cards/{card_id}/quick-share
+
+Get a card's public link
+
+The card's quick public link, made the first time it is asked for. For the board's owner and editors, from a browser session.
+
+|  |  |
+|---|---|
+| Who may call | browser session only, anyone signed in |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | path | integer | yes |  | A card's id, from get_board or find_cards. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `share_path` | string | yes |  |  |
+
+### POST /api/boards/{board_id}/cards/{card_id}/share-user
+
+Share a card with someone
+
+Share one card with an account, to view or to edit, without putting them on the board; mode empty stops sharing it with them. Only the board's owner may. Answers the card.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`share_card_with_user`](#share_card_with_user) |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | path | integer | yes |  | A card's id, from get_board or find_cards. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `mode` | string | yes | one of `view`, `edit`, `` | view or edit; empty stops sharing the card with them. |
+| `user_id` | integer | yes |  | The account to share the card with, from list_team. |
+
+**Reply 200**: Success
+
+An empty object.
+
+### POST /api/boards/{board_id}/members
+
+Add, change or remove a board member
+
+Put an account on the board as an editor or a viewer, change their role, or take them off it (role empty). Only the board's owner may. The owner's own place cannot be changed.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`add_board_member`](#add_board_member) |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `role` | string | yes | one of `editor`, `viewer`, `` | editor or viewer; empty removes them from the board. |
+| `user_id` | integer | yes |  | The account to add, change or remove, from list_team. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `ok` | boolean | yes |  |  |
+
+### GET /api/boards/{board_id}/shares
+
+List a board's share links
+
+The board's share links, live or not: id, what each opens (the board, a column or one card), mode, label, when it was made, expires, was revoked and last used, whether it is a quick link, and who made it. Never the link itself, which is shown once when it is made. Only the board's owner may.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`list_shares`](#list_shares) |
+| Errors | 400, 401, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+
+**Reply 200**: Success
+
+Array of object.
+
+### POST /api/boards/{board_id}/shares
+
+Make a share link
+
+Make a link that opens the board, one column (list_id) or one card (card_id) to anyone holding it, to view or to edit, for days days (0: no end). share_path is the link, shown only this once. Only the board's owner may, from a browser session.
+
+|  |  |
+|---|---|
+| Who may call | browser session only, anyone signed in |
+| Errors | 400, 401, 403, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `card_id` | integer | no |  |  |
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `days` | integer | no |  |  |
+| `label` | string | no |  |  |
+| `list_id` | integer | no |  |  |
+| `mode` | string | yes |  |  |
+| `visible_list_ids` | array of integer | no |  |  |
+
+**Reply 200**: Success
+
+An empty object.
+
+### POST /api/boards/{board_id}/shares/{link_id}/delete
+
+Delete a share link
+
+Remove one of the board's share links from the list (link_id from list_shares); a live one stops working. Only the board's owner may.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`delete_share`](#delete_share) |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `link_id` | path | string | yes | at least 1 characters | A share link's id, from list_shares. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `ok` | boolean | yes |  |  |
+
+### POST /api/boards/{board_id}/shares/{link_id}/revoke
+
+Revoke a share link
+
+Stop one of the board's share links working (link_id from list_shares). It stays in the list, marked revoked. Only the board's owner may.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`revoke_share`](#revoke_share) |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `link_id` | path | string | yes | at least 1 characters | A share link's id, from list_shares. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `ok` | boolean | yes |  |  |
+
+## Trash
+
+| Method | Path | Summary | Who may call |
+|---|---|---|---|
+| GET | [`/api/board-trash`](#get-apiboard-trash) | Your deleted boards | browser session only, anyone signed in |
+| POST | [`/api/board-trash/empty`](#post-apiboard-trashempty) | Empty your board trash | browser session only, anyone signed in |
+| POST | [`/api/board-trash/{board_id}/delete`](#post-apiboard-trashboard_iddelete) | Delete a board for good | browser session only, anyone signed in |
+| POST | [`/api/board-trash/{board_id}/restore`](#post-apiboard-trashboard_idrestore) | Restore a deleted board | browser session only, anyone signed in |
+| GET | [`/api/boards/{board_id}/trash`](#get-apiboardsboard_idtrash) | List a board's trash | browser session or API key, anyone signed in |
+| POST | [`/api/boards/{board_id}/trash/empty`](#post-apiboardsboard_idtrashempty) | Empty a board's trash | browser session or API key, anyone signed in |
+| POST | [`/api/boards/{board_id}/trash/{card_id}/delete`](#post-apiboardsboard_idtrashcard_iddelete) | Delete a card for good | browser session or API key, anyone signed in |
+| POST | [`/api/boards/{board_id}/trash/{card_id}/restore`](#post-apiboardsboard_idtrashcard_idrestore) | Restore a card from the trash | browser session or API key, anyone signed in |
+
+### GET /api/board-trash
+
+Your deleted boards
+
+The boards you deleted, which stay until you restore them or delete them for good.
+
+|  |  |
+|---|---|
+| Who may call | browser session only, anyone signed in |
+| Errors | 401, 403, 429, 503 |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `boards` | array of object | yes |  |  |
+| `boards[].color` | string | yes |  |  |
+| `boards[].deleted_at` | string (date-time) | yes |  |  |
+| `boards[].id` | integer | yes |  |  |
+| `boards[].title` | string | yes |  |  |
+
+### POST /api/board-trash/empty
+
+Empty your board trash
+
+Delete every board in your board trash for good. This cannot be undone. Answers how many went.
+
+|  |  |
+|---|---|
+| Who may call | browser session only, anyone signed in |
+| Errors | 400, 401, 403, 429, 503 |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `removed` | integer | yes |  |  |
+
+### POST /api/board-trash/{board_id}/delete
+
+Delete a board for good
+
+Delete one of your deleted boards for good, with its cards, comments and pictures. This cannot be undone.
+
+|  |  |
+|---|---|
+| Who may call | browser session only, anyone signed in |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | integer | yes |  | The deleted board's id, from GET /api/board-trash. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `ok` | boolean | yes |  |  |
+
+### POST /api/board-trash/{board_id}/restore
+
+Restore a deleted board
+
+Bring one of your deleted boards back, for everyone who was on it. Answers its id and slug.
+
+|  |  |
+|---|---|
+| Who may call | browser session only, anyone signed in |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | integer | yes |  | The deleted board's id, from GET /api/board-trash. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `id` | integer | yes |  |  |
+| `slug` | string | yes |  | Its URL name, the part after /b/. |
+
+### GET /api/boards/{board_id}/trash
+
+List a board's trash
+
+The board's deleted cards, with when and by whom each was deleted. restore_card brings one back. Needs edit rights on the whole board.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`list_trash`](#list_trash) |
+| Errors | 400, 401, 403, 404, 409, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `cards` | array of object | yes |  | The cards in the trash, each with deleted_at and deleted_by. |
+
+### POST /api/boards/{board_id}/trash/empty
+
+Empty a board's trash
+
+Permanently delete every card in the board's trash. This cannot be undone. Needs edit rights on the whole board.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`empty_trash`](#empty_trash) |
+| Errors | 400, 401, 403, 404, 409, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `removed` | integer | yes |  | How many cards were deleted for good. |
+
+### POST /api/boards/{board_id}/trash/{card_id}/delete
+
+Delete a card for good
+
+Permanently delete one card that is in the board's trash. This cannot be undone. Needs edit rights on the whole board.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`purge_card`](#purge_card) |
+| Errors | 400, 401, 403, 404, 409, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | path | integer | yes |  | A card's id, from get_board or find_cards. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `ok` | boolean | yes |  |  |
+
+### POST /api/boards/{board_id}/trash/{card_id}/restore
+
+Restore a card from the trash
+
+Bring a deleted card back out of the board's trash. Card ids are in list_trash. Needs edit rights on the whole board.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`restore_card`](#restore_card) |
+| Errors | 400, 401, 403, 404, 409, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | path | integer | yes |  | A card's id, from get_board or find_cards. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+
+**Reply 200**: Success
+
+An empty object.
+
+## Schemas
+
+The shapes the routes above refer to by name.
+
+### APIKey
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `board_access` | string | yes |  | Empty: every board. only/except: just, or all but, the boards listed. |
+| `board_count` | integer | yes |  |  |
+| `board_ids` | array of integer | no |  | The boards, in the key holder's own list only. |
+| `created_at` | string (date-time) | yes |  |  |
+| `created_by` | integer | no |  | The admin who made this key for its owner. Absent if the owner made it. |
+| `created_by_name` | string | no |  |  |
+| `display_name` | string | no |  | The key's owner. On the admin list only. |
+| `expired` | boolean | yes |  |  |
+| `expires_at` | string (date-time) | no |  |  |
+| `id` | string | yes |  |  |
+| `last_used_at` | string (date-time) | no |  |  |
+| `live` | boolean | yes |  |  |
+| `name` | string | yes |  |  |
+| `revoked` | boolean | yes |  |  |
+| `revoked_at` | string (date-time) | no |  |  |
+| `role` | string | yes | one of `admin`, `user` |  |
+| `user_id` | integer | yes |  |  |
+
+### Error
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `error` | string | yes |  |  |
+| `request_id` | string | no |  | On a 5xx: the reference that finds this failure in the log. |
+
+### IPNames
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `names` | array of object | yes |  |  |
+| `names[].created_at` | string (date-time) | yes |  |  |
+| `names[].name` | string | yes |  |  |
+| `names[].target` | string | yes |  |  |
+
+### InviteLink
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `created_by` | integer | yes |  |  |
+| `created_by_name` | string | no |  |  |
+| `expires_at` | string (date-time) | yes |  |  |
+| `id` | string | yes |  |  |
+| `label` | string | yes |  |  |
+| `live` | boolean | yes |  |  |
+| `max_uses` | integer | yes |  |  |
+| `remaining` | integer | yes |  |  |
+| `revoked` | boolean | yes |  |  |
+| `used` | integer | yes |  |  |
+
+### Job
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `interrupted` | boolean | yes |  |  |
+| `interval_seconds` | integer | yes |  |  |
+| `last_error` | string | no |  |  |
+| `last_finished` | string (date-time) | no |  |  |
+| `last_note` | string | no |  |  |
+| `last_ok` | boolean or null | no |  |  |
+| `last_started` | string (date-time) | no |  |  |
+| `name` | string | yes |  |  |
+| `next_due` | string (date-time) | yes |  |  |
+| `running` | boolean | yes |  |  |
+| `runs` | integer | yes |  |  |
+
+### Joined
+
+One of these:
+
+1. An object:
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `display_name` | string | yes |  |  |
+| `ok` | boolean | yes |  |  |
+
+2. An object:
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `challenge` | string | yes |  |  |
+| `two_factor` | boolean | yes |  |  |
+
+### LogDay
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `date` | string | yes |  |  |
+| `entries` | array of object | yes |  |  |
+| `next` | integer or null | yes |  |  |
+
+### LogDays
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `days` | array of object | yes |  |  |
+| `dropped` | integer | yes |  |  |
+| `settings` | object | yes |  |  |
+| `total_bytes` | integer | yes |  |  |
+
+### LoginLink
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `created_at` | string (date-time) | yes |  |  |
+| `expires_at` | string (date-time) or null | yes |  | null when it never expires. |
+| `last_used_at` | string (date-time) or null | yes |  |  |
+| `max_uses` | integer | yes |  | Sign-ins it allows. 0 when unlimited. |
+| `unlimited` | boolean | yes |  |  |
+| `uses` | integer | yes |  | Sign-ins so far. |
+
+### Maintenance
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `error` | string | yes |  |  |
+| `maintenance` | string | yes | one of `read_only`, `full` |  |
+
+### Me
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `account_role` | string | yes |  |  |
+| `announcement` | string | yes |  | server.announcement. Empty when there is none. |
+| `api_key_id` | string | no |  | API keys only. |
+| `api_key_name` | string | no |  | API keys only. |
+| `api_keys_enabled` | boolean | yes |  |  |
+| `auth` | string | yes |  |  |
+| `authenticated` | boolean | yes |  |  |
+| `csrf_token` | string | no |  | Browser sessions only. |
+| `description` | string | yes |  | app.description. Empty when there is none. |
+| `display` | object | yes |  | How you want times and boards shown, as POST /api/account/display sets it. |
+| `display_name` | string | yes |  |  |
+| `has_password` | boolean | yes |  |  |
+| `has_pin` | boolean | yes |  |  |
+| `id` | integer | yes |  |  |
+| `invite_links_enabled` | boolean | yes |  | Whether invite links are on. |
+| `is_owner` | boolean | yes |  |  |
+| `login_link` | [`LoginLink`](#loginlink) or null | yes |  | Your own live login link, or null. |
+| `logs_enabled` | boolean | yes |  |  |
+| `logs_ui_clicks` | boolean | yes |  |  |
+| `maintenance` | string | yes | one of `none`, `read_only`, `full` |  |
+| `mcp_enabled` | boolean | yes |  | server.mcp: whether POST /mcp answers. |
+| `mcp_url` | string | yes |  | Where to read the MCP reference: config/mcp.json in app.repo, or /api/mcp.json when there is no repo. Only with server.mcp on. |
+| `openapi_url` | string | yes |  | Where to read this API's reference: config/openapi.json in app.repo, or /api/openapi.json when there is no repo. |
+| `password_blocked` | boolean | yes |  |  |
+| `passwords_enabled` | boolean | yes |  |  |
+| `repo` | string | yes |  | app.repo without a trailing / or .git: where the source lives. Empty when it is not set. |
+| `role` | string | yes |  | The effective role: never higher than an API key's own. |
+| `show_about` | boolean | yes |  | app.show_about: whether the menu has About. |
+| `theme_id` | string | yes |  | The theme you use. Empty: the first. |
+| `themes` | array of [`Theme`](#theme) or null | yes |  | Your themes (see the Theme schema): your own list, else the app's defaults, else null for the built-in ones. |
+| `themes_custom` | boolean | yes |  | Whether you have your own list rather than following the defaults. |
+| `two_factor` | boolean | yes |  |  |
+| `two_factor_enabled` | boolean | yes |  |  |
+| `username` | string | yes |  |  |
+| `version` | string | yes |  | The running build. dev when none was stamped. |
+
+### Member
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `display_name` | string | yes |  |  |
+| `id` | integer | yes |  |  |
+
+### NewAPIKey
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `board_access` | string | yes |  | Empty: every board. only/except: just, or all but, the boards listed. |
+| `board_count` | integer | yes |  |  |
+| `board_ids` | array of integer | no |  | The boards, in the key holder's own list only. |
+| `created_at` | string (date-time) | yes |  |  |
+| `created_by` | integer | no |  | The admin who made this key for its owner. Absent if the owner made it. |
+| `created_by_name` | string | no |  |  |
+| `credential` | string | yes |  | Shown in this response only, and never recoverable. |
+| `display_name` | string | no |  | The key's owner. On the admin list only. |
+| `expired` | boolean | yes |  |  |
+| `expires_at` | string (date-time) | no |  |  |
+| `id` | string | yes |  |  |
+| `last_used_at` | string (date-time) | no |  |  |
+| `live` | boolean | yes |  |  |
+| `name` | string | yes |  |  |
+| `revoked` | boolean | yes |  |  |
+| `revoked_at` | string (date-time) | no |  |  |
+| `role` | string | yes | one of `admin`, `user` |  |
+| `user_id` | integer | yes |  |  |
+
+### PruneResult
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `bytes_after` | integer | yes |  |  |
+| `bytes_before` | integer | yes |  |  |
+| `compressed` | integer | yes |  |  |
+| `deleted` | integer | yes |  |  |
+
+### Revoked
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `api_keys` | integer | yes |  |  |
+| `login_links` | integer | yes |  |  |
+| `passwords` | integer | yes |  |  |
+| `sessions` | integer | yes |  |  |
+
+### Session
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `created_at` | string (date-time) | yes |  |  |
+| `current` | boolean | yes |  |  |
+| `expires_at` | string (date-time) | yes |  |  |
+| `id` | string | yes |  |  |
+| `ip` | string | no |  |  |
+| `ip_name` | string | no |  | What the owner calls this address on the Logs screen. The owner's own list only. |
+| `label` | string | no |  | The name you gave this device. |
+| `last_seen_at` | string (date-time) | no |  |  |
+| `user_agent` | string | no |  |  |
+
+### SettingsResult
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `applied` | array of string or null | yes |  |  |
+| `changes` | array of object or null | yes |  |  |
+| `restart` | array of string or null | yes |  |  |
+| `scripts` | array of string or null | yes |  |  |
+| `unchanged` | array of string or null | yes |  |  |
+| `version` | string | yes |  |  |
+
+### SettingsSnapshot
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `error` | object or null | yes |  |  |
+| `error.at` | string (date-time) | yes |  |  |
+| `error.message` | string | yes |  |  |
+| `error.origin` | string | yes |  |  |
+| `file` | string | yes |  |  |
+| `in_container` | boolean | yes |  |  |
+| `secret_file` | string | yes |  |  |
+| `sections` | array of object | yes |  |  |
+| `sections[].help` | string | yes |  |  |
+| `sections[].keys` | array of object | yes |  |  |
+| `sections[].keys[].apply` | string | yes |  |  |
+| `sections[].keys[].default` | any | yes |  |  |
+| `sections[].keys[].file_only` | boolean | yes |  | A path: change it in config.yaml, never here. |
+| `sections[].keys[].help` | string | yes |  |  |
+| `sections[].keys[].in_file` | boolean | yes |  |  |
+| `sections[].keys[].key` | string | yes |  |  |
+| `sections[].keys[].locked` | boolean | yes |  |  |
+| `sections[].keys[].name` | string | yes |  |  |
+| `sections[].keys[].pending_restart` | boolean | yes |  |  |
+| `sections[].keys[].running` | any | yes |  |  |
+| `sections[].keys[].type` | string | yes |  |  |
+| `sections[].keys[].value` | any | yes |  |  |
+| `sections[].name` | string | yes |  |  |
+| `stale` | boolean | yes |  |  |
+| `version` | string | yes |  | Send it back when saving: a changed file is refused with a 409. |
+| `writable` | boolean | yes |  |  |
+
+### SignIn
+
+One of these:
+
+1. An object:
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `ok` | boolean | yes |  |  |
+
+2. An object:
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `challenge` | string | yes |  |  |
+| `two_factor` | boolean | yes |  |  |
+
+### Theme
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `accent` | string | yes |  | The main color: what you can press. |
+| `background` | string | no |  | The page. Left out: the mode's own. |
+| `button` | object or null | no |  | How the theme's buttons look. A choice left out is the default (rounded, normal, raised, normal). |
+| `button.case` | string | no | one of `normal`, `upper` |  |
+| `button.depth` | string | no | one of `flat`, `raised`, `glossy` |  |
+| `button.shape` | string | no | one of `square`, `soft`, `rounded`, `pill` |  |
+| `button.weight` | string | no | one of `normal`, `medium`, `bold` |  |
+| `dark` | object or null | no |  | A light theme's colors for dark mode, kept while it is light. Switching the theme to dark swaps them in. A light theme's light (or a dark theme's dark) is dropped. |
+| `dark.accent` | string | yes |  | The main color: what you can press. |
+| `dark.background` | string | no |  | The page. Left out: the mode's own. |
+| `dark.overrides` | map of string | no |  | Worked-out colors replaced by name: text, accent, accentFg, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back. |
+| `dark.second` | string | yes |  | Says where you are: active nav item, headings, info. |
+| `dark.surface` | string | no |  | Cards. Left out: the mode's own. |
+| `id` | string | yes |  | Lower-case letters, digits, - and _, up to 32. |
+| `labels` | array of object | no |  |  |
+| `labels[].color` | string | yes |  |  |
+| `labels[].name` | string | yes |  |  |
+| `light` | object or null | no |  | A dark theme's colors for light mode, kept while it is dark. Switching the theme to light swaps them in. |
+| `light.accent` | string | yes |  | The main color: what you can press. |
+| `light.background` | string | no |  | The page. Left out: the mode's own. |
+| `light.overrides` | map of string | no |  | Worked-out colors replaced by name: text, accent, accentFg, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back. |
+| `light.second` | string | yes |  | Says where you are: active nav item, headings, info. |
+| `light.surface` | string | no |  | Cards. Left out: the mode's own. |
+| `mode` | string | yes | one of `light`, `dark` |  |
+| `name` | string | yes |  | 1 to 60 characters. |
+| `overrides` | map of string | no |  | Worked-out colors replaced by name: text, accent, accentFg, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back. |
+| `second` | string | yes |  | Says where you are: active nav item, headings, info. |
+| `surface` | string | no |  | Cards. Left out: the mode's own. |
+
+### User
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `created_at` | string (date-time) | yes |  |  |
+| `disabled` | boolean | yes |  |  |
+| `display_name` | string | yes |  |  |
+| `has_password` | boolean | yes |  |  |
+| `id` | integer | yes |  |  |
+| `login_link` | [`LoginLink`](#loginlink) or null | yes |  | The account's live login link, or null. |
+| `owner` | boolean | yes |  |  |
+| `password_blocked` | boolean | yes |  |  |
+| `role` | string | yes | one of `admin`, `user` |  |
+| `two_factor` | boolean | yes |  |  |
+| `username` | string | yes |  | Empty until a password is set. |
+
+## MCP tools
+
+Every tool POST /mcp offers. Written by scripts/api_docs.sh from the registered tools; do not edit by hand. A key sees the tools its role allows (adminOnly ones need an admin key), and a tool whose feature is switched off answers like one that does not exist. route is the HTTP route the tool stands for, with the same rules; http_only are the routes a key may call that have no tool, and why.
+
+|  |  |
+|---|---|
+| Endpoint | `POST /mcp` |
+| Transport | Streamable HTTP, stateless: one JSON-RPC message per POST, a JSON reply |
+| Auth | Authorization: Bearer <API key> |
+
+| Tool | Route | Who | What |
+|---|---|---|---|
+| [`add_board_member`](#add_board_member) | `POST /api/boards/{board_id}/members` | any key | Add, change or remove a board member |
+| [`add_checklist_item`](#add_checklist_item) | `POST /api/boards/{board_id}/cards/{card_id}/checklist` | any key | Add a checklist item |
+| [`add_comment`](#add_comment) | `POST /api/boards/{board_id}/cards/{card_id}/comments` | any key | Comment on a card |
+| [`admin_cancel_login_link`](#admin_cancel_login_link) | `POST /api/admin/users/{user_id}/cancel-login-link` | admin keys | Stop an account's login link working (admin) |
+| [`admin_create_invite_link`](#admin_create_invite_link) | `POST /api/admin/invite-links` | admin keys | Create an invite link (admin) |
+| [`admin_create_user`](#admin_create_user) | `POST /api/admin/users` | admin keys | Create an account (admin) |
+| [`admin_delete_invite_link`](#admin_delete_invite_link) | `POST /api/admin/invite-links/{link_id}/delete` | admin keys | Delete an invite link (admin) |
+| [`admin_delete_user`](#admin_delete_user) | `POST /api/admin/users/{user_id}/delete` | admin keys | Delete an account (admin) |
+| [`admin_get_theme_defaults`](#admin_get_theme_defaults) | `GET /api/admin/theme-defaults` | admin keys | Default themes (admin) |
+| [`admin_list_invite_links`](#admin_list_invite_links) | `GET /api/admin/invite-links` | admin keys | List invite links (admin) |
+| [`admin_list_user_sessions`](#admin_list_user_sessions) | `GET /api/admin/users/{user_id}/sessions` | admin keys | An account's signed-in devices (admin) |
+| [`admin_list_users`](#admin_list_users) | `GET /api/admin/users` | admin keys | List users (admin) |
+| [`admin_reissue_login`](#admin_reissue_login) | `POST /api/admin/users/{user_id}/reissue-login` | admin keys | A new login link for an account (admin) |
+| [`admin_rename_invite_link`](#admin_rename_invite_link) | `POST /api/admin/invite-links/{link_id}/rename` | admin keys | Rename an invite link (admin) |
+| [`admin_rename_user`](#admin_rename_user) | `POST /api/admin/users/{user_id}/rename` | admin keys | Rename someone (admin) |
+| [`admin_reset_two_factor`](#admin_reset_two_factor) | `POST /api/admin/users/{user_id}/reset-two-factor` | admin keys | Turn off an account's two-factor (admin) |
+| [`admin_restore_invite_link`](#admin_restore_invite_link) | `POST /api/admin/invite-links/{link_id}/restore` | admin keys | Undo deleting an invite link (admin) |
+| [`admin_revoke_access`](#admin_revoke_access) | `POST /api/admin/users/{user_id}/revoke-access` | admin keys | Revoke a user's access (admin) |
+| [`admin_revoke_invite_link`](#admin_revoke_invite_link) | `POST /api/admin/invite-links/{link_id}/revoke` | admin keys | Switch off an invite link (admin) |
+| [`admin_revoke_user_session`](#admin_revoke_user_session) | `POST /api/admin/users/{user_id}/sessions/{session_id}/revoke` | admin keys | Sign out one of an account's devices (admin) |
+| [`admin_set_invite_link_limits`](#admin_set_invite_link_limits) | `POST /api/admin/invite-links/{link_id}/limits` | admin keys | Change an invite link's places and expiry (admin) |
+| [`admin_set_theme_defaults`](#admin_set_theme_defaults) | `POST /api/admin/theme-defaults` | admin keys | Replace the default themes (admin) |
+| [`admin_set_user_disabled`](#admin_set_user_disabled) | `POST /api/admin/users/{user_id}/disabled` | admin keys | Disable or enable a user (admin) |
+| [`admin_set_user_role`](#admin_set_user_role) | `POST /api/admin/users/{user_id}/role` | admin keys | Change an account's role (admin) |
+| [`admin_switch_on_invite_link`](#admin_switch_on_invite_link) | `POST /api/admin/invite-links/{link_id}/switch-on` | admin keys | Switch an invite link back on (admin) |
+| [`archive_board`](#archive_board) | `POST /api/boards/{board_id}/archive` | any key | Archive or unarchive a board |
+| [`archive_list_cards`](#archive_list_cards) | `POST /api/boards/{board_id}/lists/{list_id}/archive-cards` | any key | Archive a column's cards |
+| [`cancel_my_login_link`](#cancel_my_login_link) | `POST /api/account/login-link/cancel` | any key | Stop your own login link working |
+| [`carry_over`](#carry_over) | `POST /api/boards/{board_id}/carry-over` | any key | Carry unfinished cards over to today |
+| [`copy_card`](#copy_card) | `POST /api/boards/{board_id}/cards/{card_id}/copy` | any key | Copy a card to a board |
+| [`create_board`](#create_board) | `POST /api/boards` | any key | Create a board |
+| [`create_card`](#create_card) | `POST /api/boards/{board_id}/cards` | any key | Add a card |
+| [`create_folder`](#create_folder) | `POST /api/folders` | any key | Make a folder |
+| [`create_label`](#create_label) | `POST /api/boards/{board_id}/labels` | any key | Add a label |
+| [`create_list`](#create_list) | `POST /api/boards/{board_id}/lists` | any key | Add a column |
+| [`create_my_login_link`](#create_my_login_link) | `POST /api/account/login-link` | any key | A login link for yourself |
+| [`delete_card`](#delete_card) | `POST /api/boards/{board_id}/cards/{card_id}/delete` | any key | Delete a card |
+| [`delete_checklist_item`](#delete_checklist_item) | `POST /api/boards/{board_id}/cards/{card_id}/checklist/{item_id}/delete` | any key | Delete a checklist item |
+| [`delete_folder`](#delete_folder) | `POST /api/folders/{folder_id}/delete` | any key | Delete a folder |
+| [`delete_label`](#delete_label) | `POST /api/boards/{board_id}/labels/{label_id}/delete` | any key | Delete a label |
+| [`delete_list`](#delete_list) | `POST /api/boards/{board_id}/lists/{list_id}/delete` | any key | Delete a column |
+| [`delete_share`](#delete_share) | `POST /api/boards/{board_id}/shares/{link_id}/delete` | any key | Delete a share link |
+| [`duplicate_board`](#duplicate_board) | `POST /api/boards/{board_id}/duplicate` | any key | Duplicate a board |
+| [`edit_comment`](#edit_comment) | `POST /api/boards/{board_id}/cards/{card_id}/comments/{comment_id}` | any key | Edit a comment |
+| [`empty_trash`](#empty_trash) | `POST /api/boards/{board_id}/trash/empty` | any key | Empty a board's trash |
+| [`find_cards`](#find_cards) | `GET /api/cards` | any key | Find cards |
+| [`get_board`](#get_board) | `GET /api/boards/{board_id}` | any key | Read a board |
+| [`get_board_notes`](#get_board_notes) | `GET /api/boards/{board_id}/notes` | any key | Read a board's purpose and notes |
+| [`get_board_subscription`](#get_board_subscription) | `GET /api/boards/{board_id}/subscription` | any key | Your notifications for a board |
+| [`get_card`](#get_card) | `GET /api/boards/{board_id}/cards/{card_id}` | any key | Read a card |
+| [`get_card_subscription`](#get_card_subscription) | `GET /api/boards/{board_id}/cards/{card_id}/subscription` | any key | Your notifications for a card |
+| [`get_notify_prefs`](#get_notify_prefs) | `GET /api/notify/prefs` | any key | Your notification settings |
+| [`label_my_session`](#label_my_session) | `POST /api/account/sessions/{session_id}/label` | any key | Name one of your devices |
+| [`leave_board`](#leave_board) | `POST /api/boards/{board_id}/leave` | any key | Leave a board |
+| [`list_boards`](#list_boards) | `GET /api/boards` | any key | List my boards |
+| [`list_card_links`](#list_card_links) | `GET /api/boards/{board_id}/cards/{card_id}/links` | any key | List a card's mirrors |
+| [`list_comments`](#list_comments) | `GET /api/boards/{board_id}/cards/{card_id}/comments` | any key | Read a card's comments |
+| [`list_my_sessions`](#list_my_sessions) | `GET /api/account/sessions` | any key | Your signed-in devices |
+| [`list_shares`](#list_shares) | `GET /api/boards/{board_id}/shares` | any key | List a board's share links |
+| [`list_team`](#list_team) | `GET /api/team` | any key | List team |
+| [`list_trash`](#list_trash) | `GET /api/boards/{board_id}/trash` | any key | List a board's trash |
+| [`move_folder`](#move_folder) | `POST /api/folders/{folder_id}/parent` | any key | Move a folder |
+| [`order_folders`](#order_folders) | `POST /api/folders/order` | any key | Order your folders |
+| [`purge_card`](#purge_card) | `POST /api/boards/{board_id}/trash/{card_id}/delete` | any key | Delete a card for good |
+| [`refresh_product`](#refresh_product) | `POST /api/boards/{board_id}/cards/{card_id}/product/refresh` | any key | Look a card's product up again |
+| [`remove_card_image`](#remove_card_image) | `POST /api/boards/{board_id}/cards/{card_id}/image/delete` | any key | Take a card's picture off |
+| [`remove_comment`](#remove_comment) | `POST /api/boards/{board_id}/cards/{card_id}/comments/{comment_id}/remove` | any key | Remove a comment |
+| [`remove_product`](#remove_product) | `POST /api/boards/{board_id}/cards/{card_id}/product/delete` | any key | Take a card's product off |
+| [`rename_account`](#rename_account) | `POST /api/account/rename` | any key | Rename your account |
+| [`rename_folder`](#rename_folder) | `POST /api/folders/{folder_id}` | any key | Rename a folder |
+| [`restore_card`](#restore_card) | `POST /api/boards/{board_id}/trash/{card_id}/restore` | any key | Restore a card from the trash |
+| [`revoke_my_other_sessions`](#revoke_my_other_sessions) | `POST /api/account/sessions/revoke-others` | any key | Sign out all your devices |
+| [`revoke_my_session`](#revoke_my_session) | `POST /api/account/sessions/{session_id}/revoke` | any key | Sign out one of your devices |
+| [`revoke_share`](#revoke_share) | `POST /api/boards/{board_id}/shares/{link_id}/revoke` | any key | Revoke a share link |
+| [`send_card`](#send_card) | `POST /api/boards/{board_id}/cards/{card_id}/send` | any key | Send a card to another board |
+| [`send_test_notification`](#send_test_notification) | `POST /api/notify/test` | any key | Send yourself a test notification |
+| [`set_board_folder`](#set_board_folder) | `POST /api/boards/{board_id}/folder` | any key | File a board in a folder |
+| [`set_board_subscription`](#set_board_subscription) | `POST /api/boards/{board_id}/subscription` | any key | Set your notifications for a board |
+| [`set_card_subscription`](#set_card_subscription) | `POST /api/boards/{board_id}/cards/{card_id}/subscription` | any key | Set your notifications for a card |
+| [`set_display`](#set_display) | `POST /api/account/display` | any key | Save your display settings |
+| [`set_label_colors`](#set_label_colors) | `POST /api/account/label-colors` | any key | Save your label colours |
+| [`set_my_board_view`](#set_my_board_view) | `POST /api/boards/{board_id}/my-view` | any key | Your own view of a board |
+| [`set_my_collapsed_lists`](#set_my_collapsed_lists) | `POST /api/boards/{board_id}/my-view/collapsed` | any key | Your collapsed columns |
+| [`set_notify_prefs`](#set_notify_prefs) | `POST /api/notify/prefs` | any key | Save your notification settings |
+| [`set_theme`](#set_theme) | `POST /api/account/theme` | any key | Pick your theme |
+| [`set_themes`](#set_themes) | `POST /api/account/themes` | any key | Replace your own themes |
+| [`share_card_with_user`](#share_card_with_user) | `POST /api/boards/{board_id}/cards/{card_id}/share-user` | any key | Share a card with someone |
+| [`unlink_card`](#unlink_card) | `POST /api/boards/{board_id}/cards/{card_id}/links/{link_id}/delete` | any key | Stop mirroring a card |
+| [`update_board`](#update_board) | `POST /api/boards/{board_id}` | any key | Change a board's settings |
+| [`update_board_notes`](#update_board_notes) | `POST /api/boards/{board_id}/notes` | any key | Change a board's purpose or notes |
+| [`update_card`](#update_card) | `POST /api/boards/{board_id}/cards/{card_id}` | any key | Change a card |
+| [`update_checklist_item`](#update_checklist_item) | `POST /api/boards/{board_id}/cards/{card_id}/checklist/{item_id}` | any key | Tick or edit a checklist item |
+| [`update_label`](#update_label) | `POST /api/boards/{board_id}/labels/{label_id}` | any key | Change a label |
+| [`update_list`](#update_list) | `POST /api/boards/{board_id}/lists/{list_id}` | any key | Rename, move or archive a column |
+| [`whoami`](#whoami) | `GET /api/me` | any key | Who am I |
+
+### add_board_member
+
+Put an account on the board as an editor or a viewer, change their role, or take them off it (role empty). Only the board's owner may. The owner's own place cannot be changed.
+
+|  |  |
+|---|---|
+| Route | `POST /api/boards/{board_id}/members` |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `board` | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `role` | string | yes | one of `editor`, `viewer`, `` | editor or viewer; empty removes them from the board. |
+| `user_id` | integer | yes |  | The account to add, change or remove, from list_team. |
+
+### add_checklist_item
+
+Add an item to the end of a card's checklist. Returns the card. Needs edit rights on the card.
+
+|  |  |
+|---|---|
+| Route | `POST /api/boards/{board_id}/cards/{card_id}/checklist` |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `board` | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | integer | yes |  | A card's id, from get_board or find_cards. |
+| `text` | string | yes |  |  |
+
+### add_comment
+
+Post a comment on a card, signed with your name. Markdown, up to 4000 characters. Needs edit rights on the card, or a card shared with you to comment on.
+
+|  |  |
+|---|---|
+| Route | `POST /api/boards/{board_id}/cards/{card_id}/comments` |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `board` | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | integer | yes |  | A card's id, from get_board or find_cards. |
+| `text` | string | yes | at most 4000 characters | Markdown, up to 4000 characters. |
+
+### admin_cancel_login_link
+
+Void an account's live login link without making a new one: a link that went somewhere it should not have. Devices it already signed in stay signed in; admin_revoke_access ends those too. Answers with removed: 0 or 1.
+
+|  |  |
+|---|---|
+| Route | `POST /api/admin/users/{user_id}/cancel-login-link` |
+| Read only | no |
+| Destructive | yes |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `user_id` | integer | yes | at least 1 | The account's id, from GET /api/admin/users (admin_list_users over MCP). |
+
+### admin_create_invite_link
+
+One link for a group: each person who opens it joins as a new user, up to max_uses people, for days days. Answers with join_url (shown only now) and the link's details. Revoking or deleting this API key switches the link off.
+
+|  |  |
+|---|---|
+| Route | `POST /api/admin/invite-links` |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `days` | integer | yes | 1 to 365 |  |
+| `label` | string | yes | 1 to 80 characters |  |
+| `max_uses` | integer | yes | 1 to 1000 |  |
+
+### admin_create_user
+
+Make a new account and its first login link, to hand to the person. role is admin or user. Answers with user_id and the link. Answers with login_url (open it to sign in; it works once unless max_uses says otherwise), expires_at and max_uses. Any older link the account could still use stops working; its signed-in devices stay signed in. Revoking or deleting this API key voids the link while it is unused, and signs out every device it signed in.
+
+|  |  |
+|---|---|
+| Route | `POST /api/admin/users` |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `display_name` | string | yes | 1 to 80 characters |  |
+| `expires_in_minutes` | integer or null | no | 0 to 525600 | 0 never expires. Default auth.login_token_ttl_seconds for a link that works once, auth.multi_use_login_token_ttl_seconds otherwise. |
+| `max_uses` | integer or null | no | 0 to 1000 | Sign-ins the link allows: 1-1000, or 0 for unlimited. Default 1. |
+| `role` | string | yes | one of `admin`, `user` |  |
+
+### admin_delete_invite_link
+
+Take an invite link off the list and stop it working. The accounts it made stay. admin_restore_invite_link undoes it for a few minutes.
+
+|  |  |
+|---|---|
+| Route | `POST /api/admin/invite-links/{link_id}/delete` |
+| Read only | no |
+| Destructive | yes |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `link_id` | string | yes |  | The link's id, from GET /api/admin/invite-links (admin_list_invite_links over MCP). |
+
+### admin_delete_user
+
+Remove an account for good, with its sessions, login link and API keys. Cannot be undone: admin_set_user_disabled is the reversible version. Only the owner deletes an admin; nobody deletes the owner or themselves.
+
+|  |  |
+|---|---|
+| Route | `POST /api/admin/users/{user_id}/delete` |
+| Read only | no |
+| Destructive | yes |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `user_id` | integer | yes | at least 1 | The account's id, from GET /api/admin/users (admin_list_users over MCP). |
+
+### admin_get_theme_defaults
+
+The theme list everyone without their own list sees. themes is null while the built-in ones apply.
+
+|  |  |
+|---|---|
+| Route | `GET /api/admin/theme-defaults` |
+| Read only | yes |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+
+### admin_list_invite_links
+
+Group invite links, a page at a time: label, places used and left, expiry, and whether each still works. The links themselves are never shown again after creation. next is the offset of the following page, or null on the last one.
+
+|  |  |
+|---|---|
+| Route | `GET /api/admin/invite-links` |
+| Read only | yes |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `dir` | string | no | one of `asc`, `desc` | Default asc. |
+| `limit` | integer | no | 1 to 1000; default `200` | Rows to return. Default 200. |
+| `offset` | integer | no | at least 0 | Rows to skip: the next value of the previous page. |
+| `q` | string | no |  | Keep links whose label or maker contains this, in any case. |
+| `sort` | string | no | one of `label`, `used`, `expires_at` | Field to sort the whole list by. Rows without it go last. |
+
+### admin_list_user_sessions
+
+Where an account is signed in: every session, with when it started and was last seen. Addresses are shown to the owner only, and only the owner sees the owner's.
+
+|  |  |
+|---|---|
+| Route | `GET /api/admin/users/{user_id}/sessions` |
+| Read only | yes |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `limit` | integer | no | 1 to 1000; default `200` | Rows to return. Default 200. |
+| `offset` | integer | no | at least 0 | Rows to skip: the next value of the previous page. |
+| `user_id` | integer | yes | at least 1 | The account's id, from GET /api/admin/users (admin_list_users over MCP). |
+
+### admin_list_users
+
+Accounts, a page at a time, including disabled ones, with each one's role and which is the owner. next is the offset of the following page, or null on the last one.
+
+|  |  |
+|---|---|
+| Route | `GET /api/admin/users` |
+| Read only | yes |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `dir` | string | no | one of `asc`, `desc` | Default asc. |
+| `limit` | integer | no | 1 to 1000; default `200` | Rows to return. Default 200. |
+| `offset` | integer | no | at least 0 | Rows to skip: the next value of the previous page. |
+| `q` | string | no |  | Keep accounts whose name or username contains this, in any case. |
+| `sort` | string | no | one of `display_name`, `role`, `disabled`, `created_at` | Field to sort the whole list by. Rows without it go last. |
+
+### admin_reissue_login
+
+For someone who lost their device or their link: a fresh login link for their account. Answers with login_url (open it to sign in; it works once unless max_uses says otherwise), expires_at and max_uses. Any older link the account could still use stops working; its signed-in devices stay signed in. Revoking or deleting this API key voids the link while it is unused, and signs out every device it signed in.
+
+|  |  |
+|---|---|
+| Route | `POST /api/admin/users/{user_id}/reissue-login` |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `expires_in_minutes` | integer or null | no | 0 to 525600 | 0 never expires. Default auth.login_token_ttl_seconds for a link that works once, auth.multi_use_login_token_ttl_seconds otherwise. |
+| `max_uses` | integer or null | no | 0 to 1000 | Sign-ins the link allows: 1-1000, or 0 for unlimited. Default 1. |
+| `user_id` | integer | yes | at least 1 | The account's id, from GET /api/admin/users (admin_list_users over MCP). |
+
+### admin_rename_invite_link
+
+Change the label people see on an invite link's join page (1-80 characters). expect, when given, is the label you think it has now.
+
+|  |  |
+|---|---|
+| Route | `POST /api/admin/invite-links/{link_id}/rename` |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `expect` | string or null | no |  | The label you think it has. Answers 409 if it has another. |
+| `label` | string | yes | 1 to 80 characters | 1-80 characters. |
+| `link_id` | string | yes |  | The link's id, from GET /api/admin/invite-links (admin_list_invite_links over MCP). |
+
+### admin_rename_user
+
+Change another account's display name (1-80 characters). Only the owner renames an admin. expect, when given, is the name you think it has now; if it changed meanwhile the rename is refused with the current name.
+
+|  |  |
+|---|---|
+| Route | `POST /api/admin/users/{user_id}/rename` |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `display_name` | string | yes | 1 to 80 characters | 1-80 characters. |
+| `expect` | string or null | no |  | The name you think they have. Answers 409 if it is another. |
+| `user_id` | integer | yes | at least 1 | The account's id, from GET /api/admin/users (admin_list_users over MCP). |
+
+### admin_reset_two_factor
+
+For someone who lost both their phone and their recovery codes: switches their two-factor sign-in off so a login link lets them in again. Only the owner resets an admin's; the owner's is reset from a shell.
+
+|  |  |
+|---|---|
+| Route | `POST /api/admin/users/{user_id}/reset-two-factor` |
+| Read only | no |
+| Destructive | yes |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `user_id` | integer | yes | at least 1 | The account's id, from GET /api/admin/users (admin_list_users over MCP). |
+
+### admin_restore_invite_link
+
+Bring back an invite link deleted in the last few minutes, working as before. The link then counts as this key's: revoking the key switches it off.
+
+|  |  |
+|---|---|
+| Route | `POST /api/admin/invite-links/{link_id}/restore` |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `link_id` | string | yes |  | The link's id, from GET /api/admin/invite-links (admin_list_invite_links over MCP). |
+
+### admin_revoke_access
+
+For an account that may be compromised: ends every session and voids its live login link and every API key it holds, at once. The account stays enabled; admin_reissue_login lets its owner back in. The owner and your own account cannot be revoked.
+
+|  |  |
+|---|---|
+| Route | `POST /api/admin/users/{user_id}/revoke-access` |
+| Read only | no |
+| Destructive | yes |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `user_id` | integer | yes | at least 1 | The account's id, from GET /api/admin/users (admin_list_users over MCP). |
+
+### admin_revoke_invite_link
+
+Stop an invite link from letting anyone else join or sign in through it. Accounts it already made keep working. Cannot be switched back on.
+
+|  |  |
+|---|---|
+| Route | `POST /api/admin/invite-links/{link_id}/revoke` |
+| Read only | no |
+| Destructive | yes |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `link_id` | string | yes |  | The link's id, from GET /api/admin/invite-links (admin_list_invite_links over MCP). |
+
+### admin_revoke_user_session
+
+End one of an account's sessions, rather than all of them with admin_revoke_access.
+
+|  |  |
+|---|---|
+| Route | `POST /api/admin/users/{user_id}/sessions/{session_id}/revoke` |
+| Read only | no |
+| Destructive | yes |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `session_id` | string | yes |  | The device's id, from GET /api/account/sessions or GET /api/admin/users/{user_id}/sessions (list_my_sessions or admin_list_user_sessions over MCP). |
+| `user_id` | integer | yes | at least 1 | The account's id, from GET /api/admin/users (admin_list_users over MCP). |
+
+### admin_set_invite_link_limits
+
+Set how many people the link may take in (never fewer than have joined) and, when days is given, a new expiry counted from now. The link then counts as this key's: revoking the key switches it off.
+
+|  |  |
+|---|---|
+| Route | `POST /api/admin/invite-links/{link_id}/limits` |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `days` | integer or null | no | 1 to 365 | Counted from now. Leave out to keep the expiry. |
+| `link_id` | string | yes |  | The link's id, from GET /api/admin/invite-links (admin_list_invite_links over MCP). |
+| `max_uses` | integer | yes | 1 to 1000 | Not fewer than have joined. |
+
+### admin_set_theme_defaults
+
+Replace the theme list everyone without their own list sees, 1 to 40 themes in the Theme schema of the API reference. null puts the built-in themes back.
+
+|  |  |
+|---|---|
+| Route | `POST /api/admin/theme-defaults` |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `themes` | array of object or null | no |  | 1 to 40 themes. null goes back to the built-in ones. |
+| `themes[].accent` | string | yes |  | The main color: what you can press. |
+| `themes[].background` | string | no |  | The page. Left out: the mode's own. |
+| `themes[].button` | object or null | no |  | How the theme's buttons look. A choice left out is the default (rounded, normal, raised, normal). |
+| `themes[].button.case` | string | no | one of `normal`, `upper` |  |
+| `themes[].button.depth` | string | no | one of `flat`, `raised`, `glossy` |  |
+| `themes[].button.shape` | string | no | one of `square`, `soft`, `rounded`, `pill` |  |
+| `themes[].button.weight` | string | no | one of `normal`, `medium`, `bold` |  |
+| `themes[].dark` | object or null | no |  | A light theme's colors for dark mode, kept while it is light. Switching the theme to dark swaps them in. A light theme's light (or a dark theme's dark) is dropped. |
+| `themes[].dark.accent` | string | yes |  | The main color: what you can press. |
+| `themes[].dark.background` | string | no |  | The page. Left out: the mode's own. |
+| `themes[].dark.overrides` | map of string | no |  | Worked-out colors replaced by name: text, accent, accentFg, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back. |
+| `themes[].dark.second` | string | yes |  | Says where you are: active nav item, headings, info. |
+| `themes[].dark.surface` | string | no |  | Cards. Left out: the mode's own. |
+| `themes[].id` | string | yes |  | Lower-case letters, digits, - and _, up to 32. |
+| `themes[].labels` | array of object | no |  |  |
+| `themes[].labels[].color` | string | yes |  |  |
+| `themes[].labels[].name` | string | yes |  |  |
+| `themes[].light` | object or null | no |  | A dark theme's colors for light mode, kept while it is dark. Switching the theme to light swaps them in. |
+| `themes[].light.accent` | string | yes |  | The main color: what you can press. |
+| `themes[].light.background` | string | no |  | The page. Left out: the mode's own. |
+| `themes[].light.overrides` | map of string | no |  | Worked-out colors replaced by name: text, accent, accentFg, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back. |
+| `themes[].light.second` | string | yes |  | Says where you are: active nav item, headings, info. |
+| `themes[].light.surface` | string | no |  | Cards. Left out: the mode's own. |
+| `themes[].mode` | string | yes | one of `light`, `dark` |  |
+| `themes[].name` | string | yes |  | 1 to 60 characters. |
+| `themes[].overrides` | map of string | no |  | Worked-out colors replaced by name: text, accent, accentFg, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back. |
+| `themes[].second` | string | yes |  | Says where you are: active nav item, headings, info. |
+| `themes[].surface` | string | no |  | Cards. Left out: the mode's own. |
+
+### admin_set_user_disabled
+
+Switch an account off (disabled: true) or back on (false). Disabling signs it out everywhere and voids its live login link; its API keys stop working while it is off. Reversible. The owner and your own account cannot be disabled.
+
+|  |  |
+|---|---|
+| Route | `POST /api/admin/users/{user_id}/disabled` |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `disabled` | boolean | yes |  |  |
+| `user_id` | integer | yes | at least 1 | The account's id, from GET /api/admin/users (admin_list_users over MCP). |
+
+### admin_set_user_role
+
+Make an account an admin or an ordinary user. Only the owner takes an admin's rights away; the owner is always an admin, and nobody changes their own role. Becoming an admin ends the account's sessions and live login link.
+
+|  |  |
+|---|---|
+| Route | `POST /api/admin/users/{user_id}/role` |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `role` | string | yes | one of `admin`, `user` |  |
+| `user_id` | integer | yes | at least 1 | The account's id, from GET /api/admin/users (admin_list_users over MCP). |
+
+### admin_switch_on_invite_link
+
+Undo admin_revoke_invite_link: anyone still holding the link can use it again. The link then counts as this key's: revoking the key switches it off.
+
+|  |  |
+|---|---|
+| Route | `POST /api/admin/invite-links/{link_id}/switch-on` |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `link_id` | string | yes |  | The link's id, from GET /api/admin/invite-links (admin_list_invite_links over MCP). |
+
+### archive_board
+
+scope "everyone" (the owner only): the board leaves every member's home page and becomes read-only -- every change is refused with board_archived -- until it is unarchived the same way. scope "me" (anyone on the board, but not a key held to some boards): it only leaves your own home page. list_boards says which applies (archived, archived_for_me).
+
+|  |  |
+|---|---|
+| Route | `POST /api/boards/{board_id}/archive` |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `archived` | boolean or null | yes |  | true archives, false unarchives. |
+| `board` | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `scope` | string | yes | one of `everyone`, `me` | everyone (the owner only) or me (just your own home page). |
+
+### archive_list_cards
+
+Archive a column's open cards, all of them or the ones named in card_ids: clearing out a Done column, say. Archived cards are hidden, not deleted (update_card with archived: false brings one back). Needs edit rights on that column.
+
+|  |  |
+|---|---|
+| Route | `POST /api/boards/{board_id}/lists/{list_id}/archive-cards` |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `board` | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_ids` | array of integer | no |  | The cards to archive; leave out to archive every open card in the column. |
+| `list_id` | integer | yes |  | A column's id, from get_board (board.lists). |
+
+### cancel_my_login_link
+
+Void your account's live login link without making a new one. Devices it already signed in stay signed in. Answers with removed: 0 or 1.
+
+|  |  |
+|---|---|
+| Route | `POST /api/account/login-link/cancel` |
+| Read only | no |
+| Destructive | yes |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+
+### carry_over
+
+On a calendar board with carry-over on, move the unfinished cards of past days to today (yours, within a day of the server's). Asking again the same day moves nothing; a board with carry-over off, or not a calendar, moves nothing. Needs edit rights on the whole board.
+
+|  |  |
+|---|---|
+| Route | `POST /api/boards/{board_id}/carry-over` |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `board` | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `today` | string | yes |  | Your today, as 2026-11-07: within a day of the server's. |
+
+### copy_card
+
+Copy a card onto any board (its own included) with its content, comments and picture, optionally kept in step with the original (mirror). Needs edit rights where the copy goes, and on the card for a mirror. Answers the copy, with card_path and board_title.
+
+|  |  |
+|---|---|
+| Route | `POST /api/boards/{board_id}/cards/{card_id}/copy` |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `board` | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | integer | yes |  | A card's id, from get_board or find_cards. |
+| `list_id` | integer | yes |  | The column on that board it goes into, from get_board (board.lists). |
+| `mirror` | string | no | one of ``, `one_way`, `two_way` | Copy only. Empty for a plain copy; one_way keeps the copy following the original (the copy's synced fields become read-only); two_way keeps both in step. Synced: title, description, checklist, dates, price, picture, To do/Doing/Done, comments. |
+| `position` | number or null | no |  | An exact place in the column, for putting a card back where it was; wins over top. |
+| `to_board` | string or integer | yes |  | The board it goes to: id or URL slug, from list_boards. |
+| `top` | boolean | no |  | Put it at the top of the column instead of the end. |
+
+### create_board
+
+A new board owned by you, with the given columns in order (for example ["To do", "Doing", "Done"]); a board always gets at least three, so fewer are padded out. Returns its id and slug. A key held to some boards cannot make one.
+
+|  |  |
+|---|---|
+| Route | `POST /api/boards` |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `lists` | array of string | no |  | Its columns, in order, for example ["To do", "Doing", "Done"]. A board always gets at least three, so fewer are padded out. |
+| `title` | string | yes | at most 120 characters | The new board's title. |
+
+### create_card
+
+Add a card to a column. The other fields are optional and set in the same call. Needs edit rights on that column. If the card is made but its other fields are refused, the answer says so and names the new card: change it with update_card rather than adding it again.
+
+|  |  |
+|---|---|
+| Route | `POST /api/boards/{board_id}/cards` |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `assignees` | array of integer or null | no |  | User ids, from get_board's members or list_team. |
+| `board` | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `day` | string or null | no |  | On a calendar board (layout calendar), the day the card is filed under: 2026-11-07, or an empty string for none. |
+| `description` | string or null | no |  | Markdown. |
+| `doing` | boolean or null | no |  | On a staged board, the Doing stage. true starts the card (reopening it if done); done: true moves it on to Done. |
+| `done` | boolean or null | no |  | true makes it complete from the start. |
+| `due_at` | string or null | no |  | 2026-10-30 for an all-day date, an RFC 3339 timestamp for a time, an empty string to clear. |
+| `label_ids` | array of integer or null | no |  | Label ids, from get_board (board.labels). |
+| `list_id` | integer | yes |  | The column's id, from get_board (board.lists). |
+| `position` | number or null | no |  | Sort position within the column; lower comes first. Leave out to put it at the end. |
+| `rank_place` | integer or null | no | at least 0 | Importance across the whole board: 1 is the most important, and other cards shift to make room. 0 takes the card out of the ranking. Needs edit rights on the board. |
+| `start_at` | string or null | no |  | 2026-10-30 for an all-day date, an RFC 3339 timestamp for a time, an empty string to clear. |
+| `title` | string | yes |  |  |
+
+### create_folder
+
+Make a folder on your own home page, at the top or inside another of yours (parent_id).
+
+|  |  |
+|---|---|
+| Route | `POST /api/folders` |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `name` | string | yes |  |  |
+| `parent_id` | integer | no |  | The folder to make it in; 0 or absent: at the top. |
+
+### create_label
+
+Add a label to a board, to put on cards with update_card's label_ids. Needs edit rights on the whole board.
+
+|  |  |
+|---|---|
+| Route | `POST /api/boards/{board_id}/labels` |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `board` | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `color` | string | yes |  | A palette name (blue, green, orange, red, purple, pink, teal, gray, yellow) or a #rrggbb colour. |
+| `name` | string or null | no | at most 40 characters |  |
+
+### create_list
+
+Add a column (list) to a board, at the end or at position. Needs edit rights on the whole board.
+
+|  |  |
+|---|---|
+| Route | `POST /api/boards/{board_id}/lists` |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `board` | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `position` | number or null | no |  | Sort position among the columns; lower comes first. Leave out to put it at the end. |
+| `title` | string | yes | at most 120 characters |  |
+
+### create_my_login_link
+
+A link that signs your own account in on a browser or another device. Only a key with your account's full role may ask: one scoped down to user on an admin account is refused. Answers with login_url (open it to sign in; it works once unless max_uses says otherwise), expires_at and max_uses. Any older link the account could still use stops working; its signed-in devices stay signed in. Revoking or deleting this API key voids the link while it is unused, and signs out every device it signed in.
+
+|  |  |
+|---|---|
+| Route | `POST /api/account/login-link` |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `expires_in_minutes` | integer or null | no | 0 to 525600 | 0 never expires. Default auth.login_token_ttl_seconds for a link that works once, auth.multi_use_login_token_ttl_seconds otherwise. |
+| `max_uses` | integer or null | no | 0 to 1000 | Sign-ins the link allows: 1-1000, or 0 for unlimited. Default 1. |
+
+### delete_card
+
+Move a card to the board's trash. Not permanent: restore_card brings it back, until purge_card or empty_trash removes it for good. Needs edit rights on its column.
+
+|  |  |
+|---|---|
+| Route | `POST /api/boards/{board_id}/cards/{card_id}/delete` |
+| Read only | no |
+| Destructive | yes |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `board` | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | integer | yes |  | A card's id, from get_board or find_cards. |
+
+### delete_checklist_item
+
+Remove an item from a card's checklist, for good. Returns the card. Needs edit rights on the card.
+
+|  |  |
+|---|---|
+| Route | `POST /api/boards/{board_id}/cards/{card_id}/checklist/{item_id}/delete` |
+| Read only | no |
+| Destructive | yes |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `board` | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | integer | yes |  | A card's id, from get_board or find_cards. |
+| `item_id` | integer | yes |  | A checklist item's id, from get_card. |
+
+### delete_folder
+
+Remove one of your folders. Boards in it are not touched: they go back to the top of your home page.
+
+|  |  |
+|---|---|
+| Route | `POST /api/folders/{folder_id}/delete` |
+| Read only | no |
+| Destructive | yes |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `folder_id` | integer | yes |  | A folder's id, from list_boards (folders). |
+
+### delete_label
+
+Delete a label; it comes off every card it was on. Needs edit rights on the whole board.
+
+|  |  |
+|---|---|
+| Route | `POST /api/boards/{board_id}/labels/{label_id}/delete` |
+| Read only | no |
+| Destructive | yes |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `board` | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `label_id` | integer | yes |  | A label's id, from get_board (board.labels). |
+
+### delete_list
+
+Delete a column and its share links; its cards go to the board's trash, where they can be restored into another column. Archiving it (update_list, archived: true) is the gentler way to put one away. Needs edit rights on the whole board.
+
+|  |  |
+|---|---|
+| Route | `POST /api/boards/{board_id}/lists/{list_id}/delete` |
+| Read only | no |
+| Destructive | yes |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `board` | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `list_id` | integer | yes |  | A column's id, from get_board (board.lists). |
+
+### delete_share
+
+Remove one of the board's share links from the list (link_id from list_shares); a live one stops working. Only the board's owner may.
+
+|  |  |
+|---|---|
+| Route | `POST /api/boards/{board_id}/shares/{link_id}/delete` |
+| Read only | no |
+| Destructive | yes |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `board` | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `link_id` | string | yes | at least 1 characters | A share link's id, from list_shares. |
+
+### duplicate_board
+
+A new board owned by you, copied from one you can open: its settings, notes, labels, columns, and the cards you can see with their checklists. Comments, card pictures, members and share links are not copied. Returns the copy's id and slug. A key held to some boards cannot make one.
+
+|  |  |
+|---|---|
+| Route | `POST /api/boards/{board_id}/duplicate` |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `board` | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `title` | string | yes | at most 120 characters | The copy's title. |
+
+### edit_comment
+
+Change the text of a comment you wrote. Comment ids are in list_comments.
+
+|  |  |
+|---|---|
+| Route | `POST /api/boards/{board_id}/cards/{card_id}/comments/{comment_id}` |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `board` | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | integer | yes |  | A card's id, from get_board or find_cards. |
+| `comment_id` | integer | yes |  | A comment's id, from list_comments. |
+| `text` | string | yes | at most 4000 characters | Markdown, up to 4000 characters; replaces the comment's text. |
+
+### empty_trash
+
+Permanently delete every card in the board's trash. This cannot be undone. Needs edit rights on the whole board.
+
+|  |  |
+|---|---|
+| Route | `POST /api/boards/{board_id}/trash/empty` |
+| Read only | no |
+| Destructive | yes |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `board` | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+
+### find_cards
+
+Search the cards you can see, across all your boards or one (board_id). query matches title and description (case-insensitive). Done and archived cards are left out unless asked for. Returns compact rows, soonest due first, with total and whether the list was cut at limit; use get_card for the full card.
+
+|  |  |
+|---|---|
+| Route | `GET /api/cards` |
+| Read only | yes |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `assigned_to_me` | boolean | no |  | Only cards assigned to you. |
+| `board` | string or integer | no |  | Search one board only: its id or URL slug, from list_boards. |
+| `due_before` | string | no |  | Only cards due before this: "2026-10-30" or an RFC 3339 timestamp. |
+| `include_archived` | boolean | no |  | Include archived cards. |
+| `include_done` | boolean | no |  | Include done cards. |
+| `limit` | integer | no | 1 to 200; default `50` | At most this many rows (default 50). |
+| `query` | string | no |  | Matches title and description, in any case. |
+
+### get_board
+
+A board as you can see it: its notes, its purpose if the board has that section on (board.purpose says what the board is for and how to work on it, so read it first), columns (board.lists), labels, members, and the cards you may see, with each card's column, labels, assignees, dates, checklist and rev. people maps user ids to names. access is what you may do. Archived cards are left out unless include_archived is true.
+
+|  |  |
+|---|---|
+| Route | `GET /api/boards/{board_id}` |
+| Read only | yes |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `board` | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `include_archived` | boolean or null | no |  | Include archived cards. The page gets them unless this is false; an agent's get_board leaves them out unless it is true. |
+
+### get_board_notes
+
+Just the board's notes and purpose, without its cards. notes holds links, documents and reference material. purpose says what the board is for and how to work on it, and is only there when purpose_enabled is true. Both are markdown, and may be empty. Read them before working on a board. The revs go back to update_board_notes.
+
+|  |  |
+|---|---|
+| Route | `GET /api/boards/{board_id}/notes` |
+| Read only | yes |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `board` | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+
+### get_board_subscription
+
+Which of the board's events reach you (due dates, being assigned, changes, activity) and where that comes from (source: your defaults or this board's override), with whether push is on and whether anything would reach you.
+
+|  |  |
+|---|---|
+| Route | `GET /api/boards/{board_id}/subscription` |
+| Read only | yes |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `board` | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+
+### get_card
+
+One card in full: title, description, column, labels, assignees, dates, checklist, its place in the board's ranking (rank_place, 0 for none), and rev (pass rev back to update_card when changing the title or description).
+
+|  |  |
+|---|---|
+| Route | `GET /api/boards/{board_id}/cards/{card_id}` |
+| Read only | yes |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `board` | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | integer | yes |  | A card's id, from get_board or find_cards. |
+
+### get_card_subscription
+
+Which of the card's events reach you and where that comes from (source: your defaults, the board's override or this card's), with whether push is on and whether anything would reach you.
+
+|  |  |
+|---|---|
+| Route | `GET /api/boards/{board_id}/cards/{card_id}/subscription` |
+| Read only | yes |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `board` | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | integer | yes |  | A card's id, from get_board or find_cards. |
+
+### get_notify_prefs
+
+How and when you are told about things: Pushover (the key only masked) or this browser's push, timezone, reminder lead times, the hour for all-day reminders, the events you hear about as an assignee or watcher, whether shares with you are announced, and whether it is all paused. Also whether the server can send push at all and whether anything would reach you.
+
+|  |  |
+|---|---|
+| Route | `GET /api/notify/prefs` |
+| Read only | yes |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+
+### label_my_session
+
+Give one of your devices a name (at most 80 characters; empty clears it). expect, when given, is the name you think it has now.
+
+|  |  |
+|---|---|
+| Route | `POST /api/account/sessions/{session_id}/label` |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `expect` | string or null | no |  | The name you think it has. Answers 409 if it has another. |
+| `label` | string | yes | at most 80 characters | At most 80 characters. |
+| `session_id` | string | yes |  | The device's id, from GET /api/account/sessions or GET /api/admin/users/{user_id}/sessions (list_my_sessions or admin_list_user_sessions over MCP). |
+
+### leave_board
+
+Take yourself off a board you are a member of; it leaves your home page and you lose access until someone adds you again. The owner cannot leave (400 owner_cannot_leave).
+
+|  |  |
+|---|---|
+| Route | `POST /api/boards/{board_id}/leave` |
+| Read only | no |
+| Destructive | yes |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `board` | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+
+### list_boards
+
+Every board you own or are a member of (id, slug, title, your role, folder, and whether it is archived for everyone -- read-only -- or archived_for_me), your home-page folders, and single cards shared with you from boards you are not on.
+
+|  |  |
+|---|---|
+| Route | `GET /api/boards` |
+| Read only | yes |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+
+### list_card_links
+
+The cards this one is kept in step with: each link's id, mode (one_way / two_way), direction (out: this card's changes flow there; in: this card follows that one; both), and the other card, named only when you can open it.
+
+|  |  |
+|---|---|
+| Route | `GET /api/boards/{board_id}/cards/{card_id}/links` |
+| Read only | yes |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `board` | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | integer | yes |  | A card's id, from get_board or find_cards. |
+
+### list_comments
+
+A card's comments, oldest first: who wrote each (by: a member's name, guest:Name for a guest, guest: alone for an anonymous one) and when, and whether you may post one (can_comment).
+
+|  |  |
+|---|---|
+| Route | `GET /api/boards/{board_id}/cards/{card_id}/comments` |
+| Read only | yes |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `board` | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | integer | yes |  | A card's id, from get_board or find_cards. |
+
+### list_my_sessions
+
+Where your account is signed in, a page at a time: id, when it started and was last seen, the browser, and the name you gave it. Through an API key no device is current. next is the offset of the following page, or null on the last one.
+
+|  |  |
+|---|---|
+| Route | `GET /api/account/sessions` |
+| Read only | yes |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `limit` | integer | no | 1 to 1000; default `200` | Rows to return. Default 200. |
+| `offset` | integer | no | at least 0 | Rows to skip: the next value of the previous page. |
+
+### list_shares
+
+The board's share links, live or not: id, what each opens (the board, a column or one card), mode, label, when it was made, expires, was revoked and last used, whether it is a quick link, and who made it. Never the link itself, which is shown once when it is made. Only the board's owner may.
+
+|  |  |
+|---|---|
+| Route | `GET /api/boards/{board_id}/shares` |
+| Read only | yes |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `board` | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+
+### list_team
+
+People with an active account, a page at a time: id and display name. Use the id wherever another tool asks for a user. next is the offset of the following page, or null on the last one.
+
+|  |  |
+|---|---|
+| Route | `GET /api/team` |
+| Read only | yes |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `limit` | integer | no | 1 to 1000; default `200` | Rows to return. Default 200. |
+| `offset` | integer | no | at least 0 | Rows to skip: the next value of the previous page. |
+
+### list_trash
+
+The board's deleted cards, with when and by whom each was deleted. restore_card brings one back. Needs edit rights on the whole board.
+
+|  |  |
+|---|---|
+| Route | `GET /api/boards/{board_id}/trash` |
+| Read only | yes |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `board` | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+
+### move_folder
+
+Put one of your folders inside another of yours, or back at the top (parent_id 0).
+
+|  |  |
+|---|---|
+| Route | `POST /api/folders/{folder_id}/parent` |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `folder_id` | integer | yes |  | A folder's id, from list_boards (folders). |
+| `parent_id` | integer | yes |  | The folder to put it in; 0: at the top. |
+
+### order_folders
+
+Put your folders in this order, first to last.
+
+|  |  |
+|---|---|
+| Route | `POST /api/folders/order` |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `ids` | array of integer | yes |  | Your folder ids, first to last. |
+
+### purge_card
+
+Permanently delete one card that is in the board's trash. This cannot be undone. Needs edit rights on the whole board.
+
+|  |  |
+|---|---|
+| Route | `POST /api/boards/{board_id}/trash/{card_id}/delete` |
+| Read only | no |
+| Destructive | yes |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `board` | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | integer | yes |  | A card's id, from get_board or find_cards. |
+
+### refresh_product
+
+Read the shop link in a card's title or description (or the one it was last looked up from) again now, and store the product's name, price and photo on the card. Works for any shop's link, shopping column or not. Answers with the card; product.status is failed when the page could not be read.
+
+|  |  |
+|---|---|
+| Route | `POST /api/boards/{board_id}/cards/{card_id}/product/refresh` |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `board` | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | integer | yes |  | A card's id, from get_board or find_cards. |
+
+### remove_card_image
+
+Remove the picture from a card and answer with the card. The card itself is not touched.
+
+|  |  |
+|---|---|
+| Route | `POST /api/boards/{board_id}/cards/{card_id}/image/delete` |
+| Read only | no |
+| Destructive | yes |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `board` | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | integer | yes |  | A card's id, from get_board or find_cards. |
+
+### remove_comment
+
+Delete a comment for good: one you wrote, or anyone's on a board you manage. This cannot be undone.
+
+|  |  |
+|---|---|
+| Route | `POST /api/boards/{board_id}/cards/{card_id}/comments/{comment_id}/remove` |
+| Read only | no |
+| Destructive | yes |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `board` | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | integer | yes |  | A card's id, from get_board or find_cards. |
+| `comment_id` | integer | yes |  | A comment's id, from list_comments. |
+
+### remove_product
+
+Remove the product (name, price, photo) looked up for a card. The link in its text stays. Answers with the card.
+
+|  |  |
+|---|---|
+| Route | `POST /api/boards/{board_id}/cards/{card_id}/product/delete` |
+| Read only | no |
+| Destructive | yes |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `board` | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | integer | yes |  | A card's id, from get_board or find_cards. |
+
+### rename_account
+
+Change your own display name (1-80 characters). expect, when given, is the name you think it has now; if someone changed it meanwhile the rename is refused with the current name, so nothing is overwritten unseen.
+
+|  |  |
+|---|---|
+| Route | `POST /api/account/rename` |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `display_name` | string | yes | 1 to 80 characters |  |
+| `expect` | string or null | no |  |  |
+
+### rename_folder
+
+Rename one of your home page folders.
+
+|  |  |
+|---|---|
+| Route | `POST /api/folders/{folder_id}` |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `folder_id` | integer | yes |  | A folder's id, from list_boards (folders). |
+| `name` | string | yes |  |  |
+
+### restore_card
+
+Bring a deleted card back out of the board's trash. Card ids are in list_trash. Needs edit rights on the whole board.
+
+|  |  |
+|---|---|
+| Route | `POST /api/boards/{board_id}/trash/{card_id}/restore` |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `board` | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | integer | yes |  | A card's id, from get_board or find_cards. |
+
+### revoke_my_other_sessions
+
+End every session your account has: through an API key there is no current device to keep, so every browser signs in again. API keys keep working. Answers with how many were removed.
+
+|  |  |
+|---|---|
+| Route | `POST /api/account/sessions/revoke-others` |
+| Read only | no |
+| Destructive | yes |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+
+### revoke_my_session
+
+End one of your signed-in sessions; that browser has to sign in again.
+
+|  |  |
+|---|---|
+| Route | `POST /api/account/sessions/{session_id}/revoke` |
+| Read only | no |
+| Destructive | yes |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `session_id` | string | yes |  | The device's id, from GET /api/account/sessions or GET /api/admin/users/{user_id}/sessions (list_my_sessions or admin_list_user_sessions over MCP). |
+
+### revoke_share
+
+Stop one of the board's share links working (link_id from list_shares). It stays in the list, marked revoked. Only the board's owner may.
+
+|  |  |
+|---|---|
+| Route | `POST /api/boards/{board_id}/shares/{link_id}/revoke` |
+| Read only | no |
+| Destructive | yes |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `board` | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `link_id` | string | yes | at least 1 characters | A share link's id, from list_shares. |
+
+### send_card
+
+Move a card to another board, whole: it keeps its link, comments and picture. Labels are matched by name there (made if missing), assignees kept only if they are on that board, and per-person shares dropped. Needs edit rights on both boards. Answers the card where it landed, with card_path and board_title.
+
+|  |  |
+|---|---|
+| Route | `POST /api/boards/{board_id}/cards/{card_id}/send` |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `board` | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | integer | yes |  | A card's id, from get_board or find_cards. |
+| `list_id` | integer | yes |  | The column on that board it goes into, from get_board (board.lists). |
+| `mirror` | string | no | one of ``, `one_way`, `two_way` | Copy only. Empty for a plain copy; one_way keeps the copy following the original (the copy's synced fields become read-only); two_way keeps both in step. Synced: title, description, checklist, dates, price, picture, To do/Doing/Done, comments. |
+| `position` | number or null | no |  | An exact place in the column, for putting a card back where it was; wins over top. |
+| `to_board` | string or integer | yes |  | The board it goes to: id or URL slug, from list_boards. |
+| `top` | boolean | no |  | Put it at the top of the column instead of the end. |
+
+### send_test_notification
+
+Send yourself a test notification the way your settings say. push_disabled: the server sends none; push_no_key: nothing set up to reach you; push_rejected: Pushover said no (detail has its words); push_unreachable: the push service could not be reached.
+
+|  |  |
+|---|---|
+| Route | `POST /api/notify/test` |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+
+### set_board_folder
+
+File one of your boards in one of your folders on your home page, or take it out (folder_id 0).
+
+|  |  |
+|---|---|
+| Route | `POST /api/boards/{board_id}/folder` |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `board` | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `folder_id` | integer | yes |  | The folder to file it in; 0: not in a folder. |
+
+### set_board_subscription
+
+Choose which of the board's events reach you, or clear your choice (events null) so your defaults apply again. Answers as get_board_subscription does.
+
+|  |  |
+|---|---|
+| Route | `POST /api/boards/{board_id}/subscription` |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `board` | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `events` | object or null | yes |  | Which events to be told about; null or absent clears the override, so your defaults apply again. |
+| `events.activity` | boolean | no |  |  |
+| `events.assigned` | boolean | yes |  |  |
+| `events.changes` | boolean | yes |  |  |
+| `events.due` | boolean | yes |  |  |
+
+### set_card_subscription
+
+Choose which of the card's events reach you, or clear your choice (events null) so the board's or your defaults apply again. Answers as get_card_subscription does.
+
+|  |  |
+|---|---|
+| Route | `POST /api/boards/{board_id}/cards/{card_id}/subscription` |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `board` | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | integer | yes |  | A card's id, from get_board or find_cards. |
+| `events` | object or null | yes |  | Which events to be told about; null or absent clears the override, so your defaults apply again. |
+| `events.activity` | boolean | no |  |  |
+| `events.assigned` | boolean | yes |  |  |
+| `events.changes` | boolean | yes |  |  |
+| `events.due` | boolean | yes |  |  |
+
+### set_display
+
+How times and boards are shown to you. timezone (empty for the browser's own) and hour12 (null for the locale's) are always set from what is sent; every other field changes only when sent: number_cards, plain_icons (grey status icons), done_on_top, add_on_top, theme (clear_theme goes back to plain light), own_theme_on_boards (keep your theme on boards that have their own), swipe_columns (phones) and folder_sort. Answers your display settings.
+
+|  |  |
+|---|---|
+| Route | `POST /api/account/display` |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `add_on_top` | boolean or null | no |  |  |
+| `clear_theme` | boolean | no |  |  |
+| `done_on_top` | boolean or null | no |  |  |
+| `folder_sort` | string or null | no |  |  |
+| `hour12` | boolean or null | no |  |  |
+| `number_cards` | boolean or null | no |  |  |
+| `own_theme_on_boards` | boolean or null | no |  |  |
+| `plain_icons` | boolean or null | no |  |  |
+| `swipe_columns` | boolean or null | no |  |  |
+| `theme` | object or null | no |  |  |
+| `theme.accent` | string | yes |  |  |
+| `theme.background` | string | no |  |  |
+| `theme.button` | object or null | no |  |  |
+| `theme.button.case` | string | no | one of `normal`, `upper` |  |
+| `theme.button.depth` | string | no | one of `flat`, `raised`, `glossy` |  |
+| `theme.button.shape` | string | no | one of `square`, `soft`, `rounded`, `pill` |  |
+| `theme.button.weight` | string | no | one of `normal`, `medium`, `bold` |  |
+| `theme.card` | string | no |  |  |
+| `theme.column` | string | no |  |  |
+| `theme.dark` | object or null | no |  |  |
+| `theme.dark.accent` | string | yes |  | The main color: what you can press. |
+| `theme.dark.background` | string | no |  | The page. Left out: the mode's own. |
+| `theme.dark.overrides` | map of string | no |  | Worked-out colors replaced by name: text, accent, accentFg, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back. |
+| `theme.dark.second` | string | yes |  | Says where you are: active nav item, headings, info. |
+| `theme.dark.surface` | string | no |  | Cards. Left out: the mode's own. |
+| `theme.light` | object or null | no |  |  |
+| `theme.light.accent` | string | yes |  | The main color: what you can press. |
+| `theme.light.background` | string | no |  | The page. Left out: the mode's own. |
+| `theme.light.overrides` | map of string | no |  | Worked-out colors replaced by name: text, accent, accentFg, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back. |
+| `theme.light.second` | string | yes |  | Says where you are: active nav item, headings, info. |
+| `theme.light.surface` | string | no |  | Cards. Left out: the mode's own. |
+| `theme.mode` | string | yes |  |  |
+| `theme.overrides` | map of string | no |  |  |
+| `theme.second` | string | no |  |  |
+| `theme.surface` | string | no |  |  |
+| `timezone` | string | no |  |  |
+
+### set_label_colors
+
+Replace your own saved label colours with this list, in its order. Labels already using a colour you leave out keep it. Answers your display settings.
+
+|  |  |
+|---|---|
+| Route | `POST /api/account/label-colors` |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `colors` | array of object | yes |  | Your whole list of saved label colours, in order; it replaces the one stored. |
+| `colors[].color` | string | yes |  |  |
+| `colors[].name` | string | yes |  |  |
+
+### set_my_board_view
+
+How a board looks to you alone: greyscale status icons (plain_icons), or null to follow your account default. Nobody else on the board sees it.
+
+|  |  |
+|---|---|
+| Route | `POST /api/boards/{board_id}/my-view` |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `board` | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `plain_icons` | boolean or null | no |  | true for greyscale status icons on this board, false for coloured; null or left out follows your account default. |
+
+### set_my_collapsed_lists
+
+Which columns of a board you keep collapsed, for you alone: the whole set each time.
+
+|  |  |
+|---|---|
+| Route | `POST /api/boards/{board_id}/my-view/collapsed` |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `board` | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `list_ids` | array of integer | no |  | Every column you keep collapsed on this board (the whole set; ids from get_board's board.lists). Empty expands them all. |
+
+### set_notify_prefs
+
+Replace your notification settings (display settings are kept). An empty pushover_user_key keeps the saved one; "-" removes it. notify_via left out stays as it is. Answers the settings as get_notify_prefs does. Read them with get_notify_prefs first and send them back changed: what you leave out is cleared.
+
+|  |  |
+|---|---|
+| Route | `POST /api/notify/prefs` |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `all_day_reminder_hour` | integer | no | 0 to 23 | The hour a card due on a day (no time) is reminded about. |
+| `assignee_defaults` | object | yes |  | What to be told about cards you are assigned to. |
+| `assignee_defaults.activity` | boolean | no |  |  |
+| `assignee_defaults.assigned` | boolean | yes |  |  |
+| `assignee_defaults.changes` | boolean | yes |  |  |
+| `assignee_defaults.due` | boolean | yes |  |  |
+| `notify_via` | string | no |  | Which ways of reaching you are used. Left out, it stays as it is. |
+| `paused` | boolean | no |  |  |
+| `pushover_device` | string | no |  |  |
+| `pushover_user_key` | string | no |  | Empty or absent keeps the saved key; "-" removes it. |
+| `reminder_lead_minutes` | array of integer | no |  | How long before a due time to be reminded, in minutes. |
+| `shared_with_me` | boolean | no |  |  |
+| `timezone` | string | no |  | An IANA zone such as Europe/Paris, for when reminders fire. |
+| `watch_defaults` | object | yes |  | What to be told about every other card you can see. |
+| `watch_defaults.activity` | boolean | no |  |  |
+| `watch_defaults.assigned` | boolean | yes |  |  |
+| `watch_defaults.changes` | boolean | yes |  |  |
+| `watch_defaults.due` | boolean | yes |  |  |
+
+### set_theme
+
+Switch to another theme from your list (or the defaults), by its id.
+
+|  |  |
+|---|---|
+| Route | `POST /api/account/theme` |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `theme_id` | string | yes |  | A theme's id. Empty for the first in the list. |
+
+### set_themes
+
+Replace your whole list of color themes (1 to 40) and pick the one you use. themes: null goes back to following the app's defaults. A theme is the Theme schema in the API reference (config/openapi.json): id, name, mode light|dark, accent, second, and optional colors as #rrggbb. whoami shows the current list.
+
+|  |  |
+|---|---|
+| Route | `POST /api/account/themes` |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `theme_id` | string | no |  | The theme you use. |
+| `themes` | array of object or null | no |  | Your whole list, 1 to 40 themes. null goes back to following the app's defaults. |
+| `themes[].accent` | string | yes |  | The main color: what you can press. |
+| `themes[].background` | string | no |  | The page. Left out: the mode's own. |
+| `themes[].button` | object or null | no |  | How the theme's buttons look. A choice left out is the default (rounded, normal, raised, normal). |
+| `themes[].button.case` | string | no | one of `normal`, `upper` |  |
+| `themes[].button.depth` | string | no | one of `flat`, `raised`, `glossy` |  |
+| `themes[].button.shape` | string | no | one of `square`, `soft`, `rounded`, `pill` |  |
+| `themes[].button.weight` | string | no | one of `normal`, `medium`, `bold` |  |
+| `themes[].dark` | object or null | no |  | A light theme's colors for dark mode, kept while it is light. Switching the theme to dark swaps them in. A light theme's light (or a dark theme's dark) is dropped. |
+| `themes[].dark.accent` | string | yes |  | The main color: what you can press. |
+| `themes[].dark.background` | string | no |  | The page. Left out: the mode's own. |
+| `themes[].dark.overrides` | map of string | no |  | Worked-out colors replaced by name: text, accent, accentFg, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back. |
+| `themes[].dark.second` | string | yes |  | Says where you are: active nav item, headings, info. |
+| `themes[].dark.surface` | string | no |  | Cards. Left out: the mode's own. |
+| `themes[].id` | string | yes |  | Lower-case letters, digits, - and _, up to 32. |
+| `themes[].labels` | array of object | no |  |  |
+| `themes[].labels[].color` | string | yes |  |  |
+| `themes[].labels[].name` | string | yes |  |  |
+| `themes[].light` | object or null | no |  | A dark theme's colors for light mode, kept while it is dark. Switching the theme to light swaps them in. |
+| `themes[].light.accent` | string | yes |  | The main color: what you can press. |
+| `themes[].light.background` | string | no |  | The page. Left out: the mode's own. |
+| `themes[].light.overrides` | map of string | no |  | Worked-out colors replaced by name: text, accent, accentFg, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back. |
+| `themes[].light.second` | string | yes |  | Says where you are: active nav item, headings, info. |
+| `themes[].light.surface` | string | no |  | Cards. Left out: the mode's own. |
+| `themes[].mode` | string | yes | one of `light`, `dark` |  |
+| `themes[].name` | string | yes |  | 1 to 60 characters. |
+| `themes[].overrides` | map of string | no |  | Worked-out colors replaced by name: text, accent, accentFg, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back. |
+| `themes[].second` | string | yes |  | Says where you are: active nav item, headings, info. |
+| `themes[].surface` | string | no |  | Cards. Left out: the mode's own. |
+
+### share_card_with_user
+
+Share one card with an account, to view or to edit, without putting them on the board; mode empty stops sharing it with them. Only the board's owner may. Answers the card.
+
+|  |  |
+|---|---|
+| Route | `POST /api/boards/{board_id}/cards/{card_id}/share-user` |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `board` | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | integer | yes |  | A card's id, from get_board or find_cards. |
+| `mode` | string | yes | one of `view`, `edit`, `` | view or edit; empty stops sharing the card with them. |
+| `user_id` | integer | yes |  | The account to share the card with, from list_team. |
+
+### unlink_card
+
+End one of a card's mirror links (link_id from list_card_links). Both cards stay as they are. Needs edit rights on the card.
+
+|  |  |
+|---|---|
+| Route | `POST /api/boards/{board_id}/cards/{card_id}/links/{link_id}/delete` |
+| Read only | no |
+| Destructive | yes |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `board` | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | integer | yes |  | A card's id, from get_board or find_cards. |
+| `link_id` | integer | yes |  | A mirror link's id, from list_card_links. |
+
+### update_board
+
+Change any of a board's settings; leave out what should not change: its title, URL name (slug), layout (free, three, staged or calendar), default view, colour, theme, card numbering, where finished cards and the add-card box go, the stage names and buttons of a staged board, carry-over on a calendar board, shopping, ranking, and its purpose and notes. Needs edit rights on the whole board. The purpose and notes are for members, not share links; the quick-share and anonymous-comment switches are the owner's, from a browser. Answers the board's new revs. To change only the purpose or notes, update_board_notes is the safer call: it insists on the rev you read them at.
+
+|  |  |
+|---|---|
+| Route | `POST /api/boards/{board_id}` |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `add_placement` | string or null | no | one of ``, `top`, `bottom` | Where the add-card box sits in a column: top, bottom, or "" for each person's account setting. |
+| `allow_anon_comments` | boolean or null | no |  | Let guests comment without giving a name. The owner's, from a browser only: refused through a key. |
+| `allow_quick_share` | boolean or null | no |  | Let the board's cards be shared by quick link. The owner's, from a browser only: refused through a key. |
+| `board` | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `carry_over` | boolean or null | no |  | On a calendar board, move unfinished cards from past days to today. |
+| `center_columns` | boolean or null | no |  | Centre the columns on wide screens. |
+| `clear_theme` | boolean | no |  | true drops the board's own theme: everyone sees their own again. |
+| `color` | string or null | no | one of ``, `blue`, `green`, `orange`, `red`, `purple`, `pink`, `teal`, `gray`, `yellow` | The board's colour; empty for none. |
+| `default_view` | string or null | no | one of `kanban`, `todo`, `timeline` | The view the board opens in for someone who has not picked one. |
+| `done_placement` | string or null | no | one of ``, `top`, `bottom` | Where finished cards go in a column: top, bottom, or "" for each person's account setting. |
+| `layout` | string or null | no | one of ``, `three`, `staged`, `calendar` | "" (free: any number of columns), "three" (pinned to three columns: to do, doing, done), "staged" (each column has its own To do / Doing / Done, with an All view ranked board-wide), or "calendar" (cards filed by day; columns titled with dates are filed under those days). |
+| `list_titles` | array of string | no |  | With layout "three": the titles of the columns added if the board has fewer than three open ones. |
+| `notes` | string or null | no |  | Markdown: links, documents, an index. Members only. |
+| `notes_rev` | integer or null | no |  | The notes_rev the notes were read at, as purpose_rev. |
+| `numbering` | string or null | no | one of ``, `on`, `off` | Card numbers for everyone on the board: on, off, or "" to leave it to each person's account setting. |
+| `purpose` | string or null | no |  | Markdown: what the board is for and how to work on it. Only while the Purpose section is on (409 purpose_off otherwise). Members only. |
+| `purpose_enabled` | boolean or null | no |  | Switch the board's Purpose section on or off. Members only. |
+| `purpose_rev` | integer or null | no |  | The purpose_rev the purpose was read at: if it moved since, 409 board_text_stale instead of writing over someone's change. |
+| `shopping` | boolean or null | no |  | A shopping board: cards carry products and prices. |
+| `show_rank` | boolean or null | no |  | Show each card's place in the board-wide ranking. |
+| `slug` | string or null | no |  | The board's URL name (the part after /b/). Empty picks one from the title. 409 slug_taken if another board has it. |
+| `stage_doing` | string or null | no |  | What the Doing stage is called on this board; empty for the default. |
+| `stage_done` | string or null | no |  | What the Done stage is called on this board; empty for the default. |
+| `stage_tabs` | boolean or null | no |  | On a staged board, give every column its own To do / Doing / Done buttons. |
+| `stage_todo` | string or null | no |  | What the To do stage is called on this board; empty for the default. |
+| `theme` | object or null | no |  | The board's own theme, shown to everyone on it. |
+| `theme.accent` | string | yes |  |  |
+| `theme.background` | string | no |  |  |
+| `theme.button` | object or null | no |  |  |
+| `theme.button.case` | string | no | one of `normal`, `upper` |  |
+| `theme.button.depth` | string | no | one of `flat`, `raised`, `glossy` |  |
+| `theme.button.shape` | string | no | one of `square`, `soft`, `rounded`, `pill` |  |
+| `theme.button.weight` | string | no | one of `normal`, `medium`, `bold` |  |
+| `theme.card` | string | no |  |  |
+| `theme.column` | string | no |  |  |
+| `theme.dark` | object or null | no |  |  |
+| `theme.dark.accent` | string | yes |  | The main color: what you can press. |
+| `theme.dark.background` | string | no |  | The page. Left out: the mode's own. |
+| `theme.dark.overrides` | map of string | no |  | Worked-out colors replaced by name: text, accent, accentFg, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back. |
+| `theme.dark.second` | string | yes |  | Says where you are: active nav item, headings, info. |
+| `theme.dark.surface` | string | no |  | Cards. Left out: the mode's own. |
+| `theme.light` | object or null | no |  |  |
+| `theme.light.accent` | string | yes |  | The main color: what you can press. |
+| `theme.light.background` | string | no |  | The page. Left out: the mode's own. |
+| `theme.light.overrides` | map of string | no |  | Worked-out colors replaced by name: text, accent, accentFg, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back. |
+| `theme.light.second` | string | yes |  | Says where you are: active nav item, headings, info. |
+| `theme.light.surface` | string | no |  | Cards. Left out: the mode's own. |
+| `theme.mode` | string | yes |  |  |
+| `theme.overrides` | map of string | no |  |  |
+| `theme.second` | string | no |  |  |
+| `theme.surface` | string | no |  |  |
+| `title` | string or null | no | at most 120 characters |  |
+
+### update_board_notes
+
+Replace a board's notes, its purpose, or both; leave out what should not change. A board's purpose can only be written while its Purpose section is on, which a person does in Board settings (409 purpose_off otherwise). Each is the whole new markdown text, so to add a link, send the old notes with it added. Each needs the rev it was read at, from get_board_notes or get_board: if someone edited the text since, the change is refused (409 board_text_stale) rather than written over theirs; read it again and redo the change on top. Needs edit rights on the board.
+
+|  |  |
+|---|---|
+| Route | `POST /api/boards/{board_id}/notes` |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `board` | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `notes` | string or null | no |  | Markdown: links, documents, an index. The whole new text. |
+| `notes_rev` | integer or null | no |  | Required with notes: the notes_rev they were read at. |
+| `purpose` | string or null | no |  | Markdown: what the board is for and how to work on it. The whole new text. |
+| `purpose_rev` | integer or null | no |  | Required with purpose: the purpose_rev it was read at. |
+
+### update_card
+
+Change any of a card's fields; leave out what should not change. Moving it (list_id, position) or archiving it needs edit rights on its column, and on the whole board to move it to another column. done marks it complete; doing and rank_place are the Doing stage and board-wide importance of a staged board. archived: true hides it from the board (reversible). Pass the card's rev when changing title or description: if someone edited it since, the change is refused (409 card_stale, with the card as it now stands) rather than written over theirs.
+
+|  |  |
+|---|---|
+| Route | `POST /api/boards/{board_id}/cards/{card_id}` |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `archived` | boolean or null | no |  | true hides it from the board (reversible); false brings it back. |
+| `assignees` | array of integer or null | no |  | The full set of user ids; replaces the current assignees. |
+| `board` | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | integer | yes |  | A card's id, from get_board or find_cards. |
+| `day` | string or null | no |  | On a calendar board (layout calendar), the day the card is filed under: 2026-11-07, or an empty string for none. |
+| `description` | string or null | no |  | Markdown. |
+| `doing` | boolean or null | no |  | On a staged board, the Doing stage. true starts the card (reopening it if done); done: true moves it on to Done. |
+| `done` | boolean or null | no |  | Marks it complete, or not. |
+| `due_at` | string or null | no |  | 2026-10-30 for an all-day date, an RFC 3339 timestamp for a time, an empty string to clear. |
+| `label_ids` | array of integer or null | no |  | The full set of label ids; replaces the current labels. |
+| `list_id` | integer or null | no |  | The column to move it to, from get_board (board.lists). |
+| `position` | number or null | no |  | Sort position within the column; lower comes first. |
+| `price` | string or null | no |  | The price shown on the card, as text; an empty string clears it. |
+| `rank` | number or null | no |  | The stored rank value itself (the rank from get_card), for putting a card back exactly as it was; rank_place is the usual way. Needs edit rights on the board. |
+| `rank_place` | integer or null | no | at least 0 | Importance across the whole board: 1 is the most important, and other cards shift to make room. 0 takes the card out of the ranking. Needs edit rights on the board. |
+| `rev` | integer or null | no |  | The rev from get_card / get_board. Pass it when changing title or description: if someone edited the card since, the change is refused rather than written over theirs. |
+| `start_at` | string or null | no |  | 2026-10-30 for an all-day date, an RFC 3339 timestamp for a time, an empty string to clear. |
+| `title` | string or null | no |  |  |
+
+### update_checklist_item
+
+Tick an item off (done: true) or back on, change its text, or move it. Item ids are in the card's checklist. Returns the card. Needs edit rights on the card.
+
+|  |  |
+|---|---|
+| Route | `POST /api/boards/{board_id}/cards/{card_id}/checklist/{item_id}` |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `board` | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | integer | yes |  | A card's id, from get_board or find_cards. |
+| `done` | boolean or null | no |  | true ticks it off, false back on. |
+| `item_id` | integer | yes |  | A checklist item's id, from get_card. |
+| `position` | number or null | no |  | Its place in the checklist; lower comes first. |
+| `text` | string or null | no |  |  |
+
+### update_label
+
+Rename a label or change its colour; leave out what should not change. Needs edit rights on the whole board.
+
+|  |  |
+|---|---|
+| Route | `POST /api/boards/{board_id}/labels/{label_id}` |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `board` | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `color` | string or null | no |  | A palette name (blue, green, orange, red, purple, pink, teal, gray, yellow) or a #rrggbb colour. |
+| `label_id` | integer | yes |  | A label's id, from get_board (board.labels). |
+| `name` | string or null | no | at most 40 characters |  |
+
+### update_list
+
+Change a column's title, position or width, archive it (archived: true hides it; false brings it back), make it a shopping column, or on a staged board fix the stage it shows for everyone (stage_view; empty follows the navbar) or give it its own To do/Doing/Done buttons (stage_tabs: on, off, or empty to follow the board's setting). Leave out what should not change. Needs edit rights on the whole board.
+
+|  |  |
+|---|---|
+| Route | `POST /api/boards/{board_id}/lists/{list_id}` |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `archived` | boolean or null | no |  | true hides the column; false brings it back. |
+| `board` | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `list_id` | integer | yes |  | A column's id, from get_board (board.lists). |
+| `position` | number or null | no |  | Sort position among the columns; lower comes first. |
+| `shopping` | boolean or null | no |  | A shopping column: its cards carry products and prices. |
+| `stage_tabs` | string or null | no | one of ``, `on`, `off` | On a staged board, this column's own To do / Doing / Done buttons: on, off, or empty to follow the board's setting. |
+| `stage_view` | string or null | no | one of ``, `todo`, `doing`, `done` | On a staged board, the stage this column shows for everyone; empty follows the navbar. |
+| `title` | string or null | no | at most 120 characters |  |
+| `width` | integer or null | no |  | The column's width in pixels (200-800); 0 puts it back to the standard width. |
+
+### whoami
+
+The account this API key belongs to, the role it acts with (role -- never higher than the key's own scope), and the account's own role.
+
+|  |  |
+|---|---|
+| Route | `GET /api/me` |
+| Read only | yes |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+
+### HTTP only
+
+Routes an API key may call that have no tool, and why.
+
+| Route | Why |
+|---|---|
+| `GET /api/backup` | A file (a picture, a spreadsheet or a backup), which travels over HTTP rather than as a tool answer. |
+| `GET /api/boards/{board_id}/cards/{card_id}/image` | A file (a picture, a spreadsheet or a backup), which travels over HTTP rather than as a tool answer. |
+| `GET /api/boards/{board_id}/cards/{card_id}/product-image` | A file (a picture, a spreadsheet or a backup), which travels over HTTP rather than as a tool answer. |
+| `GET /api/boards/{board_id}/export` | A file (a picture, a spreadsheet or a backup), which travels over HTTP rather than as a tool answer. |
+| `GET /api/boards/{board_id}/lists/{list_id}/export` | A file (a picture, a spreadsheet or a backup), which travels over HTTP rather than as a tool answer. |
+| `GET /api/boards/{board_id}/stamp` | The board page's cheap change poll; get_board reads the board itself. |
+| `GET /api/mcp.json` | The MCP reference itself; tools/list gives the same list. |
+| `GET /api/openapi.json` | The API reference itself; GET /api/mcp.json is the MCP one. |
+| `POST /api/backup/board` | A backup file's contents, which the page sends in steps; deliberately not a tool. |
+| `POST /api/boards/{board_id}/cards/{card_id}/image` | A file (a picture, a spreadsheet or a backup), which travels over HTTP rather than as a tool answer. |
+| `POST /api/boards/{board_id}/lists/{list_id}/import` | A backup file's contents, which the page sends in steps; deliberately not a tool. |
+| `POST /api/logout` | Ends a browser session; a key has none to end. |
+| `POST /api/logs/events` | The browser's own activity reports (track.js), not an action. |
+| `POST /mcp` | The MCP endpoint itself. |

@@ -2,7 +2,6 @@ package routes
 
 import (
 	errors "errors"
-	strconv "strconv"
 	strings "strings"
 	time "time"
 
@@ -14,63 +13,61 @@ import (
 	security "todoboard/server/security"
 )
 
-type createUserRequest struct {
-	DisplayName string `json:"display_name"`
-	Role        string `json:"role"`
-	CSRFToken   string `json:"csrf_token"`
-	models.LoginLinkRequest
+// userIDPath is the account a route under /api/admin/users/{user_id} acts on.
+type userIDPath struct {
+	UserID uint64 `json:"user_id" path:"user_id" jsonschema:"minimum=1" jsonschema_description:"The account's id, from GET /api/admin/users (admin_list_users over MCP)." error:"invalid user id"`
 }
 
-// loginLinkBody is the body of every route that mints a login link for an
-// existing account: how many times it may be used, and for how long. Both
-// optional (see models.LoginLinkRequest).
-type loginLinkBody struct {
-	CSRFToken string `json:"csrf_token"`
-	models.LoginLinkRequest
+// userRow is an account as the admin screen lists it. ListUsers marks the
+// owner on its row, so the UI can tell which delete, disable, and revoke
+// buttons the server would refuse -- see models/owner.go.
+type userRow struct {
+	ID              uint64                `json:"id"`
+	DisplayName     string                `json:"display_name"`
+	Username        string                `json:"username" jsonschema_description:"Empty until a password is set."`
+	Role            string                `json:"role" jsonschema:"enum=admin,enum=user"`
+	CreatedAt       time.Time             `json:"created_at"`
+	Disabled        bool                  `json:"disabled"`
+	Owner           bool                  `json:"owner"`
+	HasPassword     bool                  `json:"has_password"`
+	PasswordBlocked bool                  `json:"password_blocked"`
+	TwoFactor       bool                  `json:"two_factor"`
+	LoginLink       *models.LoginLinkInfo `json:"login_link" jsonschema_description:"The account's live login link, or null."`
 }
 
-type csrfOnlyRequest struct {
-	CSRFToken string `json:"csrf_token"`
+func ( userRow ) APIName() ( name string ) { name = "User"; return }
+
+type listUsersRequest struct {
+	Page
+	Q    string `json:"q,omitempty" query:"q" jsonschema_description:"Keep accounts whose name or username contains this, in any case."`
+	Sort string `json:"sort,omitempty" query:"sort" jsonschema:"enum=display_name,enum=role,enum=disabled,enum=created_at" jsonschema_description:"Field to sort the whole list by. Rows without it go last."`
+	Direction
 }
 
-type renameUserRequest struct {
-	DisplayName string  `json:"display_name"`
-	Expect      *string `json:"expect"`
-	CSRFToken   string  `json:"csrf_token"`
+type listUsersReply struct {
+	Users []userRow `json:"users"`
+	Paged
 }
 
-type setRoleRequest struct {
-	Role      string `json:"role"`
-	CSRFToken string `json:"csrf_token"`
-}
-
-type setDisabledRequest struct {
-	Disabled  bool   `json:"disabled"`
-	CSRFToken string `json:"csrf_token"`
-}
-
-// ListUsers marks the owner on its row, so the UI can tell which delete,
-// disable, and revoke buttons the server would refuse -- see models/owner.go.
+// listUsers is every account, a page at a time. ?q= keeps the accounts whose
+// name or username contains it, in any case. Here and not in the browser,
+// which only ever holds one page of them.
 //
-// ?q= keeps the accounts whose name or username contains it, in any case. Here
-// and not in the browser, which only ever holds one page of them.
-func ( handlers *Handlers ) ListUsers( c fiber.Ctx ) ( err error ) {
-	rows , list_err := handlers.userRowsMatching( c.Query( "q" ) )
-	if list_err != nil {
-		err = serverError( c , list_err )
-		return
-	}
-	err = sendSorted( c , "users" , rows , "display_name" , "role" , "disabled" , "created_at" )
+// @route("GET /api/admin/users", summary="List users",
+//     tag="Admin", role=ADMIN,
+//     description="Accounts, a page at a time, including disabled ones, with each one's role and which is "
+//         "the owner. next is the offset of the following page, or null on the last one.",
+//     mcp="admin_list_users", read_only=True,
+// )
+func ( handlers *Handlers ) listUsers( c fiber.Ctx , in *listUsersRequest ) ( reply *listUsersReply , err error ) {
+	rows , err := handlers.userRowsMatching( in.Q )
+	if err != nil { return }
+	reply = &listUsersReply{}
+	reply.Users , reply.Paged = sortedPage( rows , in.Sort , in.Direction , in.Page )
 	return
 }
 
-// userRows is shared with the MCP admin_list_users tool.
-func ( handlers *Handlers ) userRows() ( rows []fiber.Map , err error ) {
-	rows , err = handlers.userRowsMatching( "" )
-	return
-}
-
-func ( handlers *Handlers ) userRowsMatching( query string ) ( rows []fiber.Map , err error ) {
+func ( handlers *Handlers ) userRowsMatching( query string ) ( rows []userRow , err error ) {
 	users , err := models.ListUsers( handlers.Store )
 	if err != nil { return }
 	owner_id , err := models.OwnerID( handlers.Store )
@@ -78,103 +75,122 @@ func ( handlers *Handlers ) userRowsMatching( query string ) ( rows []fiber.Map 
 	links , err := models.LiveLoginLinks( handlers.Store )
 	if err != nil { return }
 	query = strings.ToLower( strings.TrimSpace( query ) )
-	rows = []fiber.Map{}
+	rows = []userRow{}
 	for _ , user := range users {
 		matched := strings.Contains( strings.ToLower( user.DisplayName ) , query )
 		matched = matched || strings.Contains( strings.ToLower( user.Username ) , query )
 		if matched == false { continue }
 		var login_link *models.LoginLinkInfo
 		if found , has := links[ user.ID ]; has { login_link = &found }
-		rows = append( rows , fiber.Map{
-			"id":           user.ID,
-			"display_name": user.DisplayName,
-			"username":     user.Username,
-			"role":         user.Role,
-			"created_at":   user.CreatedAt,
-			"disabled":     user.Disabled(),
-			"owner":        user.ID == owner_id,
-			"has_password":     user.HasPassword(),
-			"password_blocked": user.PasswordBlocked,
-			"two_factor":       user.TwoFactorOn(),
-			"login_link":       login_link,
+		rows = append( rows , userRow{
+			ID:              user.ID,
+			DisplayName:     user.DisplayName,
+			Username:        user.Username,
+			Role:            user.Role,
+			CreatedAt:       user.CreatedAt,
+			Disabled:        user.Disabled(),
+			Owner:           user.ID == owner_id,
+			HasPassword:     user.HasPassword(),
+			PasswordBlocked: user.PasswordBlocked,
+			TwoFactor:       user.TwoFactorOn(),
+			LoginLink:       login_link,
 		} )
 	}
 	return
 }
 
-// loginLinkOptions fills a request's gaps from config and checks it, writing
-// the 400 itself when it is out of range.
-func ( handlers *Handlers ) loginLinkOptions( c fiber.Ctx , request models.LoginLinkRequest ) ( options models.LoginLinkOptions , ok bool ) {
+// loginLinkOptions fills a request's gaps from config and checks it, and notes
+// the API key asking, if one is, so revoking that key voids the link.
+func ( handlers *Handlers ) loginLinkOptions( c fiber.Ctx , request models.LoginLinkRequest ) ( options models.LoginLinkOptions , refused *refusal ) {
 	options , resolve_err := models.ResolveLoginLink( request , handlers.cfg().LoginTokenTTL , handlers.cfg().MultiUseLoginTokenTTL )
 	if resolve_err != nil {
-		badRequest( c , resolve_err.Error() )
+		refused = refuse( fiber.StatusBadRequest , resolve_err.Error() )
 		return
 	}
-	ok = true
+	options.MintedByKey = security.ActorFrom( c ).KeyID()
 	return
 }
 
-// loginLinkResponse is what every route that mints a link answers. The link
-// is returned as a path, not a full URL (see CreateUser).
-func loginLinkResponse( credential string , info models.LoginLinkInfo ) ( payload fiber.Map ) {
+// loginLinkReply is what every route that mints a link answers. The link is
+// returned as a path, not a full URL (see CreateUser); the MCP tools add
+// login_url from the address the agent reached /mcp at.
+type loginLinkReply struct {
+	LoginPath        string     `json:"login_path" jsonschema_description:"Path of the login link. A credential: treat it like a password."`
+	ExpiresInSeconds int        `json:"expires_in_seconds" jsonschema_description:"0 when it never expires."`
+	ExpiresAt        *time.Time `json:"expires_at" jsonschema_description:"null when it never expires."`
+	MaxUses          int        `json:"max_uses" jsonschema_description:"0 when unlimited."`
+	Unlimited        bool       `json:"unlimited"`
+}
+
+func newLoginLinkReply( credential string , info models.LoginLinkInfo ) ( reply loginLinkReply ) {
 	expires_in := 0
 	if info.ExpiresAt != nil { expires_in = int( time.Until( *info.ExpiresAt ).Seconds() + 0.5 ) }
-	payload = fiber.Map{
-		"login_path":         "/login/" + credential,
-		"expires_in_seconds": expires_in,
-		"expires_at":         info.ExpiresAt,
-		"max_uses":           info.MaxUses,
-		"unlimited":          info.Unlimited,
+	reply = loginLinkReply{
+		LoginPath:        "/login/" + credential,
+		ExpiresInSeconds: expires_in,
+		ExpiresAt:        info.ExpiresAt,
+		MaxUses:          info.MaxUses,
+		Unlimited:        info.Unlimited,
 	}
 	return
 }
 
-// CreateUser is the signup process: an admin names someone, and gets back a
+// loginLinkRequest is the body of every route that mints a login link for
+// an existing account: how many times it may be used, and for how long. Both
+// optional (see models.LoginLinkRequest).
+type loginLinkRequest struct {
+	userIDPath
+	models.LoginLinkRequest
+}
+
+type createUserRequest struct {
+	DisplayName string `json:"display_name" jsonschema:"minLength=1,maxLength=80" error:"display name must be 1-80 characters"`
+	Role        string `json:"role" jsonschema:"enum=admin,enum=user" error:"role must be admin or user"`
+	models.LoginLinkRequest
+}
+
+type createUserReply struct {
+	UserID uint64 `json:"user_id"`
+	loginLinkReply
+}
+
+// createUser is the signup process: an admin names someone, and gets back a
 // login link to hand them -- once by default, or reusable (see
 // models.LoginLinkRequest). The link is returned as a path, not a full URL
 // -- the browser knows the origin it is talking to, whereas the server behind
 // a reverse proxy often does not, and a login link with the wrong host is
 // worse than useless.
-func ( handlers *Handlers ) CreateUser( c fiber.Ctx ) ( err error ) {
-	var body createUserRequest
-	if c.Bind().JSON( &body ) != nil {
-		err = badRequest( c , "malformed request body" )
+//
+// @route("POST /api/admin/users", summary="Create an account",
+//     tag="Admin", role=ADMIN, status=201,
+//     description="Make a new account and its first login link, to hand to the person. role is admin or "
+//         "user. Answers with user_id and the link.",
+//     mcp_note="Answers with login_url (open it to sign in; it works once unless max_uses says otherwise), "
+//         "expires_at and max_uses. Any older link the account could still use stops working; its "
+//         "signed-in devices stay signed in. Revoking or deleting this API key voids the link while it is "
+//         "unused, and signs out every device it signed in.",
+//     mcp="admin_create_user", call=withLoginLinkURL,
+// )
+func ( handlers *Handlers ) createUser( c fiber.Ctx , in *createUserRequest ) ( reply *createUserReply , err error ) {
+	if models.ValidDisplayName( in.DisplayName ) == false {
+		err = refuse( fiber.StatusBadRequest , "display name must be 1-80 characters" )
 		return
 	}
-	if handlers.Guard.CheckCSRF( c , body.CSRFToken ) == false {
-		err = forbidden( c , "invalid csrf token" )
+	options , refused := handlers.loginLinkOptions( c , in.LoginLinkRequest )
+	if refused != nil {
+		err = refused
 		return
 	}
-	if models.ValidDisplayName( body.DisplayName ) == false {
-		err = badRequest( c , "display name must be 1-80 characters" )
-		return
-	}
-	if models.ValidRole( body.Role ) == false {
-		err = badRequest( c , "role must be admin or user" )
-		return
-	}
-	options , ok := handlers.loginLinkOptions( c , body.LoginLinkRequest )
-	if ok == false { return }
-
-	user , create_err := models.CreateUser( handlers.Store , body.DisplayName , body.Role )
-	if create_err != nil {
-		err = serverError( c , create_err )
-		return
-	}
-	credential , info , token_err := models.IssueLoginLink( handlers.Store , user.ID , options )
-	if token_err != nil {
-		err = serverError( c , token_err )
-		return
-	}
-
+	user , err := models.CreateUser( handlers.Store , in.DisplayName , in.Role )
+	if err != nil { return }
+	credential , info , err := models.IssueLoginLink( handlers.Store , user.ID , options )
+	if err != nil { return }
 	handlers.audit( c , logs.KindAdmin , "user created" , fiber.Map{ "user_id": user.ID , "name": user.DisplayName , "role": user.Role } )
-	payload := loginLinkResponse( credential , info )
-	payload[ "user_id" ] = user.ID
-	err = c.Status( fiber.StatusCreated ).JSON( payload )
+	reply = &createUserReply{ UserID: user.ID , loginLinkReply: newLoginLinkReply( credential , info ) }
 	return
 }
 
-// ReissueLogin covers the only real failure mode of this auth model: someone
+// reissueLogin covers the only real failure mode of this auth model: someone
 // lost their cookie or their device, and there is no password reset to fall
 // back on. An admin mints a fresh link instead. Any link the account could
 // still sign in with stops working (see models.IssueLoginLink).
@@ -182,303 +198,297 @@ func ( handlers *Handlers ) CreateUser( c fiber.Ctx ) ( err error ) {
 // It is not a reset: sessions the account already has stay signed in. When
 // the worry is that someone else holds the account's credentials, use
 // RevokeAccess first, then reissue.
-func ( handlers *Handlers ) ReissueLogin( c fiber.Ctx ) ( err error ) {
-	var body loginLinkBody
-	if c.Bind().JSON( &body ) != nil {
-		err = badRequest( c , "malformed request body" )
+//
+// @route("POST /api/admin/users/{user_id}/reissue-login", summary="A new login link for an account",
+//     tag="Admin", role=ADMIN, errors=(404,),
+//     description="For someone who lost their device or their link: a fresh login link for their account.",
+//     mcp_note="Answers with login_url (open it to sign in; it works once unless max_uses says otherwise), "
+//         "expires_at and max_uses. Any older link the account could still use stops working; its "
+//         "signed-in devices stay signed in. Revoking or deleting this API key voids the link while it is "
+//         "unused, and signs out every device it signed in.",
+//     mcp="admin_reissue_login", call=withLoginLinkURL,
+// )
+func ( handlers *Handlers ) reissueLogin( c fiber.Ctx , in *loginLinkRequest ) ( reply *loginLinkReply , err error ) {
+	if _ , get_err := models.GetUser( handlers.Store , in.UserID ); get_err != nil {
+		err = refuse( fiber.StatusNotFound , "no such user" )
 		return
 	}
-	if handlers.Guard.CheckCSRF( c , body.CSRFToken ) == false {
-		err = forbidden( c , "invalid csrf token" )
+	options , refused := handlers.loginLinkOptions( c , in.LoginLinkRequest )
+	if refused != nil {
+		err = refused
 		return
 	}
-
-	user_id , parse_err := strconv.ParseUint( c.Params( "user_id" ) , 10 , 64 )
-	if parse_err != nil {
-		err = badRequest( c , "invalid user id" )
+	options.ActorID = security.UserFrom( c ).ID
+	credential , info , token_err := models.IssueLoginLink( handlers.Store , in.UserID , options )
+	if refused = actOnRefusal( token_err , "reissue a login link for" ); refused != nil {
+		err = refused
 		return
 	}
-	if _ , get_err := models.GetUser( handlers.Store , user_id ); get_err != nil {
-		err = notFound( c , "no such user" )
-		return
-	}
-	options , ok := handlers.loginLinkOptions( c , body.LoginLinkRequest )
-	if ok == false { return }
-
-	credential , info , token_err := models.IssueLoginLink( handlers.Store , user_id , options )
-	if token_err != nil {
-		err = serverError( c , token_err )
-		return
-	}
-	handlers.audit( c , logs.KindAdmin , "login link reissued" , fiber.Map{ "user_id": user_id , "max_uses": info.MaxUses , "expires_at": info.ExpiresAt } )
-	err = c.JSON( loginLinkResponse( credential , info ) )
+	handlers.audit( c , logs.KindAdmin , "login link reissued" , fiber.Map{ "user_id": in.UserID , "max_uses": info.MaxUses , "expires_at": info.ExpiresAt } )
+	made := newLoginLinkReply( credential , info )
+	reply = &made
 	return
 }
 
-// CancelLoginLink stops an account's live login link working, without
+type cancelLoginLinkReply struct {
+	Ok      bool `json:"ok"`
+	Removed int  `json:"removed" jsonschema_description:"Links removed: 0 or 1."`
+}
+
+// cancelLoginLink stops an account's live login link working, without
 // making a new one: a reusable link that went somewhere it should not have.
 // Sessions it already made stay signed in; RevokeAccess ends those too.
 //
 // An API key may do this, like RevokeAccess: it only takes a way in away.
-func ( handlers *Handlers ) CancelLoginLink( c fiber.Ctx ) ( err error ) {
-	var body csrfOnlyRequest
-	if c.Bind().JSON( &body ) != nil {
-		err = badRequest( c , "malformed request body" )
+//
+// @route("POST /api/admin/users/{user_id}/cancel-login-link", summary="Stop an account's login link working",
+//     tag="Admin", role=ADMIN, errors=(404,),
+//     description="Void an account's live login link without making a new one: a link that went somewhere "
+//         "it should not have.",
+//     mcp_note="Devices it already signed in stay signed in; admin_revoke_access ends those too. Answers "
+//         "with removed: 0 or 1.",
+//     mcp="admin_cancel_login_link", destructive=True,
+// )
+func ( handlers *Handlers ) cancelLoginLink( c fiber.Ctx , in *userIDPath ) ( reply *cancelLoginLinkReply , err error ) {
+	if _ , get_err := models.GetUser( handlers.Store , in.UserID ); get_err != nil {
+		err = refuse( fiber.StatusNotFound , "no such user" )
 		return
 	}
-	if handlers.Guard.CheckCSRF( c , body.CSRFToken ) == false {
-		err = forbidden( c , "invalid csrf token" )
+	removed , cancel_err := models.CancelLoginLink( handlers.Store , in.UserID , security.UserFrom( c ).ID )
+	if refused := actOnRefusal( cancel_err , "cancel the login link of" ); refused != nil {
+		err = refused
 		return
 	}
-	user_id , parse_err := strconv.ParseUint( c.Params( "user_id" ) , 10 , 64 )
-	if parse_err != nil {
-		err = badRequest( c , "invalid user id" )
-		return
-	}
-	if _ , get_err := models.GetUser( handlers.Store , user_id ); get_err != nil {
-		err = notFound( c , "no such user" )
-		return
-	}
-	removed , cancel_err := models.CancelLoginLink( handlers.Store , user_id )
-	if cancel_err != nil {
-		err = serverError( c , cancel_err )
-		return
-	}
-	handlers.audit( c , logs.KindAdmin , "login link cancelled" , fiber.Map{ "user_id": user_id , "removed": removed } )
-	err = c.JSON( fiber.Map{ "ok": true , "removed": removed } )
+	handlers.audit( c , logs.KindAdmin , "login link cancelled" , fiber.Map{ "user_id": in.UserID , "removed": removed } )
+	reply = &cancelLoginLinkReply{ Ok: true , Removed: removed }
 	return
 }
 
-// RenameUser is an admin renaming someone else. Who may rename whom lives in
-// models.RenameUserAs. It needs a browser session, like making an account: a
-// name is how people tell who they are dealing with.
-func ( handlers *Handlers ) RenameUser( c fiber.Ctx ) ( err error ) {
-	var body renameUserRequest
-	if c.Bind().JSON( &body ) != nil {
-		err = badRequest( c , "malformed request body" )
+type renameUserRequest struct {
+	userIDPath
+	DisplayName string  `json:"display_name" jsonschema:"minLength=1,maxLength=80" jsonschema_description:"1-80 characters." error:"display name must be 1-80 characters"`
+	Expect      *string `json:"expect,omitempty" jsonschema_description:"The name you think they have. Answers 409 if it is another."`
+}
+
+type renameUserReply struct {
+	Ok          bool   `json:"ok"`
+	DisplayName string `json:"display_name"`
+}
+
+// renameUser is an admin renaming someone else. Who may rename whom lives in
+// models.RenameUserAs.
+//
+// @route("POST /api/admin/users/{user_id}/rename", summary="Rename someone",
+//     tag="Admin", role=ADMIN, errors=(404, 409),
+//     description="Change another account's display name (1-80 characters). Only the owner renames an "
+//         "admin. expect, when given, is the name you think it has now; if it changed meanwhile the rename "
+//         "is refused with the current name.",
+//     mcp="admin_rename_user",
+// )
+func ( handlers *Handlers ) renameUser( c fiber.Ctx , in *renameUserRequest ) ( reply *renameUserReply , err error ) {
+	if models.ValidDisplayName( in.DisplayName ) == false {
+		err = refuse( fiber.StatusBadRequest , "display name must be 1-80 characters" )
 		return
 	}
-	if handlers.Guard.CheckCSRF( c , body.CSRFToken ) == false {
-		err = forbidden( c , "invalid csrf token" )
-		return
-	}
-	user_id , parse_err := strconv.ParseUint( c.Params( "user_id" ) , 10 , 64 )
-	if parse_err != nil {
-		err = badRequest( c , "invalid user id" )
-		return
-	}
-	if models.ValidDisplayName( body.DisplayName ) == false {
-		err = badRequest( c , "display name must be 1-80 characters" )
-		return
-	}
-	rename_err := models.RenameUserAs( handlers.Store , user_id , security.UserFrom( c ).ID , body.DisplayName , body.Expect )
+	rename_err := models.RenameUserAs( handlers.Store , in.UserID , security.UserFrom( c ).ID , in.DisplayName , in.Expect )
 	var stale *models.RenameConflictError
 	switch {
 	case errors.As( rename_err , &stale ):
-		err = conflict( c , stale.Error() , fiber.Map{ "display_name": stale.Current } )
+		err = refuse( fiber.StatusConflict , stale.Error() , fiber.Map{ "display_name": stale.Current } )
 		return
 	case errors.Is( rename_err , db.ErrNotFound ):
-		err = notFound( c , "no such user" )
+		err = refuse( fiber.StatusNotFound , "no such user" )
 		return
 	case errors.Is( rename_err , models.ErrOwnerRequired ):
-		err = forbidden( c , "only the owner can rename an admin" )
+		err = refuse( fiber.StatusForbidden , "only the owner can rename an admin" )
 		return
 	case rename_err != nil:
-		err = serverError( c , rename_err )
+		err = rename_err
 		return
 	}
-	name := strings.TrimSpace( body.DisplayName )
-	handlers.audit( c , logs.KindAdmin , "user renamed" , fiber.Map{ "user_id": user_id , "name": name } )
-	err = c.JSON( fiber.Map{ "ok": true , "display_name": name } )
+	name := strings.TrimSpace( in.DisplayName )
+	handlers.audit( c , logs.KindAdmin , "user renamed" , fiber.Map{ "user_id": in.UserID , "name": name } )
+	reply = &renameUserReply{ Ok: true , DisplayName: name }
 	return
 }
 
-// SetUserRole makes an account an admin or an ordinary user. Who may do what
-// lives in models.SetUserRole. It needs a browser session, like making an
-// account, so a leaked admin key cannot hand out admin rights.
-func ( handlers *Handlers ) SetUserRole( c fiber.Ctx ) ( err error ) {
-	var body setRoleRequest
-	if c.Bind().JSON( &body ) != nil {
-		err = badRequest( c , "malformed request body" )
-		return
-	}
-	if handlers.Guard.CheckCSRF( c , body.CSRFToken ) == false {
-		err = forbidden( c , "invalid csrf token" )
-		return
-	}
-	user_id , parse_err := strconv.ParseUint( c.Params( "user_id" ) , 10 , 64 )
-	if parse_err != nil {
-		err = badRequest( c , "invalid user id" )
-		return
-	}
-	if models.ValidRole( body.Role ) == false {
-		err = badRequest( c , "role must be admin or user" )
-		return
-	}
-	changed , role_err := models.SetUserRole( handlers.Store , user_id , security.UserFrom( c ).ID , body.Role )
+type setUserRoleRequest struct {
+	userIDPath
+	Role string `json:"role" jsonschema:"enum=admin,enum=user" error:"role must be admin or user"`
+}
+
+type setUserRoleReply struct {
+	Ok   bool   `json:"ok"`
+	Role string `json:"role"`
+}
+
+// setUserRole makes an account an admin or an ordinary user. Who may do what
+// lives in models.SetUserRole.
+//
+// @route("POST /api/admin/users/{user_id}/role", summary="Change an account's role",
+//     tag="Admin", role=ADMIN, errors=(404,),
+//     description="Make an account an admin or an ordinary user. Only the owner takes an admin's rights "
+//         "away; the owner is always an admin, and nobody changes their own role. Becoming an admin ends "
+//         "the account's sessions and live login link.",
+//     mcp="admin_set_user_role",
+// )
+func ( handlers *Handlers ) setUserRole( c fiber.Ctx , in *setUserRoleRequest ) ( reply *setUserRoleReply , err error ) {
+	changed , role_err := models.SetUserRole( handlers.Store , in.UserID , security.UserFrom( c ).ID , in.Role )
 	switch {
 	case errors.Is( role_err , db.ErrNotFound ):
-		err = notFound( c , "no such user" )
+		err = refuse( fiber.StatusNotFound , "no such user" )
 		return
 	case errors.Is( role_err , models.ErrRoleSelf ):
-		err = badRequest( c , role_err.Error() )
+		err = refuse( fiber.StatusBadRequest , role_err.Error() )
 		return
 	case errors.Is( role_err , models.ErrOwnerProtected ):
-		err = forbidden( c , "the owner is always an admin" )
+		err = refuse( fiber.StatusForbidden , "the owner is always an admin" )
 		return
 	case errors.Is( role_err , models.ErrOwnerRequired ):
-		err = forbidden( c , "only the owner can take away an admin's rights" )
+		err = refuse( fiber.StatusForbidden , "only the owner can take away an admin's rights" )
 		return
 	case role_err != nil:
-		err = serverError( c , role_err )
+		err = role_err
 		return
 	}
 	if changed {
-		handlers.audit( c , logs.KindAdmin , "user role changed" , fiber.Map{ "user_id": user_id , "role": body.Role } )
+		handlers.audit( c , logs.KindAdmin , "user role changed" , fiber.Map{ "user_id": in.UserID , "role": in.Role } )
 	}
-	err = c.JSON( fiber.Map{ "ok": true , "role": body.Role } )
+	reply = &setUserRoleReply{ Ok: true , Role: in.Role }
 	return
 }
 
-func ( handlers *Handlers ) SetUserDisabled( c fiber.Ctx ) ( err error ) {
-	var body setDisabledRequest
-	if c.Bind().JSON( &body ) != nil {
-		err = badRequest( c , "malformed request body" )
-		return
-	}
-	if handlers.Guard.CheckCSRF( c , body.CSRFToken ) == false {
-		err = forbidden( c , "invalid csrf token" )
-		return
-	}
+type setUserDisabledRequest struct {
+	userIDPath
+	Disabled bool `json:"disabled" error:"disabled must be true or false"`
+}
 
-	user_id , parse_err := strconv.ParseUint( c.Params( "user_id" ) , 10 , 64 )
-	if parse_err != nil {
-		err = badRequest( c , "invalid user id" )
+// okReply is the answer of a route that has nothing to say but yes.
+type okReply struct {
+	Ok bool `json:"ok"`
+}
+
+// setUserDisabled switches an account off, or back on.
+//
+// @route("POST /api/admin/users/{user_id}/disabled", summary="Disable or enable a user",
+//     tag="Admin", role=ADMIN, errors=(404,),
+//     description="Switch an account off (disabled: true) or back on (false). Disabling signs it out "
+//         "everywhere and voids its live login link; its API keys stop working while it is off. "
+//         "Reversible. The owner and your own account cannot be disabled.",
+//     mcp="admin_set_user_disabled",
+// )
+func ( handlers *Handlers ) setUserDisabled( c fiber.Ctx , in *setUserDisabledRequest ) ( reply *okReply , err error ) {
+	if refused := handlers.applyUserDisabled( security.UserFrom( c ).ID , in.UserID , in.Disabled ); refused != nil {
+		err = refused
 		return
 	}
-	if refused := handlers.setUserDisabled( security.UserFrom( c ).ID , user_id , body.Disabled ); refused != nil {
-		err = refused.send( c )
-		return
-	}
-	handlers.audit( c , logs.KindAdmin , "user disabled set" , fiber.Map{ "user_id": user_id , "disabled": body.Disabled } )
-	err = c.JSON( fiber.Map{ "ok": true } )
+	handlers.audit( c , logs.KindAdmin , "user disabled set" , fiber.Map{ "user_id": in.UserID , "disabled": in.Disabled } )
+	reply = &okReply{ Ok: true }
 	return
 }
 
-// RevokeAccess is the response to "this account may be compromised": every
+type revokeAccessReply struct {
+	Ok      bool           `json:"ok"`
+	Revoked models.Revoked `json:"revoked"`
+}
+
+// revokeAccess is the response to "this account may be compromised": every
 // session, live login link, and live API key it holds stops working at
 // once. The account itself stays enabled; reissue a login link to let its
 // owner back in. See models.RevokeAllCredentials for why this is separate
 // from both disabling and reissuing.
-func ( handlers *Handlers ) RevokeAccess( c fiber.Ctx ) ( err error ) {
-	var body csrfOnlyRequest
-	if c.Bind().JSON( &body ) != nil {
-		err = badRequest( c , "malformed request body" )
-		return
-	}
-	if handlers.Guard.CheckCSRF( c , body.CSRFToken ) == false {
-		err = forbidden( c , "invalid csrf token" )
-		return
-	}
-
-	user_id , parse_err := strconv.ParseUint( c.Params( "user_id" ) , 10 , 64 )
-	if parse_err != nil {
-		err = badRequest( c , "invalid user id" )
-		return
-	}
-	revoked , refused := handlers.revokeAccess( security.UserFrom( c ).ID , user_id )
+//
+// @route("POST /api/admin/users/{user_id}/revoke-access", summary="Revoke a user's access",
+//     tag="Admin", role=ADMIN, errors=(404,),
+//     description="For an account that may be compromised: ends every session and voids its live login "
+//         "link and every API key it holds, at once.",
+//     mcp_note="The account stays enabled; admin_reissue_login lets its owner back in. The owner and your "
+//         "own account cannot be revoked.",
+//     mcp="admin_revoke_access", destructive=True,
+// )
+func ( handlers *Handlers ) revokeAccess( c fiber.Ctx , in *userIDPath ) ( reply *revokeAccessReply , err error ) {
+	revoked , refused := handlers.revokeCredentials( security.UserFrom( c ).ID , in.UserID )
 	if refused != nil {
-		err = refused.send( c )
+		err = refused
 		return
 	}
-	handlers.audit( c , logs.KindAdmin , "access revoked" , fiber.Map{ "user_id": user_id } )
-	err = c.JSON( fiber.Map{ "ok": true , "revoked": revoked } )
+	handlers.audit( c , logs.KindAdmin , "access revoked" , fiber.Map{ "user_id": in.UserID } )
+	reply = &revokeAccessReply{ Ok: true , Revoked: revoked }
 	return
 }
 
-// ResetTwoFactor is for someone who lost both the phone and the recovery codes.
-// Who may reset whom lives in models.ResetTwoFactor; it needs a browser
-// session, because it removes what stands between a login link and the
-// account.
-func ( handlers *Handlers ) ResetTwoFactor( c fiber.Ctx ) ( err error ) {
-	var body csrfOnlyRequest
-	if c.Bind().JSON( &body ) != nil {
-		err = badRequest( c , "malformed request body" )
-		return
-	}
-	if handlers.Guard.CheckCSRF( c , body.CSRFToken ) == false {
-		err = forbidden( c , "invalid csrf token" )
-		return
-	}
-	user_id , parse_err := strconv.ParseUint( c.Params( "user_id" ) , 10 , 64 )
-	if parse_err != nil {
-		err = badRequest( c , "invalid user id" )
-		return
-	}
-	reset_err := models.ResetTwoFactor( handlers.Store , user_id , security.UserFrom( c ).ID )
+// resetTwoFactor is for someone who lost both the phone and the recovery codes.
+// Who may reset whom lives in models.ResetTwoFactor.
+//
+// @route("POST /api/admin/users/{user_id}/reset-two-factor", summary="Turn off an account's two-factor",
+//     tag="Admin", role=ADMIN, feature="two_factor",
+//     description="For someone who lost both their phone and their recovery codes: switches their "
+//         "two-factor sign-in off so a login link lets them in again. Only the owner resets an admin's; "
+//         "the owner's is reset from a shell.",
+//     mcp="admin_reset_two_factor", destructive=True, enabled=handlers.twoFactorOn,
+// )
+func ( handlers *Handlers ) resetTwoFactor( c fiber.Ctx , in *userIDPath ) ( reply *okReply , err error ) {
+	reset_err := models.ResetTwoFactor( handlers.Store , in.UserID , security.UserFrom( c ).ID )
 	switch {
 	case errors.Is( reset_err , db.ErrNotFound ):
-		err = notFound( c , "no such user" )
+		err = refuse( fiber.StatusNotFound , "no such user" )
 		return
 	case errors.Is( reset_err , models.ErrResetSelf ):
-		err = badRequest( c , "you cannot reset your own two-factor sign-in" )
+		err = refuse( fiber.StatusBadRequest , "you cannot reset your own two-factor sign-in" )
 		return
 	case errors.Is( reset_err , models.ErrOwnerProtected ):
-		err = forbidden( c , "the owner's two-factor sign-in can only be reset from a shell" )
+		err = refuse( fiber.StatusForbidden , "the owner's two-factor sign-in can only be reset from a shell" )
 		return
 	case errors.Is( reset_err , models.ErrOwnerRequired ):
-		err = forbidden( c , "only the owner can reset an admin's two-factor sign-in" )
+		err = refuse( fiber.StatusForbidden , "only the owner can reset an admin's two-factor sign-in" )
 		return
 	case reset_err != nil:
-		err = serverError( c , reset_err )
+		err = reset_err
 		return
 	}
-	handlers.audit( c , logs.KindAdmin , "two-factor reset" , fiber.Map{ "user_id": user_id } )
-	err = c.JSON( fiber.Map{ "ok": true } )
+	handlers.audit( c , logs.KindAdmin , "two-factor reset" , fiber.Map{ "user_id": in.UserID } )
+	reply = &okReply{ Ok: true }
 	return
 }
 
-// DeleteUser removes an account for good, together with every session, login
+type deleteUserReply struct {
+	Ok      bool           `json:"ok"`
+	Removed models.Revoked `json:"removed"`
+}
+
+// deleteUser removes an account for good, together with every session, login
 // link, and API key it held. Disabling is the reversible version; this is for
 // an account that should not exist at all.
 //
 // Any admin may delete an ordinary user. Deleting an admin takes the owner,
 // and nobody deletes the owner or themselves -- those rules live in
-// models.DeleteUser, checked inside its transaction. The route also requires
-// a browser session (see routes.go): this cannot be undone, so a leaked
-// admin-scoped API key must not be able to do it.
-func ( handlers *Handlers ) DeleteUser( c fiber.Ctx ) ( err error ) {
-	var body csrfOnlyRequest
-	if c.Bind().JSON( &body ) != nil {
-		err = badRequest( c , "malformed request body" )
-		return
-	}
-	if handlers.Guard.CheckCSRF( c , body.CSRFToken ) == false {
-		err = forbidden( c , "invalid csrf token" )
-		return
-	}
-
-	user_id , parse_err := strconv.ParseUint( c.Params( "user_id" ) , 10 , 64 )
-	if parse_err != nil {
-		err = badRequest( c , "invalid user id" )
-		return
-	}
-
-	removed , delete_err := models.DeleteUser( handlers.Store , user_id , security.UserFrom( c ).ID )
+// models.DeleteUser, checked inside its transaction. An admin-scoped API key
+// may do it too, and the MCP tool is marked destructive so a client asks
+// first.
+//
+// @route("POST /api/admin/users/{user_id}/delete", summary="Delete an account",
+//     tag="Admin", role=ADMIN, errors=(404,),
+//     description="Remove an account for good, with its sessions, login link and API keys.",
+//     mcp_note="Cannot be undone: admin_set_user_disabled is the reversible version. Only the owner "
+//         "deletes an admin; nobody deletes the owner or themselves.",
+//     mcp="admin_delete_user", destructive=True,
+// )
+func ( handlers *Handlers ) deleteUser( c fiber.Ctx , in *userIDPath ) ( reply *deleteUserReply , err error ) {
+	removed , delete_err := models.DeleteUser( handlers.Store , in.UserID , security.UserFrom( c ).ID )
 	switch {
 	case delete_err == nil:
-		handlers.audit( c , logs.KindAdmin , "user deleted" , fiber.Map{ "user_id": user_id } )
-		err = c.JSON( fiber.Map{ "ok": true , "removed": removed } )
+		handlers.audit( c , logs.KindAdmin , "user deleted" , fiber.Map{ "user_id": in.UserID } )
+		reply = &deleteUserReply{ Ok: true , Removed: removed }
 	case errors.Is( delete_err , db.ErrNotFound ):
-		err = notFound( c , "no such user" )
+		err = refuse( fiber.StatusNotFound , "no such user" )
 	case errors.Is( delete_err , models.ErrDeleteSelf ):
-		err = badRequest( c , "you cannot delete your own account" )
+		err = refuse( fiber.StatusBadRequest , "you cannot delete your own account" )
 	case errors.Is( delete_err , models.ErrOwnerProtected ):
-		err = forbidden( c , "the owner account cannot be deleted" )
+		err = refuse( fiber.StatusForbidden , "the owner account cannot be deleted" )
 	case errors.Is( delete_err , models.ErrOwnerRequired ):
-		err = forbidden( c , "only the owner can delete an admin account" )
+		err = refuse( fiber.StatusForbidden , "only the owner can delete an admin account" )
 	default:
-		err = serverError( c , delete_err )
+		err = delete_err
 	}
 	return
 }
@@ -495,6 +505,24 @@ type refusal struct {
 	// extra is more for the caller beside the message, such as the current
 	// value a 409 was about.
 	extra fiber.Map
+}
+
+// Error, Send and Refused make a refusal what a declared route's handler
+// returns (see apidoc.Sender).
+func ( refused *refusal ) Error() ( text string ) {
+	text = refused.message
+	if refused.cause != nil { text = refused.cause.Error() }
+	return
+}
+
+func ( refused *refusal ) Send( c fiber.Ctx ) ( err error ) {
+	err = refused.send( c )
+	return
+}
+
+func ( refused *refusal ) Refused() ( status int , message string ) {
+	status , message = refused.status , refused.message
+	return
 }
 
 func ( refused *refusal ) send( c fiber.Ctx ) ( err error ) {
@@ -523,9 +551,28 @@ func internalFailure( cause error ) ( refused *refusal ) {
 	return
 }
 
-// setUserDisabled carries every rule for switching an account off or on, for
+// actOnRefusal turns an error from a model that checked models.mayActOnTx
+// into the answer every account route gives: 404 for a missing account, 403
+// with the same wording for the owner rule, 500 for anything else. what is
+// the action, worded to follow "cannot": "reissue a login link for".
+func actOnRefusal( err error , what string ) ( refused *refusal ) {
+	switch {
+	case err == nil:
+	case errors.Is( err , db.ErrNotFound ):
+		refused = refuse( fiber.StatusNotFound , "no such user" )
+	case errors.Is( err , models.ErrOwnerProtected ):
+		refused = refuse( fiber.StatusForbidden , "nobody can " + what + " the owner account" )
+	case errors.Is( err , models.ErrOwnerRequired ):
+		refused = refuse( fiber.StatusForbidden , "only the owner can " + what + " an admin account" )
+	default:
+		refused = internalFailure( err )
+	}
+	return
+}
+
+// applyUserDisabled carries every rule for switching an account off or on, for
 // SetUserDisabled and the MCP admin_set_user_disabled tool.
-func ( handlers *Handlers ) setUserDisabled( self_id uint64 , user_id uint64 , disabled bool ) ( refused *refusal ) {
+func ( handlers *Handlers ) applyUserDisabled( self_id uint64 , user_id uint64 , disabled bool ) ( refused *refusal ) {
 	if _ , get_err := models.GetUser( handlers.Store , user_id ); get_err != nil {
 		refused = &refusal{ status: fiber.StatusNotFound , message: "no such user" }
 		return
@@ -540,21 +587,22 @@ func ( handlers *Handlers ) setUserDisabled( self_id uint64 , user_id uint64 , d
 
 	// Disabling also deletes the account's sessions and live login links,
 	// in the same transaction -- see models.SetUserDisabled. The owner cannot
-	// be disabled; that check is in the model so every route gets it.
-	if disable_err := models.SetUserDisabled( handlers.Store , user_id , disabled ); disable_err != nil {
+	// be disabled, and only the owner switches another admin off or on; those
+	// checks are in the model so every route gets them.
+	if disable_err := models.SetUserDisabledAs( handlers.Store , user_id , self_id , disabled ); disable_err != nil {
 		if errors.Is( disable_err , models.ErrOwnerProtected ) {
 			refused = &refusal{ status: fiber.StatusForbidden , message: "the owner account cannot be disabled" }
 			return
 		}
-		refused = &refusal{ status: fiber.StatusInternalServerError , message: "internal error" , cause: disable_err }
+		refused = actOnRefusal( disable_err , "disable or enable" )
 		return
 	}
 	return
 }
 
-// revokeAccess carries every rule for cutting an account's credentials off,
+// revokeCredentials carries every rule for cutting an account's credentials off,
 // for RevokeAccess and the MCP admin_revoke_access tool.
-func ( handlers *Handlers ) revokeAccess( self_id uint64 , user_id uint64 ) ( revoked models.Revoked , refused *refusal ) {
+func ( handlers *Handlers ) revokeCredentials( self_id uint64 , user_id uint64 ) ( revoked models.Revoked , refused *refusal ) {
 	if _ , get_err := models.GetUser( handlers.Store , user_id ); get_err != nil {
 		refused = &refusal{ status: fiber.StatusNotFound , message: "no such user" }
 		return
@@ -566,15 +614,16 @@ func ( handlers *Handlers ) revokeAccess( self_id uint64 , user_id uint64 ) ( re
 		return
 	}
 
-	// The owner is refused here (allow_owner false). Only an operator with
-	// shell access may cut the owner off -- see models.RevokeAllCredentials.
-	revoked , revoke_err := models.RevokeAllCredentials( handlers.Store , user_id , false )
+	// The owner is refused here, and only the owner revokes another admin.
+	// Only an operator with shell access may cut the owner off -- see
+	// models.RevokeAllCredentials.
+	revoked , revoke_err := models.RevokeAllCredentialsAs( handlers.Store , user_id , self_id )
 	if revoke_err != nil {
 		if errors.Is( revoke_err , models.ErrOwnerProtected ) {
 			refused = &refusal{ status: fiber.StatusForbidden , message: "the owner account's access cannot be revoked" }
 			return
 		}
-		refused = &refusal{ status: fiber.StatusInternalServerError , message: "internal error" , cause: revoke_err }
+		refused = actOnRefusal( revoke_err , "revoke the access of" )
 	}
 	return
 }

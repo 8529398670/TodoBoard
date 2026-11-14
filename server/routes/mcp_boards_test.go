@@ -122,11 +122,6 @@ func TestMCPBoardAccess( t *testing.T ) {
 		t.Errorf( "admin key read a board it is not on" )
 	}
 
-	// No tool deletes anything.
-	_ , reply = fixture.post( t , fixture.admin_key , rpc( "tools/list" , `{}` ) )
-	for _ , name := range toolNames( reply ) {
-		if strings.Contains( name , "delete" ) { t.Errorf( "deleting tool offered: %s" , name ) }
-	}
 }
 
 func TestMCPCardStageAndRank( t *testing.T ) {
