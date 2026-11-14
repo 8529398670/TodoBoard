@@ -7,13 +7,13 @@ import (
 )
 
 // getAPIDoc hands out config/api.md, the API reference written as tables for
-// people, which scripts/api_docs.sh writes beside openapi.json. The /docs/api
+// people, which scripts/api_docs.sh writes beside api.json. The /docs/api
 // page renders it when app.repo is not set, so the API keys card always has a
-// readable reference to link to. Signed-in callers only, like openapi.json.
+// readable reference to link to. Signed-in callers only, like api.json.
 //
 // @route("GET /api/api.md", summary="The API reference as Markdown tables for people",
 //     tag="Monitoring", feature="openapi", errors=(404,), reply_type="text/markdown",
-//     mcp_http="The API reference itself, for people; GET /api/openapi.json is the same as JSON.",
+//     mcp_http="The API reference itself, for people; GET /api/api.json is the same as JSON.",
 // )
 func ( handlers *Handlers ) getAPIDoc( c fiber.Ctx , in *apidoc.None ) ( err error ) {
 	err = handlers.sendMarkdown( c , handlers.APIDoc )

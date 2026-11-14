@@ -202,7 +202,7 @@ mints a credential. Only keys are accepted -- a browser session gets 403.
 | `static/js/card_export.js`, `print.js` | exports |
 | `server/sheet/`, `server/routes/export.go` | the .xlsx / .csv board export |
 | `server/mcp/`, `server/routes/mcp_tools*.go` | the `/mcp` protocol and its tools |
-| `config/openapi.json`, `server/routes/openapi.go` | the API as OpenAPI 3.1, by hand, served at `GET /api/openapi.json` to anyone signed in; `go test ./server/routes` fails until a new route is in it |
+| `config/api.json`, `server/routes/openapi.go` | the API as OpenAPI 3.1, by hand, served at `GET /api/api.json` to anyone signed in; `go test ./server/routes` fails until a new route is in it |
 | `config/language.yaml` | every string the UI or a notification shows |
 | `config/defaults.yaml` | every setting, documented, with its default |
 

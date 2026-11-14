@@ -4,7 +4,11 @@
   "endpoint": "/mcp",
   "http_only": [
     {
-      "reason": "The API reference itself, for people; GET /api/openapi.json is the same as JSON.",
+      "reason": "The API reference itself; GET /api/mcp.json is the MCP one.",
+      "route": "GET /api/api.json"
+    },
+    {
+      "reason": "The API reference itself, for people; GET /api/api.json is the same as JSON.",
       "route": "GET /api/api.md"
     },
     {
@@ -38,10 +42,6 @@
     {
       "reason": "The MCP reference itself, for people; tools/list gives the same list.",
       "route": "GET /api/mcp.md"
-    },
-    {
-      "reason": "The API reference itself; GET /api/mcp.json is the MCP one.",
-      "route": "GET /api/openapi.json"
     },
     {
       "reason": "A backup file's contents, which the page sends in steps; deliberately not a tool.",
@@ -3888,7 +3888,7 @@
         "readOnlyHint": false,
         "title": "Replace your own themes"
       },
-      "description": "Replace your whole list of color themes (1 to 40) and pick the one you use. themes: null goes back to following the app's defaults. A theme is the Theme schema in the API reference (config/openapi.json): id, name, mode light|dark, accent, second, and optional colors as #rrggbb. whoami shows the current list.",
+      "description": "Replace your whole list of color themes (1 to 40) and pick the one you use. themes: null goes back to following the app's defaults. A theme is the Theme schema in the API reference (config/api.json): id, name, mode light|dark, accent, second, and optional colors as #rrggbb. whoami shows the current list.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {

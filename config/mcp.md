@@ -1664,7 +1664,7 @@ Switch to another theme from your list (or the defaults), by its id.
 
 ## set_themes
 
-Replace your whole list of color themes (1 to 40) and pick the one you use. themes: null goes back to following the app's defaults. A theme is the Theme schema in the API reference (config/openapi.json): id, name, mode light|dark, accent, second, and optional colors as #rrggbb. whoami shows the current list.
+Replace your whole list of color themes (1 to 40) and pick the one you use. themes: null goes back to following the app's defaults. A theme is the Theme schema in the API reference (config/api.json): id, name, mode light|dark, accent, second, and optional colors as #rrggbb. whoami shows the current list.
 
 |  |  |
 |---|---|
@@ -1949,7 +1949,8 @@ Routes an API key may call that have no tool, and why.
 
 | Route | Why |
 |---|---|
-| [`GET /api/api.md`](api.md#get-apiapimd) | The API reference itself, for people; GET /api/openapi.json is the same as JSON. |
+| [`GET /api/api.json`](api.md#get-apiapijson) | The API reference itself; GET /api/mcp.json is the MCP one. |
+| [`GET /api/api.md`](api.md#get-apiapimd) | The API reference itself, for people; GET /api/api.json is the same as JSON. |
 | [`GET /api/backup`](api.md#get-apibackup) | A file (a picture, a spreadsheet or a backup), which travels over HTTP rather than as a tool answer. |
 | [`GET /api/boards/{board_id}/cards/{card_id}/image`](api.md#get-apiboardsboard_idcardscard_idimage) | A file (a picture, a spreadsheet or a backup), which travels over HTTP rather than as a tool answer. |
 | [`GET /api/boards/{board_id}/cards/{card_id}/product-image`](api.md#get-apiboardsboard_idcardscard_idproduct-image) | A file (a picture, a spreadsheet or a backup), which travels over HTTP rather than as a tool answer. |
@@ -1958,7 +1959,6 @@ Routes an API key may call that have no tool, and why.
 | [`GET /api/boards/{board_id}/stamp`](api.md#get-apiboardsboard_idstamp) | The board page's cheap change poll; get_board reads the board itself. |
 | [`GET /api/mcp.json`](api.md#get-apimcpjson) | The MCP reference itself; tools/list gives the same list. |
 | [`GET /api/mcp.md`](api.md#get-apimcpmd) | The MCP reference itself, for people; tools/list gives the same list. |
-| [`GET /api/openapi.json`](api.md#get-apiopenapijson) | The API reference itself; GET /api/mcp.json is the MCP one. |
 | [`POST /api/backup/board`](api.md#post-apibackupboard) | A backup file's contents, which the page sends in steps; deliberately not a tool. |
 | [`POST /api/boards/{board_id}/cards/{card_id}/image`](api.md#post-apiboardsboard_idcardscard_idimage) | A file (a picture, a spreadsheet or a backup), which travels over HTTP rather than as a tool answer. |
 | [`POST /api/boards/{board_id}/lists/{list_id}/import`](api.md#post-apiboardsboard_idlistslist_idimport) | A backup file's contents, which the page sends in steps; deliberately not a tool. |
