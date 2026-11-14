@@ -4,6 +4,10 @@
   "endpoint": "/mcp",
   "http_only": [
     {
+      "reason": "The API reference itself, for people; GET /api/openapi.json is the same as JSON.",
+      "route": "GET /api/api.md"
+    },
+    {
       "reason": "A file (a picture, a spreadsheet or a backup), which travels over HTTP rather than as a tool answer.",
       "route": "GET /api/backup"
     },
@@ -30,6 +34,10 @@
     {
       "reason": "The MCP reference itself; tools/list gives the same list.",
       "route": "GET /api/mcp.json"
+    },
+    {
+      "reason": "The MCP reference itself, for people; tools/list gives the same list.",
+      "route": "GET /api/mcp.md"
     },
     {
       "reason": "The API reference itself; GET /api/mcp.json is the MCP one.",

@@ -28,6 +28,12 @@ const Mcp = {
     if ( me.mcp_url ) {
       Dom.get( "mcp-spec-link" ).setAttribute( "href" , me.mcp_url );
       Dom.show( Dom.get( "mcp-spec-line" ) , true );
+      // The same reference written for people: config/mcp.md where the
+      // repository's site renders it, else this server's /docs/mcp page.
+      if ( me.mcp_doc_url ) {
+        Dom.get( "mcp-doc-link" ).setAttribute( "href" , me.mcp_doc_url );
+        Dom.show( Dom.get( "mcp-doc-part" ) , true );
+      }
     }
     Dom.text( Dom.get( "mcp-endpoint" ) , this.endpoint() );
     Dom.show( Dom.get( "mcp-key-role-field" ) , me.role === "admin" );

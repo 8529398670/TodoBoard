@@ -19,7 +19,7 @@ import (
 // no tool either.
 //
 // After adding or changing a tool, run scripts/api_docs.sh to rewrite the
-// route table, config/mcp.json and config/api.md; the tests fail until they
+// route table, config/mcp.json, config/api.md and config/mcp.md; the tests fail until they
 // are current.
 //
 // An app's tools that stand for no route go in a new file in this package

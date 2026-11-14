@@ -45,6 +45,8 @@ type meReply struct {
 	Description        string                `json:"description" jsonschema_description:"app.description. Empty when there is none."`
 	ShowAbout          bool                  `json:"show_about" jsonschema_description:"app.show_about: whether the menu has About."`
 	OpenapiURL         string                `json:"openapi_url" jsonschema_description:"Where to read this API's reference: config/openapi.json in app.repo, or /api/openapi.json when there is no repo."`
+	APIDocURL          string                `json:"api_doc_url" jsonschema_description:"Where to read the API reference as a page for people: config/api.md in app.repo, or /docs/api when there is no repo."`
+	MCPDocURL          string                `json:"mcp_doc_url" jsonschema_description:"Where to read the MCP tools as a page for people: config/mcp.md in app.repo, or /docs/mcp when there is no repo."`
 	MCPURL             string                `json:"mcp_url" jsonschema_description:"Where to read the MCP reference: config/mcp.json in app.repo, or /api/mcp.json when there is no repo. Only with server.mcp on."`
 	Themes             []models.Theme        `json:"themes" jsonschema:"nullable" jsonschema_description:"Your themes (see the Theme schema): your own list, else the app's defaults, else null for the built-in ones."`
 	ThemesCustom       bool                  `json:"themes_custom" jsonschema_description:"Whether you have your own list rather than following the defaults."`
@@ -107,6 +109,8 @@ func ( handlers *Handlers ) getMe( c fiber.Ctx , in *apidoc.None ) ( reply *meRe
 		ShowAbout:          cfg.ShowAbout,
 		OpenapiURL:         handlers.openAPIURL(),
 		MCPURL:             handlers.mcpURL(),
+		APIDocURL:          handlers.apiDocURL(),
+		MCPDocURL:          handlers.mcpDocURL(),
 		Themes:             themes,
 		ThemesCustom:       themes_custom,
 		ThemeID:            user.ThemeID,

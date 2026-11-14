@@ -93,6 +93,12 @@ var (
 	//go:embed config/mcp.json
 	embeddedMCPManifest []byte
 
+	// The same references as tables for people, for the /docs pages.
+	//go:embed config/api.md
+	embeddedAPIDoc []byte
+	//go:embed config/mcp.md
+	embeddedMCPDoc []byte
+
 	//go:embed config/defaults.yaml
 	embeddedDefaults []byte
 
@@ -264,6 +270,8 @@ func run() ( err error ) {
 	handlers.ErrorPages = error_pages
 	handlers.OpenAPI = embeddedOpenAPI
 	handlers.MCPManifest = embeddedMCPManifest
+	handlers.APIDoc = embeddedAPIDoc
+	handlers.MCPDoc = embeddedMCPDoc
 	handlers.LogStream = log_stream
 
 	app := fiber.New( fiber.Config{

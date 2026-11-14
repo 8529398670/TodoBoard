@@ -317,8 +317,8 @@ api_keys:
   # app.repo, or this server's own copy.
   spec_text: "What a key can call:"
   spec_link: "API reference (openapi.json)"
-  # Beside it when app.repo is set: the same reference as tables, config/api.md,
-  # which the repository's site shows as a readable page.
+  # Beside it: the same reference as tables, config/api.md, on the repository's
+  # site when app.repo is set, else on this server's /docs/api page.
   doc_link: "readable version (api.md)"
   # Empty expiry_button to take the button away.
   expiry_button: "Expiry"
@@ -1558,6 +1558,15 @@ undo:
   theme_labels: "theme labels change"
   theme_to_defaults: "theme saved to the defaults"
 
+# The readable API and MCP references (static/docs.html, static/js/docs.js):
+# /docs/api and /docs/mcp, linked from the API keys and MCP cards.
+docs:
+  api_title: "API reference"
+  mcp_title: "MCP tools"
+  back: "Back to Account"
+  loading: "Loading..."
+  failed: "The reference could not be loaded. Sign in, then try again."
+
 # The MCP card on Account (static/js/mcp.js): an API key set up for an agent.
 mcp:
   heading: "MCP: Claude and other agents"
@@ -1566,6 +1575,9 @@ mcp:
   # in app.repo, or this server's own copy.
   spec_text: "What an agent can call:"
   spec_link: "MCP reference (mcp.json)"
+  # Beside it: the same reference as tables, config/mcp.md, on the repository's
+  # site when app.repo is set, else on this server's /docs/mcp page.
+  doc_link: "readable version (mcp.md)"
   endpoint_label: "Endpoint"
   client_label: "Set up for"
   # Also the name a new key is given, until someone types another.

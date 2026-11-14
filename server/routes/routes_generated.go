@@ -343,6 +343,14 @@ func ( handlers *Handlers ) mountDeclared( app *fiber.App ) {
 		Feature: "sessions",
 		Errors: []int{ 400 , 401 , 403 , 404 },
 	} , handlers.revokeUserSession , handlers.Guard.RequireAdmin )
+	apidoc.MountStream( app , "GET" , "/api/api.md" , apidoc.Op{
+		Summary: "The API reference as Markdown tables for people",
+		Tag: "Monitoring",
+		Feature: "openapi",
+		MCPHTTP: "The API reference itself, for people; GET /api/openapi.json is the same as JSON.",
+		ReplyType: "text/markdown",
+		Errors: []int{ 401 , 404 },
+	} , handlers.getAPIDoc , handlers.Guard.RequireLogin )
 	apidoc.MountStream( app , "GET" , "/api/backup" , apidoc.Op{
 		Summary: "Download a backup of your boards",
 		Description: "Every board you are on, as one JSON file to keep: each as much of it as you can see, with its columns, labels and cards. Boards reached through a single shared card are left out.",
@@ -949,6 +957,14 @@ func ( handlers *Handlers ) mountDeclared( app *fiber.App ) {
 		ReplyType: "application/json",
 		Errors: []int{ 401 , 404 },
 	} , handlers.getMCPManifest , handlers.featureGuards()[ "mcp" ] , handlers.Guard.RequireLogin )
+	apidoc.MountStream( app , "GET" , "/api/mcp.md" , apidoc.Op{
+		Summary: "The MCP tools as Markdown tables for people",
+		Tag: "Monitoring",
+		Feature: "mcp",
+		MCPHTTP: "The MCP reference itself, for people; tools/list gives the same list.",
+		ReplyType: "text/markdown",
+		Errors: []int{ 401 , 404 },
+	} , handlers.getMCPDoc , handlers.featureGuards()[ "mcp" ] , handlers.Guard.RequireLogin )
 	apidoc.Mount( app , "GET" , "/api/me" , apidoc.Op{
 		Summary: "Who am I",
 		Description: "The account this API key belongs to, the role it acts with (role -- never higher than the key's own scope), and the account's own role.",

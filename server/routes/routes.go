@@ -68,6 +68,9 @@ type Handlers struct {
 	OpenAPI []byte
 	// MCPManifest is config/mcp.json, set by main.go.
 	MCPManifest []byte
+	// APIDoc and MCPDoc are config/api.md and config/mcp.md, set by main.go.
+	APIDoc []byte
+	MCPDoc []byte
 	// MCP is the /mcp server, with every tool registered, set by Register.
 	MCP *mcp.Server
 
@@ -136,6 +139,8 @@ func ( handlers *Handlers ) Register( app *fiber.App ) {
 	app.Get( "/b/*" , handlers.ShowBoardPage )
 	app.Get( "/s/*" , handlers.ShowSharePage )
 	app.Get( "/print/*" , handlers.ShowPrintPage )
+	// The readable API and MCP references (api_docs_md.go).
+	app.Get( "/docs/*" , handlers.ShowDocsPage )
 
 	// MCP: agents calling the app with an API key (see server/mcp and
 	// mcp_tools.go). Every tool runs at the key's effective role, so this is

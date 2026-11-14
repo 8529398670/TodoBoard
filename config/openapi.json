@@ -459,6 +459,10 @@
             "description": "server.announcement. Empty when there is none.",
             "type": "string"
           },
+          "api_doc_url": {
+            "description": "Where to read the API reference as a page for people: config/api.md in app.repo, or /docs/api when there is no repo.",
+            "type": "string"
+          },
           "api_key_id": {
             "description": "API keys only.",
             "type": "string"
@@ -532,6 +536,10 @@
             ],
             "type": "string"
           },
+          "mcp_doc_url": {
+            "description": "Where to read the MCP tools as a page for people: config/mcp.md in app.repo, or /docs/mcp when there is no repo.",
+            "type": "string"
+          },
           "mcp_enabled": {
             "description": "server.mcp: whether POST /mcp answers.",
             "type": "boolean"
@@ -601,6 +609,7 @@
         "required": [
           "account_role",
           "announcement",
+          "api_doc_url",
           "api_keys_enabled",
           "auth",
           "authenticated",
@@ -616,6 +625,7 @@
           "logs_enabled",
           "logs_ui_clicks",
           "maintenance",
+          "mcp_doc_url",
           "mcp_enabled",
           "mcp_url",
           "openapi_url",
@@ -5827,6 +5837,49 @@
         "x-required-role": "admin"
       },
       "x-feature": "sessions"
+    },
+    "/api/api.md": {
+      "get": {
+        "operationId": "get_api_api_md",
+        "responses": {
+          "200": {
+            "content": {
+              "text/markdown": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "404": {
+            "$ref": "#/components/responses/E404"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "503": {
+            "$ref": "#/components/responses/E503"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "summary": "The API reference as Markdown tables for people",
+        "tags": [
+          "Monitoring"
+        ],
+        "x-mcp-http": "The API reference itself, for people; GET /api/openapi.json is the same as JSON."
+      },
+      "x-feature": "openapi"
     },
     "/api/backup": {
       "get": {
@@ -15609,6 +15662,49 @@
           "Monitoring"
         ],
         "x-mcp-http": "The MCP reference itself; tools/list gives the same list."
+      },
+      "x-feature": "mcp"
+    },
+    "/api/mcp.md": {
+      "get": {
+        "operationId": "get_api_mcp_md",
+        "responses": {
+          "200": {
+            "content": {
+              "text/markdown": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "404": {
+            "$ref": "#/components/responses/E404"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "503": {
+            "$ref": "#/components/responses/E503"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "summary": "The MCP tools as Markdown tables for people",
+        "tags": [
+          "Monitoring"
+        ],
+        "x-mcp-http": "The MCP reference itself, for people; tools/list gives the same list."
       },
       "x-feature": "mcp"
     },
