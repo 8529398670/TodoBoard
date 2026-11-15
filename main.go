@@ -299,9 +299,10 @@ func run() ( err error ) {
 	// carry a reference and be counted, and neither depends on the activity
 	// log being on.
 	app.Use( middleware.RequestID() )
+	app.Use( middleware.NoStore() )
 	app.Use( middleware.Recover( settings ) )
 	app.Use( middleware.SecurityHeaders( settings ) )
-	app.Use( middleware.RateLimit( settings ) )
+	app.Use( middleware.RateLimit( settings , logger ) )
 	app.Use( middleware.RequestLog( logger ) )
 
 	handlers.Register( app )

@@ -185,3 +185,32 @@ func TestColumnLinkCannotRank( t *testing.T ) {
 	updated , _ := models.GetCard( fixture.store , board.ID , card.ID )
 	if updated.Doing == false || updated.Rank != 0 { t.Errorf( "card: %+v" , updated ) }
 }
+
+// update_card_bulk moves and finishes several cards in one call, each through
+// update_card's own checks: one card the key cannot see fails on its own.
+func TestMCPUpdateCardBulk( t *testing.T ) {
+	fixture := newMCPFixture( t )
+	key := fixture.user_key
+	_ , reply := fixture.post( t , key , callTool( "create_board" , `{"title":"Bulk","lists":["To do","Done"]}` ) )
+	board_id := itoa( uint64( toolResult( t , reply )[ "id" ].( float64 ) ) )
+	_ , reply = fixture.post( t , key , callTool( "get_board" , `{"board":`+board_id+`}` ) )
+	lists := toolResult( t , reply )[ "board" ].( map[ string ]any )[ "lists" ].( []any )
+	todo := itoa( uint64( lists[ 0 ].( map[ string ]any )[ "id" ].( float64 ) ) )
+	done := itoa( uint64( lists[ 1 ].( map[ string ]any )[ "id" ].( float64 ) ) )
+	ids := []string{}
+	for _ , title := range []string{ "One" , "Two" } {
+		_ , reply = fixture.post( t , key , callTool( "create_card" , `{"board":`+board_id+`,"list_id":`+todo+`,"title":"`+title+`"}` ) )
+		ids = append( ids , itoa( uint64( toolResult( t , reply )[ "id" ].( float64 ) ) ) )
+	}
+
+	items := `[{"board":`+board_id+`,"card_id":`+ids[ 0 ]+`},{"board":`+board_id+`,"card_id":`+ids[ 1 ]+`},{"board":`+board_id+`,"card_id":999999}]`
+	_ , reply = fixture.post( t , key , callTool( "update_card_bulk" , `{"items":`+items+`,"shared":{"list_id":`+done+`,"done":true}}` ) )
+	result := toolResult( t , reply )
+	if result[ "done" ] != float64( 2 ) || result[ "failed" ] != float64( 1 ) { t.Fatalf( "bulk: %v" , result ) }
+
+	for _ , id := range ids {
+		_ , reply = fixture.post( t , key , callTool( "get_card" , `{"board":`+board_id+`,"card_id":`+id+`}` ) )
+		card := toolResult( t , reply )
+		if itoa( uint64( card[ "list_id" ].( float64 ) ) ) != done || card[ "done" ] != true { t.Errorf( "card %s: %v" , id , card ) }
+	}
+}

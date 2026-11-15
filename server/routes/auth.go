@@ -2,6 +2,7 @@ package routes
 
 import (
 	errors "errors"
+	strconv "strconv"
 	strings "strings"
 
 	fiber "github.com/gofiber/fiber/v3"
@@ -131,11 +132,25 @@ func ( handlers *Handlers ) redeemLoginLink( c fiber.Ctx , in *loginRequest ) ( 
 	}
 
 	message := "signed in with a login link"
+	issuer , detail := handlers.issuer( signed.IssuedBy )
+	if issuer != "" { message = "signed in with a link issued by " + issuer }
 	if signed.Challenge != "" { message = "login link accepted, waiting for a code" }
-	handlers.auditAs( c , handlers.logUser( signed.UserID , security.MethodSession ) , logs.KindAuth , logs.LevelInfo , message , nil )
+	handlers.auditAs( c , handlers.logUser( signed.UserID , security.MethodSession ) , logs.KindAuth , logs.LevelInfo , message , detail )
 	challenge , err := handlers.signIn( c , signed )
 	if err != nil { return }
 	reply = newSignInReply( challenge )
+	return
+}
+
+// issuer names the admin who reissued the link a sign-in came through
+// (models.LoginToken.IssuedBy), for its log entry, and the detail that goes
+// with it; "" and nil when nobody else did. An admin can sign in as anyone
+// below them that way, so the account's own log says so.
+func ( handlers *Handlers ) issuer( admin_id uint64 ) ( name string , detail fiber.Map ) {
+	if admin_id == 0 { return }
+	name = "#" + strconv.FormatUint( admin_id , 10 )
+	if admin , err := models.GetUser( handlers.Store , admin_id ); err == nil { name = admin.DisplayName }
+	detail = fiber.Map{ "issued_by": admin_id }
 	return
 }
 
@@ -172,7 +187,7 @@ func sameOriginJSON( c fiber.Ctx ) ( ok bool ) {
 // if any. Deleting the record rather than only the cookie is what matters: a
 // copy of the cookie taken earlier is then dead too.
 func ( handlers *Handlers ) destroyCookieSession( c fiber.Ctx ) {
-	raw := c.Cookies( handlers.cfg().CookieName )
+	raw := c.Cookies( handlers.cfg().SessionCookieName() )
 	if raw == "" { return }
 	if credential , decrypt_err := handlers.Guard.DecryptCookie( raw ); decrypt_err == nil {
 		models.DestroySession( handlers.Store , credential )

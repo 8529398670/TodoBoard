@@ -38,6 +38,9 @@ type Session struct {
 	// the session too (VoidLinksMintedByKeyTx): a key that could sign a
 	// browser in must not leave one signed in after it dies.
 	MintedByKey string `json:"minted_by_key,omitempty"`
+	// IssuedBy is the admin who reissued the login link this session came
+	// from, zero when nobody else did (see LoginToken.IssuedBy).
+	IssuedBy uint64 `json:"issued_by,omitempty"`
 	// ID is the record's key, filled in when a session is read. It is not
 	// stored, since the key already says it, and is no use without the secret.
 	ID string `json:"-"`
@@ -282,6 +285,17 @@ func destroySessionsForUser( tx *db.Tx , user_id uint64 ) ( removed int , err er
 		func() any { return &Session{} } ,
 		func( key []byte , item any ) bool {
 			return item.( *Session ).UserID == user_id
+		} )
+	return
+}
+
+// destroyOtherSessionsForUser is destroySessionsForUser keeping one session:
+// the one the account is using to make the change.
+func destroyOtherSessionsForUser( tx *db.Tx , user_id uint64 , keep_session_id string ) ( removed int , err error ) {
+	removed , err = tx.DeleteWhere( db.BucketSessions ,
+		func() any { return &Session{} } ,
+		func( key []byte , item any ) bool {
+			return item.( *Session ).UserID == user_id && string( key ) != keep_session_id
 		} )
 	return
 }

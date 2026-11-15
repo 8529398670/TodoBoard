@@ -11,6 +11,7 @@ package routes
 import (
 	json "encoding/json"
 	errors "errors"
+	log "log"
 
 	fiber "github.com/gofiber/fiber/v3"
 
@@ -21,6 +22,7 @@ import (
 	jobs "todoboard/server/jobs"
 	language "todoboard/server/language"
 	logs "todoboard/server/logs"
+	middleware "todoboard/server/middleware"
 	mcp "todoboard/server/mcp"
 	models "todoboard/server/models"
 	notify "todoboard/server/notify"
@@ -124,6 +126,7 @@ func ( handlers *Handlers ) Register( app *fiber.App ) {
 	// Resolve the session once, before anything else looks at the request.
 	app.Use( handlers.Guard.LoadUser )
 	apidoc.CheckCSRF = handlers.Guard.CheckCSRF
+	apidoc.LogFailure = bulkFailure
 
 	// Next, because it needs to know who is asking and has to come before
 	// every route below. See maintenance.go.
@@ -220,6 +223,8 @@ func restoreRefusal( cause error ) ( refused *refusal ) {
 		refused = refuse( fiber.StatusNotFound , cause.Error() )
 	case errors.Is( cause , models.ErrRestoreForbidden ):
 		refused = refuse( fiber.StatusForbidden , cause.Error() )
+	case errors.Is( cause , models.ErrRestoreOutranked ):
+		refused = refuse( fiber.StatusForbidden , cause.Error() )
 	case errors.Is( cause , models.ErrRestoreExpired ):
 		refused = refuse( fiber.StatusConflict , cause.Error() )
 	case errors.Is( cause , models.ErrAPIKeyLimit ):
@@ -246,6 +251,14 @@ func serverError( _ fiber.Ctx , causes ...error ) ( err error ) {
 	if err == nil {
 		err = errors.New( "internal error" )
 	}
+	return
+}
+
+// bulkFailure logs an item of a bulk request that failed on our side, the
+// way the ErrorHandler logs a request, and answers the reference to it.
+func bulkFailure( c fiber.Ctx , cause error ) ( request_id string ) {
+	request_id = middleware.RequestIDFrom( c )
+	log.Printf( "[error] %s %s %s (bulk item): %v" , request_id , c.Method() , c.Path() , cause )
 	return
 }
 

@@ -41,9 +41,9 @@ func ( fixture *adminKeys ) signIn( t *testing.T , user_id uint64 ) ( cookie str
 	if err != nil { t.Fatal( err ) }
 	credential := signed.SessionCredential
 	session , _ := models.LoadSession( fixture.store , credential )
-	sealed , err := encryption.ChaChaEncryptString( fixture.cfg.SecretKey , credential )
+	sealed , err := encryption.ChaChaEncryptString( encryption.SubKey( fixture.cfg.SecretKey , encryption.PurposeCookie ) , credential )
 	if err != nil { t.Fatal( err ) }
-	cookie , csrf = fixture.cfg.CookieName+"="+sealed , session.CSRFToken
+	cookie , csrf = fixture.cfg.SessionCookieName()+"="+sealed , session.CSRFToken
 	return
 }
 

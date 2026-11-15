@@ -30,7 +30,7 @@ This file is generated: do not edit it. Change the docs next to the handlers and
 
 | Way in | How |
 |---|---|
-| Browser session | A browser session. Its POSTs carry csrf_token in the body. The cookie's name is server.cookie_name. |
+| Browser session | A browser session. Its POSTs carry csrf_token in the body. The cookie's name is server.cookie_name, with the __Host- prefix while server.secure_cookies is on. |
 | API key | An API key, as Authorization: Bearer <id>.<secret>. |
 
 ## Errors
@@ -67,6 +67,7 @@ An error reply is a JSON object whose `error` says what went wrong.
 | POST | [`/api/account/two-factor/confirm`](#post-apiaccounttwo-factorconfirm) | Turn two-factor on | browser session only, anyone signed in |
 | POST | [`/api/account/two-factor/disable`](#post-apiaccounttwo-factordisable) | Turn two-factor off | browser session only, anyone signed in |
 | POST | [`/api/account/two-factor/start`](#post-apiaccounttwo-factorstart) | Begin two-factor setup | browser session only, anyone signed in |
+| POST | [`/api/bulk/account/sessions/revoke`](#post-apibulkaccountsessionsrevoke) | Sign out one of your devices, for many at once | browser session or API key, anyone signed in |
 | GET | [`/api/language`](#get-apilanguage) | The UI's text | anyone |
 | POST | [`/api/logout`](#post-apilogout) | Sign out | browser session or API key, anyone signed in |
 | POST | [`/api/logs/events`](#post-apilogsevents) | Record what happened on the page | browser session or API key, anyone signed in |
@@ -160,7 +161,7 @@ An empty object.
 
 A login link for yourself
 
-A link that signs your own account in on a browser or another device. Only a key with your account's full role may ask: one scoped down to user on an admin account is refused.
+A link that signs your own account in on a browser or another device. An API key may ask only if your account let it, from a browser session (POST /api/keys/{key_id}/sign-in); its link works once, for at most 15 minutes.
 
 |  |  |
 |---|---|
@@ -519,6 +520,31 @@ Begin two-factor setup
 |---|---|---|---|---|
 | `secret` | string | yes |  |  |
 
+### POST /api/bulk/account/sessions/revoke
+
+Sign out one of your devices, for many at once
+
+Runs POST /api/account/sessions/{session_id}/revoke once per item: items holds each one's id and fields, shared the fields they have in common (an item's own win). Each runs as that route would, in order, and one failing does not stop the rest; the reply says how each went. At most 100 items.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`revoke_my_session_bulk`](mcp.md#revoke_my_session_bulk) |
+| Errors | 400, 401, 403, 429, 503 |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `items` | array of object | yes |  | One entry per thing to change: its id, and any field that differs from shared. |
+| `items[].session_id` | string | yes |  | The device's id, from GET /api/account/sessions or GET /api/admin/users/{user_id}/sessions (list_my_sessions or admin_list_user_sessions over MCP). |
+| `shared` | object | no |  | Fields every item gets, unless the item sets its own. |
+
+**Reply 200**: Success
+
+[`BulkReply`](#bulkreply).
+
 ### GET /api/language
 
 The UI's text
@@ -727,6 +753,7 @@ Finish a sign-in with a code
 | POST | [`/api/keys/{key_id}/rename`](#post-apikeyskey_idrename) | Rename one of your keys | browser session only, anyone signed in |
 | POST | [`/api/keys/{key_id}/restore`](#post-apikeyskey_idrestore) | Undo deleting one of your keys | browser session only, anyone signed in |
 | POST | [`/api/keys/{key_id}/revoke`](#post-apikeyskey_idrevoke) | Revoke one of your keys | browser session only, anyone signed in |
+| POST | [`/api/keys/{key_id}/sign-in`](#post-apikeyskey_idsign-in) | Let one of your keys make sign-in links | browser session only, anyone signed in |
 
 ### GET /api/admin/keys
 
@@ -1136,6 +1163,34 @@ Revoke one of your keys
 |---|---|---|---|---|
 | `ok` | boolean | yes |  |  |
 
+### POST /api/keys/{key_id}/sign-in
+
+Let one of your keys make sign-in links
+
+Off by default. When on, the key may ask POST /api/account/login-link for a link that signs your account in on a browser, which then can do everything you can, including what keys may not. The link works once, for at most 15 minutes.
+
+|  |  |
+|---|---|
+| Who may call | browser session only, anyone signed in |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `key_id` | path | string | yes |  | The key's id, from GET /api/keys (GET /api/admin/keys for anyone's). |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `may_sign_in` | boolean | yes |  | true lets the key make a login link for your account: one that works once, for at most 15 minutes. |
+
+**Reply 200**: Success
+
+[`APIKey`](#apikey).
+
 ## Admin
 
 | Method | Path | Summary | Who may call |
@@ -1154,6 +1209,13 @@ Revoke one of your keys
 | POST | [`/api/admin/users/{user_id}/role`](#post-apiadminusersuser_idrole) | Change an account's role | browser session or API key, admins |
 | GET | [`/api/admin/users/{user_id}/sessions`](#get-apiadminusersuser_idsessions) | An account's signed-in devices | browser session or API key, admins |
 | POST | [`/api/admin/users/{user_id}/sessions/{session_id}/revoke`](#post-apiadminusersuser_idsessionssession_idrevoke) | Sign out one of an account's devices | browser session or API key, admins |
+| POST | [`/api/bulk/admin/users/cancel-login-link`](#post-apibulkadminuserscancel-login-link) | Stop an account's login link working, for many at once | browser session or API key, admins |
+| POST | [`/api/bulk/admin/users/delete`](#post-apibulkadminusersdelete) | Delete an account, for many at once | browser session or API key, admins |
+| POST | [`/api/bulk/admin/users/disabled`](#post-apibulkadminusersdisabled) | Disable or enable a user, for many at once | browser session or API key, admins |
+| POST | [`/api/bulk/admin/users/reset-two-factor`](#post-apibulkadminusersreset-two-factor) | Turn off an account's two-factor, for many at once | browser session or API key, admins |
+| POST | [`/api/bulk/admin/users/revoke-access`](#post-apibulkadminusersrevoke-access) | Revoke a user's access, for many at once | browser session or API key, admins |
+| POST | [`/api/bulk/admin/users/role`](#post-apibulkadminusersrole) | Change an account's role, for many at once | browser session or API key, admins |
+| POST | [`/api/bulk/admin/users/sessions/revoke`](#post-apibulkadminuserssessionsrevoke) | Sign out one of an account's devices, for many at once | browser session or API key, admins |
 
 ### GET /api/admin/theme-defaults
 
@@ -1574,6 +1636,186 @@ Sign out one of an account's devices
 |---|---|---|---|---|
 | `ok` | boolean | yes |  |  |
 
+### POST /api/bulk/admin/users/cancel-login-link
+
+Stop an account's login link working, for many at once
+
+Runs POST /api/admin/users/{user_id}/cancel-login-link once per item: items holds each one's id and fields, shared the fields they have in common (an item's own win). Each runs as that route would, in order, and one failing does not stop the rest; the reply says how each went. At most 100 items.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, admins |
+| MCP tool | [`admin_cancel_login_link_bulk`](mcp.md#admin_cancel_login_link_bulk) |
+| Errors | 400, 401, 403, 429, 503 |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `items` | array of object | yes |  | One entry per thing to change: its id, and any field that differs from shared. |
+| `items[].user_id` | integer | yes | at least 1 | The account's id, from GET /api/admin/users (admin_list_users over MCP). |
+| `shared` | object | no |  | Fields every item gets, unless the item sets its own. |
+
+**Reply 200**: Success
+
+[`BulkReply`](#bulkreply).
+
+### POST /api/bulk/admin/users/delete
+
+Delete an account, for many at once
+
+Runs POST /api/admin/users/{user_id}/delete once per item: items holds each one's id and fields, shared the fields they have in common (an item's own win). Each runs as that route would, in order, and one failing does not stop the rest; the reply says how each went. At most 100 items.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, admins |
+| MCP tool | [`admin_delete_user_bulk`](mcp.md#admin_delete_user_bulk) |
+| Errors | 400, 401, 403, 429, 503 |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `items` | array of object | yes |  | One entry per thing to change: its id, and any field that differs from shared. |
+| `items[].user_id` | integer | yes | at least 1 | The account's id, from GET /api/admin/users (admin_list_users over MCP). |
+| `shared` | object | no |  | Fields every item gets, unless the item sets its own. |
+
+**Reply 200**: Success
+
+[`BulkReply`](#bulkreply).
+
+### POST /api/bulk/admin/users/disabled
+
+Disable or enable a user, for many at once
+
+Runs POST /api/admin/users/{user_id}/disabled once per item: items holds each one's id and fields, shared the fields they have in common (an item's own win). Each runs as that route would, in order, and one failing does not stop the rest; the reply says how each went. At most 100 items.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, admins |
+| MCP tool | [`admin_set_user_disabled_bulk`](mcp.md#admin_set_user_disabled_bulk) |
+| Errors | 400, 401, 403, 429, 503 |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `items` | array of object | yes |  | One entry per thing to change: its id, and any field that differs from shared. |
+| `items[].disabled` | boolean | no |  |  |
+| `items[].user_id` | integer | yes | at least 1 | The account's id, from GET /api/admin/users (admin_list_users over MCP). |
+| `shared` | object | no |  | Fields every item gets, unless the item sets its own. |
+| `shared.disabled` | boolean | no |  |  |
+
+**Reply 200**: Success
+
+[`BulkReply`](#bulkreply).
+
+### POST /api/bulk/admin/users/reset-two-factor
+
+Turn off an account's two-factor, for many at once
+
+Runs POST /api/admin/users/{user_id}/reset-two-factor once per item: items holds each one's id and fields, shared the fields they have in common (an item's own win). Each runs as that route would, in order, and one failing does not stop the rest; the reply says how each went. At most 100 items.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, admins |
+| MCP tool | [`admin_reset_two_factor_bulk`](mcp.md#admin_reset_two_factor_bulk) |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `items` | array of object | yes |  | One entry per thing to change: its id, and any field that differs from shared. |
+| `items[].user_id` | integer | yes | at least 1 | The account's id, from GET /api/admin/users (admin_list_users over MCP). |
+| `shared` | object | no |  | Fields every item gets, unless the item sets its own. |
+
+**Reply 200**: Success
+
+[`BulkReply`](#bulkreply).
+
+### POST /api/bulk/admin/users/revoke-access
+
+Revoke a user's access, for many at once
+
+Runs POST /api/admin/users/{user_id}/revoke-access once per item: items holds each one's id and fields, shared the fields they have in common (an item's own win). Each runs as that route would, in order, and one failing does not stop the rest; the reply says how each went. At most 100 items.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, admins |
+| MCP tool | [`admin_revoke_access_bulk`](mcp.md#admin_revoke_access_bulk) |
+| Errors | 400, 401, 403, 429, 503 |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `items` | array of object | yes |  | One entry per thing to change: its id, and any field that differs from shared. |
+| `items[].user_id` | integer | yes | at least 1 | The account's id, from GET /api/admin/users (admin_list_users over MCP). |
+| `shared` | object | no |  | Fields every item gets, unless the item sets its own. |
+
+**Reply 200**: Success
+
+[`BulkReply`](#bulkreply).
+
+### POST /api/bulk/admin/users/role
+
+Change an account's role, for many at once
+
+Runs POST /api/admin/users/{user_id}/role once per item: items holds each one's id and fields, shared the fields they have in common (an item's own win). Each runs as that route would, in order, and one failing does not stop the rest; the reply says how each went. At most 100 items.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, admins |
+| MCP tool | [`admin_set_user_role_bulk`](mcp.md#admin_set_user_role_bulk) |
+| Errors | 400, 401, 403, 429, 503 |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `items` | array of object | yes |  | One entry per thing to change: its id, and any field that differs from shared. |
+| `items[].role` | string | no | one of `admin`, `user` |  |
+| `items[].user_id` | integer | yes | at least 1 | The account's id, from GET /api/admin/users (admin_list_users over MCP). |
+| `shared` | object | no |  | Fields every item gets, unless the item sets its own. |
+| `shared.role` | string | no | one of `admin`, `user` |  |
+
+**Reply 200**: Success
+
+[`BulkReply`](#bulkreply).
+
+### POST /api/bulk/admin/users/sessions/revoke
+
+Sign out one of an account's devices, for many at once
+
+Runs POST /api/admin/users/{user_id}/sessions/{session_id}/revoke once per item: items holds each one's id and fields, shared the fields they have in common (an item's own win). Each runs as that route would, in order, and one failing does not stop the rest; the reply says how each went. At most 100 items.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, admins |
+| MCP tool | [`admin_revoke_user_session_bulk`](mcp.md#admin_revoke_user_session_bulk) |
+| Errors | 400, 401, 403, 429, 503 |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `items` | array of object | yes |  | One entry per thing to change: its id, and any field that differs from shared. |
+| `items[].session_id` | string | yes |  | The device's id, from GET /api/account/sessions or GET /api/admin/users/{user_id}/sessions (list_my_sessions or admin_list_user_sessions over MCP). |
+| `items[].user_id` | integer | yes | at least 1 | The account's id, from GET /api/admin/users (admin_list_users over MCP). |
+| `shared` | object | no |  | Fields every item gets, unless the item sets its own. |
+
+**Reply 200**: Success
+
+[`BulkReply`](#bulkreply).
+
 ## Invite links
 
 | Method | Path | Summary | Who may call |
@@ -1586,6 +1828,10 @@ Sign out one of an account's devices
 | POST | [`/api/admin/invite-links/{link_id}/restore`](#post-apiadmininvite-linkslink_idrestore) | Undo deleting an invite link | browser session or API key, admins |
 | POST | [`/api/admin/invite-links/{link_id}/revoke`](#post-apiadmininvite-linkslink_idrevoke) | Switch off an invite link | browser session or API key, admins |
 | POST | [`/api/admin/invite-links/{link_id}/switch-on`](#post-apiadmininvite-linkslink_idswitch-on) | Switch an invite link back on | browser session or API key, admins |
+| POST | [`/api/bulk/admin/invite-links/delete`](#post-apibulkadmininvite-linksdelete) | Delete an invite link, for many at once | browser session or API key, admins |
+| POST | [`/api/bulk/admin/invite-links/restore`](#post-apibulkadmininvite-linksrestore) | Undo deleting an invite link, for many at once | browser session or API key, admins |
+| POST | [`/api/bulk/admin/invite-links/revoke`](#post-apibulkadmininvite-linksrevoke) | Switch off an invite link, for many at once | browser session or API key, admins |
+| POST | [`/api/bulk/admin/invite-links/switch-on`](#post-apibulkadmininvite-linksswitch-on) | Switch an invite link back on, for many at once | browser session or API key, admins |
 | POST | [`/api/join/claim`](#post-apijoinclaim) | Sign in as an existing account | anyone |
 | POST | [`/api/join/create`](#post-apijoincreate) | Join as a new account | anyone |
 | POST | [`/api/join/info`](#post-apijoininfo) | What an invite link is | anyone |
@@ -1834,6 +2080,106 @@ Switch an invite link back on
 **Reply 200**: Success
 
 [`InviteLink`](#invitelink).
+
+### POST /api/bulk/admin/invite-links/delete
+
+Delete an invite link, for many at once
+
+Runs POST /api/admin/invite-links/{link_id}/delete once per item: items holds each one's id and fields, shared the fields they have in common (an item's own win). Each runs as that route would, in order, and one failing does not stop the rest; the reply says how each went. At most 100 items.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, admins |
+| MCP tool | [`admin_delete_invite_link_bulk`](mcp.md#admin_delete_invite_link_bulk) |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `items` | array of object | yes |  | One entry per thing to change: its id, and any field that differs from shared. |
+| `items[].link_id` | string | yes |  | The link's id, from GET /api/admin/invite-links (admin_list_invite_links over MCP). |
+| `shared` | object | no |  | Fields every item gets, unless the item sets its own. |
+
+**Reply 200**: Success
+
+[`BulkReply`](#bulkreply).
+
+### POST /api/bulk/admin/invite-links/restore
+
+Undo deleting an invite link, for many at once
+
+Runs POST /api/admin/invite-links/{link_id}/restore once per item: items holds each one's id and fields, shared the fields they have in common (an item's own win). Each runs as that route would, in order, and one failing does not stop the rest; the reply says how each went. At most 100 items.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, admins |
+| MCP tool | [`admin_restore_invite_link_bulk`](mcp.md#admin_restore_invite_link_bulk) |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `items` | array of object | yes |  | One entry per thing to change: its id, and any field that differs from shared. |
+| `items[].link_id` | string | yes |  | The link's id, from GET /api/admin/invite-links (admin_list_invite_links over MCP). |
+| `shared` | object | no |  | Fields every item gets, unless the item sets its own. |
+
+**Reply 200**: Success
+
+[`BulkReply`](#bulkreply).
+
+### POST /api/bulk/admin/invite-links/revoke
+
+Switch off an invite link, for many at once
+
+Runs POST /api/admin/invite-links/{link_id}/revoke once per item: items holds each one's id and fields, shared the fields they have in common (an item's own win). Each runs as that route would, in order, and one failing does not stop the rest; the reply says how each went. At most 100 items.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, admins |
+| MCP tool | [`admin_revoke_invite_link_bulk`](mcp.md#admin_revoke_invite_link_bulk) |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `items` | array of object | yes |  | One entry per thing to change: its id, and any field that differs from shared. |
+| `items[].link_id` | string | yes |  | The link's id, from GET /api/admin/invite-links (admin_list_invite_links over MCP). |
+| `shared` | object | no |  | Fields every item gets, unless the item sets its own. |
+
+**Reply 200**: Success
+
+[`BulkReply`](#bulkreply).
+
+### POST /api/bulk/admin/invite-links/switch-on
+
+Switch an invite link back on, for many at once
+
+Runs POST /api/admin/invite-links/{link_id}/switch-on once per item: items holds each one's id and fields, shared the fields they have in common (an item's own win). Each runs as that route would, in order, and one failing does not stop the rest; the reply says how each went. At most 100 items.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, admins |
+| MCP tool | [`admin_switch_on_invite_link_bulk`](mcp.md#admin_switch_on_invite_link_bulk) |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `items` | array of object | yes |  | One entry per thing to change: its id, and any field that differs from shared. |
+| `items[].link_id` | string | yes |  | The link's id, from GET /api/admin/invite-links (admin_list_invite_links over MCP). |
+| `shared` | object | no |  | Fields every item gets, unless the item sets its own. |
+
+**Reply 200**: Success
+
+[`BulkReply`](#bulkreply).
 
 ### POST /api/join/claim
 
@@ -3300,6 +3646,8 @@ The board's revision alone, which the page polls to know when to read the board 
 | POST | [`/api/boards/{board_id}/cards/{card_id}/product/refresh`](#post-apiboardsboard_idcardscard_idproductrefresh) | Look a card's product up again | browser session or API key, anyone signed in |
 | POST | [`/api/boards/{board_id}/cards/{card_id}/send`](#post-apiboardsboard_idcardscard_idsend) | Send a card to another board | browser session or API key, anyone signed in |
 | POST | [`/api/boards/{board_id}/lists/{list_id}/archive-cards`](#post-apiboardsboard_idlistslist_idarchive-cards) | Archive a column's cards | browser session or API key, anyone signed in |
+| POST | [`/api/bulk/boards/cards`](#post-apibulkboardscards) | Change a card, for many at once | browser session or API key, anyone signed in |
+| POST | [`/api/bulk/boards/cards/delete`](#post-apibulkboardscardsdelete) | Delete a card, for many at once | browser session or API key, anyone signed in |
 | GET | [`/api/cards`](#get-apicards) | Find cards | browser session or API key, anyone signed in |
 
 ### POST /api/boards/{board_id}/cards
@@ -3862,6 +4210,90 @@ Archive a column's open cards, all of them or the ones named in card_ids: cleari
 | Field | Type | Required | Limits | Description |
 |---|---|---|---|---|
 | `archived` | array of integer | yes |  | The ids of the cards archived. |
+
+### POST /api/bulk/boards/cards
+
+Change a card, for many at once
+
+Runs POST /api/boards/{board_id}/cards/{card_id} once per item: items holds each one's id and fields, shared the fields they have in common (an item's own win). Each runs as that route would, in order, and one failing does not stop the rest; the reply says how each went. At most 100 items.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`update_card_bulk`](mcp.md#update_card_bulk) |
+| Errors | 400, 401, 403, 429, 503 |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `items` | array of object | yes |  | One entry per thing to change: its id, and any field that differs from shared. |
+| `items[].archived` | boolean or null | no |  | true hides it from the board (reversible); false brings it back. |
+| `items[].assignees` | array of integer or null | no |  | The full set of user ids; replaces the current assignees. |
+| `items[].board` | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `items[].card_id` | integer | yes |  | A card's id, from get_board or find_cards. |
+| `items[].day` | string or null | no |  | On a calendar board (layout calendar), the day the card is filed under: 2026-11-07, or an empty string for none. |
+| `items[].description` | string or null | no |  | Markdown. |
+| `items[].doing` | boolean or null | no |  | On a staged board, the Doing stage. true starts the card (reopening it if done); done: true moves it on to Done. |
+| `items[].done` | boolean or null | no |  | Marks it complete, or not. |
+| `items[].due_at` | string or null | no |  | 2026-10-30 for an all-day date, an RFC 3339 timestamp for a time, an empty string to clear. |
+| `items[].label_ids` | array of integer or null | no |  | The full set of label ids; replaces the current labels. |
+| `items[].list_id` | integer or null | no |  | The column to move it to, from get_board (board.lists). |
+| `items[].position` | number or null | no |  | Sort position within the column; lower comes first. |
+| `items[].price` | string or null | no |  | The price shown on the card, as text; an empty string clears it. |
+| `items[].rank` | number or null | no |  | The stored rank value itself (the rank from get_card), for putting a card back exactly as it was; rank_place is the usual way. Needs edit rights on the board. |
+| `items[].rank_place` | integer or null | no | at least 0 | Importance across the whole board: 1 is the most important, and other cards shift to make room. 0 takes the card out of the ranking. Needs edit rights on the board. |
+| `items[].rev` | integer or null | no |  | The rev from get_card / get_board. Pass it when changing title or description: if someone edited the card since, the change is refused rather than written over theirs. |
+| `items[].start_at` | string or null | no |  | 2026-10-30 for an all-day date, an RFC 3339 timestamp for a time, an empty string to clear. |
+| `items[].title` | string or null | no |  |  |
+| `shared` | object | no |  | Fields every item gets, unless the item sets its own. |
+| `shared.archived` | boolean or null | no |  | true hides it from the board (reversible); false brings it back. |
+| `shared.assignees` | array of integer or null | no |  | The full set of user ids; replaces the current assignees. |
+| `shared.day` | string or null | no |  | On a calendar board (layout calendar), the day the card is filed under: 2026-11-07, or an empty string for none. |
+| `shared.description` | string or null | no |  | Markdown. |
+| `shared.doing` | boolean or null | no |  | On a staged board, the Doing stage. true starts the card (reopening it if done); done: true moves it on to Done. |
+| `shared.done` | boolean or null | no |  | Marks it complete, or not. |
+| `shared.due_at` | string or null | no |  | 2026-10-30 for an all-day date, an RFC 3339 timestamp for a time, an empty string to clear. |
+| `shared.label_ids` | array of integer or null | no |  | The full set of label ids; replaces the current labels. |
+| `shared.list_id` | integer or null | no |  | The column to move it to, from get_board (board.lists). |
+| `shared.position` | number or null | no |  | Sort position within the column; lower comes first. |
+| `shared.price` | string or null | no |  | The price shown on the card, as text; an empty string clears it. |
+| `shared.rank` | number or null | no |  | The stored rank value itself (the rank from get_card), for putting a card back exactly as it was; rank_place is the usual way. Needs edit rights on the board. |
+| `shared.rank_place` | integer or null | no | at least 0 | Importance across the whole board: 1 is the most important, and other cards shift to make room. 0 takes the card out of the ranking. Needs edit rights on the board. |
+| `shared.rev` | integer or null | no |  | The rev from get_card / get_board. Pass it when changing title or description: if someone edited the card since, the change is refused rather than written over theirs. |
+| `shared.start_at` | string or null | no |  | 2026-10-30 for an all-day date, an RFC 3339 timestamp for a time, an empty string to clear. |
+| `shared.title` | string or null | no |  |  |
+
+**Reply 200**: Success
+
+[`BulkReply`](#bulkreply).
+
+### POST /api/bulk/boards/cards/delete
+
+Delete a card, for many at once
+
+Runs POST /api/boards/{board_id}/cards/{card_id}/delete once per item: items holds each one's id and fields, shared the fields they have in common (an item's own win). Each runs as that route would, in order, and one failing does not stop the rest; the reply says how each went. At most 100 items.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`delete_card_bulk`](mcp.md#delete_card_bulk) |
+| Errors | 400, 401, 403, 429, 503 |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `items` | array of object | yes |  | One entry per thing to change: its id, and any field that differs from shared. |
+| `items[].board` | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `items[].card_id` | integer | yes |  | A card's id, from get_board or find_cards. |
+| `shared` | object | no |  | Fields every item gets, unless the item sets its own. |
+
+**Reply 200**: Success
+
+[`BulkReply`](#bulkreply).
 
 ### GET /api/cards
 
@@ -5775,6 +6207,7 @@ Stop one of the board's share links working (link_id from list_shares). It stays
 | POST | [`/api/boards/{board_id}/trash/empty`](#post-apiboardsboard_idtrashempty) | Empty a board's trash | browser session or API key, anyone signed in |
 | POST | [`/api/boards/{board_id}/trash/{card_id}/delete`](#post-apiboardsboard_idtrashcard_iddelete) | Delete a card for good | browser session or API key, anyone signed in |
 | POST | [`/api/boards/{board_id}/trash/{card_id}/restore`](#post-apiboardsboard_idtrashcard_idrestore) | Restore a card from the trash | browser session or API key, anyone signed in |
+| POST | [`/api/bulk/boards/trash/restore`](#post-apibulkboardstrashrestore) | Restore a card from the trash, for many at once | browser session or API key, anyone signed in |
 
 ### GET /api/board-trash
 
@@ -5993,6 +6426,32 @@ Bring a deleted card back out of the board's trash. Card ids are in list_trash. 
 
 An empty object.
 
+### POST /api/bulk/boards/trash/restore
+
+Restore a card from the trash, for many at once
+
+Runs POST /api/boards/{board_id}/trash/{card_id}/restore once per item: items holds each one's id and fields, shared the fields they have in common (an item's own win). Each runs as that route would, in order, and one failing does not stop the rest; the reply says how each went. At most 100 items.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`restore_card_bulk`](mcp.md#restore_card_bulk) |
+| Errors | 400, 401, 403, 429, 503 |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `items` | array of object | yes |  | One entry per thing to change: its id, and any field that differs from shared. |
+| `items[].board` | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `items[].card_id` | integer | yes |  | A card's id, from get_board or find_cards. |
+| `shared` | object | no |  | Fields every item gets, unless the item sets its own. |
+
+**Reply 200**: Success
+
+[`BulkReply`](#bulkreply).
+
 ## Schemas
 
 The shapes the routes above refer to by name.
@@ -6013,11 +6472,31 @@ The shapes the routes above refer to by name.
 | `id` | string | yes |  |  |
 | `last_used_at` | string (date-time) | no |  |  |
 | `live` | boolean | yes |  |  |
+| `may_sign_in` | boolean | yes |  | Whether this key may make a login link for its own account. |
 | `name` | string | yes |  |  |
 | `revoked` | boolean | yes |  |  |
 | `revoked_at` | string (date-time) | no |  |  |
 | `role` | string | yes | one of `admin`, `user` |  |
 | `user_id` | integer | yes |  |  |
+
+### BulkReply
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `done` | integer | yes |  | How many items worked. |
+| `failed` | integer | yes |  | How many did not. |
+| `results` | array of [`BulkResult`](#bulkresult) | yes |  | One per item, in the order they were sent. |
+
+### BulkResult
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `error` | string | no |  | When it failed: the route's words for why. |
+| `index` | integer | yes |  | The item's place in items, from 0. |
+| `ok` | boolean | yes |  |  |
+| `reply` | object | no |  | When it worked: the route's own reply, if it has one. |
+| `request_id` | string | no |  | On a 5xx: the reference that finds this failure in the log. |
+| `status` | integer | no |  | When it failed: the status the route would have answered. |
 
 ### Error
 
@@ -6185,6 +6664,7 @@ One of these:
 | `id` | string | yes |  |  |
 | `last_used_at` | string (date-time) | no |  |  |
 | `live` | boolean | yes |  |  |
+| `may_sign_in` | boolean | yes |  | Whether this key may make a login link for its own account. |
 | `name` | string | yes |  |  |
 | `revoked` | boolean | yes |  |  |
 | `revoked_at` | string (date-time) | no |  |  |

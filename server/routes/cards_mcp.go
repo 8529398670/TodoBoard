@@ -77,21 +77,3 @@ func ( handlers *Handlers ) mcpCreateCard( call *mcp.Call , in *createCardReques
 	result = handlers.withRankPlace( *reply )
 	return
 }
-
-// mcpUpdateCard is update_card's answer: the card with its rank_place, or
-// for a stale rev, what to do about it.
-func ( handlers *Handlers ) mcpUpdateCard( call *mcp.Call , in *patchCardRequest , serve func( fiber.Ctx , *patchCardRequest ) ( *fiber.Map , error ) ) ( result any , err error ) {
-	reply , serve_err := serve( call.Ctx , in )
-	var refused *refusal
-	if errors.As( serve_err , &refused ) && refused.message == "card_stale" {
-		rev := ""
-		if current , ok := refused.extra[ "card" ].( fiber.Map ); ok {
-			if number , ok := current[ "rev" ].( uint64 ); ok { rev = " (it is now rev " + strconv.FormatUint( number , 10 ) + ")" }
-		}
-		err = mcp.Refuse( "card_stale: someone changed this card since that rev" + rev + ". Read it again with get_card before changing the title or description." )
-		return
-	}
-	if result , err = mcp.Answer( reply , serve_err ); err != nil { return }
-	result = handlers.withRankPlace( *reply )
-	return
-}

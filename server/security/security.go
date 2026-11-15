@@ -100,7 +100,7 @@ func ( guard *Guard ) cfg() ( cfg *config.Config ) {
 // is opaque to anyone reading it out of a browser profile or a proxy log, and
 // that a tampered cookie fails to decrypt instead of reaching the lookup.
 func ( guard *Guard ) SetSessionCookie( c fiber.Ctx , credential string ) ( err error ) {
-	sealed , err := encryption.ChaChaEncryptString( guard.cfg().SecretKey , credential )
+	sealed , err := encryption.ChaChaEncryptString( encryption.SubKey( guard.cfg().SecretKey , encryption.PurposeCookie ) , credential )
 	if err != nil { return }
 	guard.writeSessionCookie( c , sealed , guard.cfg().SessionTTL )
 	return
@@ -112,7 +112,7 @@ func ( guard *Guard ) SetSessionCookie( c fiber.Ctx , credential string ) ( err 
 // logging out or switching account on a request that extended still wins.
 func ( guard *Guard ) writeSessionCookie( c fiber.Ctx , sealed string , lifetime time.Duration ) {
 	c.Cookie( &fiber.Cookie{
-		Name:     guard.cfg().CookieName,
+		Name:     guard.cfg().SessionCookieName(),
 		Value:    sealed,
 		Path:     "/",
 		MaxAge:   int( lifetime.Seconds() ),
@@ -126,7 +126,7 @@ func ( guard *Guard ) ClearSessionCookie( c fiber.Ctx ) {
 	// Overwrite before clearing: some browsers hold on to a cookie whose
 	// attributes do not match exactly, and an empty value is harmless either way.
 	c.Cookie( &fiber.Cookie{
-		Name:     guard.cfg().CookieName,
+		Name:     guard.cfg().SessionCookieName(),
 		Value:    "",
 		Path:     "/",
 		MaxAge:   -1,
@@ -134,14 +134,16 @@ func ( guard *Guard ) ClearSessionCookie( c fiber.Ctx ) {
 		HTTPOnly: true,
 		SameSite: "Strict",
 	} )
-	c.ClearCookie( guard.cfg().CookieName )
+	c.ClearCookie( guard.cfg().SessionCookieName() )
+	// A cookie from before the __Host- prefix goes too.
+	if guard.cfg().SecureCookies { c.ClearCookie( guard.cfg().CookieName ) }
 }
 
 // DecryptCookie turns the stored cookie back into a session credential.
 // Exposed because logging out has to destroy the server-side record, not just
 // drop the cookie -- otherwise a copy of the cookie taken earlier still works.
 func ( guard *Guard ) DecryptCookie( raw string ) ( credential string , err error ) {
-	credential , err = encryption.ChaChaDecryptBase64String( guard.cfg().SecretKey , raw )
+	credential , err = encryption.ChaChaDecryptBase64String( encryption.SubKey( guard.cfg().SecretKey , encryption.PurposeCookie ) , raw )
 	return
 }
 
@@ -175,10 +177,10 @@ func ( guard *Guard ) LoadUser( c fiber.Ctx ) ( err error ) {
 }
 
 func ( guard *Guard ) resolveSession( c fiber.Ctx ) ( actor *Actor ) {
-	raw := c.Cookies( guard.cfg().CookieName )
+	raw := c.Cookies( guard.cfg().SessionCookieName() )
 	if raw == "" { return }
 
-	credential , decrypt_err := encryption.ChaChaDecryptBase64String( guard.cfg().SecretKey , raw )
+	credential , decrypt_err := encryption.ChaChaDecryptBase64String( encryption.SubKey( guard.cfg().SecretKey , encryption.PurposeCookie ) , raw )
 	if decrypt_err != nil { return }
 
 	session , user := models.LoadSession( guard.Store , credential )
@@ -193,10 +195,13 @@ func ( guard *Guard ) resolveSession( c fiber.Ctx ) ( actor *Actor ) {
 	return
 }
 
-// hasBearer is true when the request carries "Authorization: Bearer ...".
+// hasBearer is true when the request carries any Authorization header. Any
+// at all is an attempt at a key, and one that does not hold a good key is
+// nobody (resolveAPIKey): it never falls back to the cookie. Splitting only on
+// a space let "Bearer<TAB>key" fall back and run as the signed-in account
+// (S16).
 func hasBearer( c fiber.Ctx ) ( result bool ) {
-	scheme , _ , found := strings.Cut( strings.TrimSpace( c.Get( fiber.HeaderAuthorization ) ) , " " )
-	result = found && strings.EqualFold( scheme , "bearer" )
+	result = strings.TrimSpace( c.Get( fiber.HeaderAuthorization ) ) != ""
 	return
 }
 
@@ -212,12 +217,10 @@ func hasBearer( c fiber.Ctx ) ( result bool ) {
 func ( guard *Guard ) resolveAPIKey( c fiber.Ctx ) ( actor *Actor ) {
 	if guard.cfg().APIKeysEnabled == false { return }
 
-	header := strings.TrimSpace( c.Get( fiber.HeaderAuthorization ) )
-	if header == "" { return }
-	scheme , credential , found := strings.Cut( header , " " )
-	if found == false || strings.EqualFold( scheme , "bearer" ) == false { return }
-	credential = strings.TrimSpace( credential )
-	if credential == "" { return }
+	// The scheme and the key, split on any whitespace, and nothing else.
+	parts := strings.Fields( c.Get( fiber.HeaderAuthorization ) )
+	if len( parts ) != 2 || strings.EqualFold( parts[ 0 ] , "bearer" ) == false { return }
+	credential := parts[ 1 ]
 
 	key , user := models.LoadAPIKey( guard.Store , credential )
 	if user == nil { return }
@@ -265,12 +268,14 @@ func ( guard *Guard ) RequireAdmin( c fiber.Ctx ) ( err error ) {
 // two-factor, other people's files, and the owner's screens.
 //
 // Accounts and ways in are not on that list. An admin key may create and
-// delete accounts, change roles and hand out login links and invite links,
-// and any key may make its own account a login link -- so long as it carries
-// the account's full role, since the session the link becomes does. What keeps
+// delete accounts, change roles and hand out login links and invite links.
+// A key makes its own account a login link only once that account switched
+// it on for the key, from a session (models.APIKey.MaySignIn), and then one
+// that works once, for at most 15 minutes. What keeps
 // revoking a leaked key meaningful is that every link records the key that
 // made it, and revoking or deleting the key voids those still usable and ends
 // every session one of its login links signed in (models.VoidLinksMintedByKeyTx).
+// Disabling or demoting the key's account does the same for all its keys.
 // What it does not undo is anything such a session did meanwhile, or the
 // accounts made through an invite link it handed out: those show in the
 // activity log and the user list.

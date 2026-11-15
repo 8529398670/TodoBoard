@@ -66,6 +66,13 @@ type APIKey struct {
 	// and rows from before this field read as zero too. It is what lets the
 	// person a key acts as see that someone else made it.
 	CreatedBy uint64 `json:"created_by,omitempty"`
+	// MaySignIn lets this key ask for a login link for its own account
+	// (POST /api/account/login-link). Off by default: the link becomes an
+	// ordinary browser session, so a key that may make one is as good as a
+	// session to whoever holds it. Only the key's own account turns it on,
+	// and only from a browser session (SetAPIKeySignIn). The links it makes
+	// work once and for at most KeyLoginLinkTTL.
+	MaySignIn bool `json:"may_sign_in,omitempty"`
 	// Set by DeleteAPIKey. A deleted key is dead and out of every listing,
 	// but RestoreAPIKey can bring it back for RestoreWindow.
 	SoftDelete
@@ -83,6 +90,7 @@ var (
 	ErrAPIKeyDisabled = errors.New( "cannot issue an API key for a disabled account" )
 	ErrAPIKeyBoards   = errors.New( "invalid board limit for an API key" )
 	ErrAPIKeyDead     = errors.New( "this API key is revoked or expired" )
+	ErrAPIKeyNotYours = errors.New( "only the account a key acts as may let it make sign-in links" )
 )
 
 const (
@@ -473,6 +481,26 @@ func ListAPIKeys( store *db.Store ) ( keys []*APIKey , err error ) {
 	return
 }
 
+// voidWhatKeysMadeTx is VoidLinksMintedByKeyTx for every API key an account
+// holds, live or not, inside the caller's transaction. Disabling an account,
+// or taking its admin role away, calls it: a login link its key made, and a
+// browser that link signed in, carry the right the account had then, so
+// they end with that right instead of outliving it.
+func voidWhatKeysMadeTx( tx *db.Tx , user_id uint64 ) ( err error ) {
+	key_ids := []string{}
+	err = tx.ForEach( db.BucketAPIKeys ,
+		func() any { return &APIKey{} } ,
+		func( key []byte , item any ) bool {
+			if item.( *APIKey ).UserID == user_id { key_ids = append( key_ids , string( key ) ) }
+			return true
+		} )
+	if err != nil { return }
+	for _ , key_id := range key_ids {
+		if _ , err = VoidLinksMintedByKeyTx( tx , key_id ); err != nil { return }
+	}
+	return
+}
+
 func ListAPIKeysForUser( store *db.Store , user_id uint64 ) ( keys []*APIKey , err error ) {
 	keys = []*APIKey{}
 	err = store.ForEach( db.BucketAPIKeys ,
@@ -570,22 +598,73 @@ func SetAPIKeyBoards( store *db.Store , key_id string , board_access string , bo
 // expect, when not nil, is the name the caller believes is stored, as in
 // RenameUser: a *RenameConflictError if it is not, which keeps an undo from
 // overwriting a rename made somewhere else.
-func RenameAPIKey( store *db.Store , key_id string , name string , expect *string ) ( err error ) {
-	err = store.UpdateValue( db.BucketAPIKeys , []byte( key_id ) ,
-		func() any { return &APIKey{} } ,
-		func( item any ) ( mutate_err error ) {
-			key := item.( *APIKey )
-			if key.Deleted() {
-				mutate_err = db.ErrNotFound
-				return
-			}
-			if expect != nil && key.Name != strings.TrimSpace( *expect ) {
-				mutate_err = &RenameConflictError{ Current: key.Name }
-				return
-			}
-			key.Name = strings.TrimSpace( name )
+//
+// actor_id is who is asking (0 for none, as from a shell). A name is what the
+// owner goes by when deciding which key to revoke, so renaming someone else's
+// key follows the same ladder as everything else done to it (S14): nobody
+// renames the owner's keys, and only the owner renames another admin's.
+func RenameAPIKey( store *db.Store , key_id string , actor_id uint64 , name string , expect *string ) ( err error ) {
+	err = store.Write( func( tx *db.Tx ) ( tx_err error ) {
+		key := &APIKey{}
+		if tx_err = tx.Get( db.BucketAPIKeys , []byte( key_id ) , key ); tx_err != nil { return }
+		if key.Deleted() {
+			tx_err = db.ErrNotFound
 			return
-		} )
+		}
+		if tx_err = mayActOnIDTx( tx , actor_id , key.UserID ); tx_err != nil { return }
+		if expect != nil && key.Name != strings.TrimSpace( *expect ) {
+			tx_err = &RenameConflictError{ Current: key.Name }
+			return
+		}
+		key.Name = strings.TrimSpace( name )
+		tx_err = tx.Put( db.BucketAPIKeys , []byte( key_id ) , key )
+		return
+	} )
+	return
+}
+
+// KeyLoginLinkTTL is the longest a login link made by an API key works for.
+// Such a link always works once, whatever the request asked.
+const KeyLoginLinkTTL = 15 * time.Minute
+
+// SetAPIKeySignIn turns MaySignIn on or off. Only the account the key acts as
+// may change it, not an admin, not even the owner: it decides whether that
+// key is as good as a browser session to that account, which is the account's
+// own call. A dead key stays as it is (ErrAPIKeyDead) when turning it on;
+// turning it off always works, and voids any link the key made that is still
+// unused. Browsers those links already signed in stay signed in: turning the
+// switch off is "no more links", and revoking the key is "sign them out too".
+// db.ErrNotFound when there is no such key or it is deleted.
+func SetAPIKeySignIn( store *db.Store , key_id string , user_id uint64 , on bool ) ( key *APIKey , err error ) {
+	err = store.Write( func( tx *db.Tx ) ( tx_err error ) {
+		stored := &APIKey{}
+		if tx_err = tx.Get( db.BucketAPIKeys , []byte( key_id ) , stored ); tx_err != nil { return }
+		if stored.Deleted() {
+			tx_err = db.ErrNotFound
+			return
+		}
+		if stored.UserID != user_id {
+			tx_err = ErrAPIKeyNotYours
+			return
+		}
+		if on && stored.Live() == false {
+			tx_err = ErrAPIKeyDead
+			return
+		}
+		stored.MaySignIn = on
+		if tx_err = tx.Put( db.BucketAPIKeys , []byte( key_id ) , stored ); tx_err != nil { return }
+		if on == false {
+			_ , tx_err = tx.DeleteWhere( db.BucketLoginTokens ,
+				func() any { return &LoginToken{} } ,
+				func( _ []byte , item any ) bool {
+					token := item.( *LoginToken )
+					return token.MintedByKey == key_id && token.Usable()
+				} )
+			if tx_err != nil { return }
+		}
+		key = stored
+		return
+	} )
 	return
 }
 
@@ -669,7 +748,9 @@ func RestoreAPIKey( store *db.Store , key_id string , actor_id uint64 , actor_is
 		// Bringing a key back is as much power over its account as minting
 		// one, so the rule is the key's account's, not the deleter's.
 		if tx_err = mayActOnIDTx( tx , actor_id , found.UserID ); tx_err != nil { return }
-		if tx_err = found.unmarkDeleted( actor_id , actor_is_admin ); tx_err != nil { return }
+		owner_id , tx_err := ownerIDTx( tx )
+		if tx_err != nil { return }
+		if tx_err = found.unmarkDeleted( actor_id , actor_is_admin , owner_id ); tx_err != nil { return }
 		if found.Live() {
 			live := 0
 			tx_err = tx.ForEach( db.BucketAPIKeys ,

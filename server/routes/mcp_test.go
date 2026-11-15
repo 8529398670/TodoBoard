@@ -174,7 +174,7 @@ func TestMCPAuthentication( t *testing.T ) {
 	login , _ := models.IssueLoginToken( fixture.store , fixture.owner.ID , time.Hour )
 	signed , err := models.RedeemLoginToken( fixture.store , login , models.SignInRules{ SessionTTL: time.Hour } )
 	if err != nil { t.Fatal( err ) }
-	cookie , _ := encryption.ChaChaEncryptString( fixture.cfg.SecretKey , signed.SessionCredential )
+	cookie , _ := encryption.ChaChaEncryptString( encryption.SubKey( fixture.cfg.SecretKey , encryption.PurposeCookie ) , signed.SessionCredential )
 	if status , _ := fixture.post( t , "" , rpc( "ping" , `{}` ) , "Cookie" , "session="+cookie ); status != 403 {
 		t.Errorf( "session: status %d, want 403" , status )
 	}
@@ -278,15 +278,15 @@ func TestMCPAccountTools( t *testing.T ) {
 		t.Fatalf( "admin_create_user: %s" , text )
 	}
 
-	// The narrowed key on the owner's admin account may not make itself a
-	// login link: the session would be an admin's.
-	_ , reply = fixture.post( t , fixture.user_key , callTool( "create_my_login_link" , `{}` ) )
-	if failed , text = toolFailed( t , reply ); failed == false || strings.Contains( text , "less than your account's role" ) == false {
-		t.Errorf( "narrowed key's own link: %s" , text )
+	// S9: a key makes itself a login link only once its account allowed it.
+	_ , reply = fixture.post( t , fixture.admin_key , callTool( "create_my_login_link" , `{}` ) )
+	if failed , text = toolFailed( t , reply ); failed == false || strings.Contains( text , "may not make sign-in links" ) == false {
+		t.Errorf( "a key made its own login link unasked: %s" , text )
 	}
+	if _ , err := models.SetAPIKeySignIn( fixture.store , strings.SplitN( fixture.admin_key , "." , 2 )[ 0 ] , fixture.owner.ID , true ); err != nil { t.Fatal( err ) }
 	_ , reply = fixture.post( t , fixture.admin_key , callTool( "create_my_login_link" , `{}` ) )
 	if failed , text = toolFailed( t , reply ); failed || strings.Contains( text , "login_url" ) == false {
-		t.Errorf( "full key's own link: %s" , text )
+		t.Errorf( "allowed key's own link: %s" , text )
 	}
 
 	// The owner rules hold through the tools.

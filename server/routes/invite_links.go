@@ -247,6 +247,7 @@ func ( handlers *Handlers ) setInviteLinkLimits( c fiber.Ctx , in *inviteLimitsR
 // takes it over, so revoking that key closes it again.
 //
 // @route("POST /api/admin/invite-links/{link_id}/switch-on", summary="Switch an invite link back on",
+//     bulk=True,
 //     tag="Invite links", role=ADMIN, feature="invite_links",
 //     mcp_note="Undo admin_revoke_invite_link: anyone still holding the link can use it again. The link "
 //         "then counts as this key's: revoking the key switches it off.",
@@ -271,6 +272,7 @@ func ( handlers *Handlers ) switchOnInviteLink( c fiber.Ctx , in *linkIDPath ) (
 // revokeInviteLink switches a link off. The accounts it made keep working.
 //
 // @route("POST /api/admin/invite-links/{link_id}/revoke", summary="Switch off an invite link",
+//     bulk=True,
 //     tag="Invite links", role=ADMIN, feature="invite_links",
 //     description="Stop an invite link from letting anyone else join or sign in through it. Accounts it "
 //         "already made keep working. Cannot be switched back on.",
@@ -291,6 +293,7 @@ func ( handlers *Handlers ) revokeInviteLink( c fiber.Ctx , in *linkIDPath ) ( r
 // RestoreInviteLink undoes it for a few minutes.
 //
 // @route("POST /api/admin/invite-links/{link_id}/delete", summary="Delete an invite link",
+//     bulk=True,
 //     tag="Invite links", role=ADMIN, feature="invite_links",
 //     description="Take an invite link off the list and stop it working. The accounts it made stay.",
 //     mcp_note="admin_restore_invite_link undoes it for a few minutes.",
@@ -310,6 +313,7 @@ func ( handlers *Handlers ) deleteInviteLink( c fiber.Ctx , in *linkIDPath ) ( r
 // link works again exactly as before, uses and expiry included.
 //
 // @route("POST /api/admin/invite-links/{link_id}/restore", summary="Undo deleting an invite link",
+//     bulk=True,
 //     tag="Invite links", role=ADMIN, feature="invite_links", errors=(409,),
 //     description="Bring back an invite link deleted in the last few minutes, working as before. The link "
 //         "then counts as this key's: revoking the key switches it off.",

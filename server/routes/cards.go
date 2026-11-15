@@ -156,7 +156,9 @@ func ( in *patchCardRequest ) patch() ( patch *models.CardPatch ) {
 //         "importance of a staged board. archived: true hides it from the board (reversible). Pass the "
 //         "card's rev when changing title or description: if someone edited it since, the change is "
 //         "refused (409 card_stale, with the card as it now stands) rather than written over theirs.",
-//     mcp="update_card", call=handlers.mcpUpdateCard,
+//     mcp="update_card", bulk=True,
+//     mcp_note="The answer is the card with its rank_place. card_stale means someone changed the card "
+//         "since that rev: read it again with get_card before changing the title or description.",
 // )
 func ( handlers *Handlers ) patchCard( c fiber.Ctx , in *patchCardRequest ) ( reply *fiber.Map , err error ) {
 	principal , board , card , err := handlers.requireCardAt( c , &in.cardPath , access.Edit )
@@ -174,7 +176,7 @@ func ( handlers *Handlers ) patchCard( c fiber.Ctx , in *patchCardRequest ) ( re
 		err = refused
 		return
 	}
-	payload := cardPayload( updated , access.Card( principal , board , updated ) , access.Board( principal , board ) )
+	payload := handlers.withRankPlace( cardPayload( updated , access.Card( principal , board , updated ) , access.Board( principal , board ) ) )
 	reply = &payload
 	return
 }
@@ -224,6 +226,7 @@ func ( handlers *Handlers ) patchCardRule( principal *access.Principal , board *
 // nothing is gone for good until the trash is emptied.
 //
 // @route("POST /api/boards/{board_id}/cards/{card_id}/delete", summary="Delete a card",
+//     bulk=True,
 //     tag="Cards", errors=(400, 403, 404, 409),
 //     description="Move a card to the board's trash. Not permanent: restore_card brings it back, until "
 //         "purge_card or empty_trash removes it for good. Needs edit rights on its column.",
@@ -512,6 +515,7 @@ func ( handlers *Handlers ) sharedListTrash( c fiber.Ctx , in *boardPath ) ( rep
 // restoreCard takes a card back out of the trash.
 //
 // @route("POST /api/boards/{board_id}/trash/{card_id}/restore", summary="Restore a card from the trash",
+//     bulk=True,
 //     tag="Trash", errors=(400, 403, 404, 409),
 //     description="Bring a deleted card back out of the board's trash. Card ids are in list_trash. Needs "
 //         "edit rights on the whole board.",
