@@ -49,7 +49,7 @@ type Theme struct {
 	Second     string            `json:"second" jsonschema_description:"Says where you are: active nav item, headings, info."`
 	Background string            `json:"background,omitempty" jsonschema_description:"The page. Left out: the mode's own."`
 	Surface    string            `json:"surface,omitempty" jsonschema_description:"Cards. Left out: the mode's own."`
-	Overrides  map[string]string `json:"overrides,omitempty" jsonschema_description:"Worked-out colors replaced by name: text, accent, accentFg, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back."`
+	Overrides  map[string]string `json:"overrides,omitempty" jsonschema_description:"Worked-out colors replaced by name: text, accent, accentFg, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, column, face, statusDoing, statusDoingFg, statusDone, statusDoneFg, statusPlain, statusPlainFg (a card's lit Doing/Done icons and the greyscale ones), and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back."`
 	Button     *ThemeButton      `json:"button,omitempty" jsonschema_description:"How the theme's buttons look. A choice left out is the default (rounded, normal, raised, normal)."`
 	// The colors kept for the mode not in use (Theme.setMode in theme.js): a
 	// light theme's Dark, a dark theme's Light. Switching mode swaps them in.
@@ -123,6 +123,9 @@ var (
 		"nested": true , "chrome": true , "info": true , "infoBorder": true , "border": true ,
 		// TodoBoard's own: a board's columns and its card faces.
 		"column": true , "face": true ,
+		// A card's lit Doing / Done icons, and the greyscale ones.
+		"statusDoing": true , "statusDoingFg": true , "statusDone": true , "statusDoneFg": true ,
+		"statusPlain": true , "statusPlainFg": true ,
 	}
 	// Theme.buttonChoices in theme.js.
 	ThemeButtonChoices = map[string]map[string]bool{

@@ -105,6 +105,7 @@ type File struct {
 	Server ServerSection `yaml:"server"`
 	Auth     AuthSection     `yaml:"auth"`
 	Pushover PushoverSection `yaml:"pushover"`
+	Google   GoogleSection   `yaml:"google"`
 	Notify   NotifySection   `yaml:"notify"`
 	Logs     LogsSection     `yaml:"logs"`
 	Docker   DockerSection   `yaml:"docker"`
@@ -155,6 +156,13 @@ type AuthSection struct {
 	Passwords            bool `yaml:"passwords"`
 	TwoFactor            bool `yaml:"two_factor"`
 	InviteLinks          bool `yaml:"invite_links"`
+}
+
+// GoogleSection is the OAuth client people connect their Google Calendar
+// through (server/gcal). Either empty switches calendar sync off.
+type GoogleSection struct {
+	ClientID     string `yaml:"client_id"`
+	ClientSecret string `yaml:"client_secret"`
 }
 
 type PushoverSection struct {
@@ -341,6 +349,10 @@ type Config struct {
 	// guessed 127.0.0.1 is worse than one with no link. Empty means
 	// notifications carry no link. URL above is for printed links.
 	PublicURL string
+
+	// Google Calendar sync is off when either is empty, or PublicURL is.
+	GoogleClientID     string
+	GoogleClientSecret string
 
 	// Pushover is off entirely when PushoverAppToken is empty.
 	PushoverAppToken string
@@ -1064,6 +1076,9 @@ func build( file *File , path string , paths Paths , secret_key string ) ( cfg *
 		ShowAbout:      file.App.ShowAbout,
 
 		PublicURL: strings.TrimRight( strings.TrimSpace( file.Server.PublicURL ) , "/" ),
+
+		GoogleClientID:     strings.TrimSpace( file.Google.ClientID ),
+		GoogleClientSecret: strings.TrimSpace( file.Google.ClientSecret ),
 
 		PushoverAppToken: strings.TrimSpace( file.Pushover.AppToken ),
 		PushoverAPIURL:   strings.TrimSpace( file.Pushover.APIURL ),

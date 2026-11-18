@@ -66,7 +66,7 @@ const CardExport = {
       meta.push( "**" + T( "export.md_assignees" ) + ":** " + card.assignees.map( function ( id ) { return ctx.people[ id ] || "?"; } ).join( ", " ) );
     }
     if ( card.done ) meta.push( "**" + T( "export.md_status" ) + ":** " + this.doneText( ctx ) );
-    if ( ctx.isStaged() && card.doing ) meta.push( "**" + T( "export.md_status" ) + ":** " + Stages.label( ctx , "doing" ) );
+    if ( ctx.isStaged() && !card.done && Stages.of( card ) !== "todo" ) meta.push( "**" + T( "export.md_status" ) + ":** " + Stages.label( ctx , Stages.of( card ) ) );
     if ( ctx.isStaged() && card.rank_place ) meta.push( "**" + T( "export.md_rank" ) + ":** " + card.rank_place );
     if ( card.product && card.product.url ) meta.push( "**" + T( "export.md_product" ) + ":** " + ( CardBits.priceText( card ) ? CardBits.priceText( card ) + " " : "" ) + "<" + card.product.url + ">" );
     else if ( CardBits.priceText( card ) ) meta.push( "**" + T( "export.md_price" ) + ":** " + CardBits.priceText( card ) );
@@ -87,6 +87,33 @@ const CardExport = {
       lines.push( "" );
     }
     return lines.join( "\n" );
+  },
+
+  // Plain text: the same content as markdown() with no Markdown syntax, for
+  // pasting into a chat, a text message or a plain-text note.
+  text( ctx , card ) {
+    const lines = [ ( card.done ? T( "export.md_done_marker" ) + " " : "" ) + card.title ];
+    const meta = [];
+    if ( !ctx.quick ) meta.push( ctx.board.title + " / " + this.listTitle( ctx , card ) );
+    const labels = this.labelNames( ctx , card );
+    if ( labels.length ) meta.push( T( "export.md_labels" ) + ": " + labels.join( ", " ) );
+    if ( card.start_at ) meta.push( T( "export.md_start" ) + ": " + this.dateText( card.start_at , card.start_all_day ) );
+    if ( card.due_at ) meta.push( T( "export.md_due" ) + ": " + this.dateText( card.due_at , card.due_all_day ) );
+    if ( card.assignees.length ) {
+      meta.push( T( "export.md_assignees" ) + ": " + card.assignees.map( function ( id ) { return ctx.people[ id ] || "?"; } ).join( ", " ) );
+    }
+    if ( card.done ) meta.push( T( "export.md_status" ) + ": " + this.doneText( ctx ) );
+    else if ( ctx.isStaged() && Stages.of( card ) !== "todo" ) meta.push( T( "export.md_status" ) + ": " + Stages.label( ctx , Stages.of( card ) ) );
+    const product = this.productLine( card );
+    if ( product ) meta.push( product );
+    if ( meta.length ) lines.push( meta.join( "\n" ) );
+    if ( CardBits.hasDescription( card ) ) lines.push( card.description.trim() );
+    if ( card.checklist.length ) {
+      lines.push( T( "card.checklist_heading" ) + ":\n" + card.checklist.map( function ( item ) {
+        return "[" + ( item.done ? "x" : " " ) + "] " + item.text;
+      } ).join( "\n" ) );
+    }
+    return lines.join( "\n\n" );
   },
 
   // "Price -- link" for a card with a product on it, just the price for a
@@ -113,7 +140,7 @@ const CardExport = {
     const due = CardBits.due( card );
     if ( due ) meta.appendChild( due );
     if ( card.done ) meta.appendChild( Dom.el( "span" , { class: "due-chip due-done" , text: this.doneText( ctx ) } ) );
-    if ( ctx.isStaged() && card.doing ) meta.appendChild( Dom.el( "span" , { class: "due-chip" , text: Stages.label( ctx , "doing" ) } ) );
+    if ( ctx.isStaged() && !card.done && Stages.of( card ) !== "todo" ) meta.appendChild( Dom.el( "span" , { class: "due-chip" , text: Stages.label( ctx , Stages.of( card ) ) } ) );
     const rank = CardBits.rank( card , ctx );
     if ( rank ) meta.appendChild( rank );
     const people = CardBits.assignees( card , ctx.people );

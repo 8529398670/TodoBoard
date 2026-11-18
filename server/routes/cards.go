@@ -23,6 +23,7 @@ type createCardRequest struct {
 	Done        *bool     `json:"done,omitempty" jsonschema_description:"true makes it complete from the start."`
 	// The stage it starts in, on a staged board.
 	Doing     *bool `json:"doing,omitempty" jsonschema_description:"On a staged board, the Doing stage. true starts the card (reopening it if done); done: true moves it on to Done."`
+	Scheduled *bool `json:"scheduled,omitempty" jsonschema_description:"On a staged board with stage_set review, the Scheduled stage (after Working, i.e. doing). At most one of doing, scheduled and done."`
 	RankPlace *int  `json:"rank_place,omitempty" jsonschema:"minimum=0" jsonschema_description:"Importance across the whole board: 1 is the most important, and other cards shift to make room. 0 takes the card out of the ranking. Needs edit rights on the board."`
 	// The day it is filed under, on a calendar board.
 	Day *string `json:"day,omitempty" jsonschema_description:"On a calendar board (layout calendar), the day the card is filed under: 2026-11-07, or an empty string for none."`
@@ -31,7 +32,7 @@ type createCardRequest struct {
 // patch is the fields set after the card is made, the zero patch when none
 // are.
 func ( in *createCardRequest ) patch() ( patch models.CardPatch ) {
-	patch = models.CardPatch{ Description: in.Description , LabelIDs: in.LabelIDs , Assignees: in.Assignees , StartAt: in.StartAt , DueAt: in.DueAt , Done: in.Done , Doing: in.Doing , RankPlace: in.RankPlace , Day: in.Day }
+	patch = models.CardPatch{ Description: in.Description , LabelIDs: in.LabelIDs , Assignees: in.Assignees , StartAt: in.StartAt , DueAt: in.DueAt , Done: in.Done , Doing: in.Doing , Scheduled: in.Scheduled , RankPlace: in.RankPlace , Day: in.Day }
 	return
 }
 
@@ -97,6 +98,7 @@ func ( handlers *Handlers ) createCardRule( principal *access.Principal , board 
 		return
 	}
 	handlers.activity( principal , board.ID , "card_added" , map[string]string{ "card": card.Title , "list": board.List( list_id ).Title } )
+	handlers.googleTouch( board.ID )
 	return
 }
 
@@ -125,6 +127,7 @@ type patchCardRequest struct {
 	DueAt       *string   `json:"due_at,omitempty" jsonschema_description:"2026-10-30 for an all-day date, an RFC 3339 timestamp for a time, an empty string to clear."`
 	Done        *bool     `json:"done,omitempty" jsonschema_description:"Marks it complete, or not."`
 	Doing       *bool     `json:"doing,omitempty" jsonschema_description:"On a staged board, the Doing stage. true starts the card (reopening it if done); done: true moves it on to Done."`
+	Scheduled   *bool     `json:"scheduled,omitempty" jsonschema_description:"On a staged board with stage_set review, the Scheduled stage (after Working, i.e. doing). true clears doing and reopens a done card. At most one of doing, scheduled and done."`
 	Archived    *bool     `json:"archived,omitempty" jsonschema_description:"true hides it from the board (reversible); false brings it back."`
 	Price       *string   `json:"price,omitempty" jsonschema_description:"The price shown on the card, as text; an empty string clears it."`
 	Day         *string   `json:"day,omitempty" jsonschema_description:"On a calendar board (layout calendar), the day the card is filed under: 2026-11-07, or an empty string for none."`
@@ -136,7 +139,7 @@ func ( in *patchCardRequest ) patch() ( patch *models.CardPatch ) {
 	patch = &models.CardPatch{
 		Rev: in.Rev , Title: in.Title , Description: in.Description , ListID: in.ListID , Position: in.Position ,
 		LabelIDs: in.LabelIDs , Assignees: in.Assignees , StartAt: in.StartAt , DueAt: in.DueAt , Done: in.Done ,
-		Doing: in.Doing , Archived: in.Archived , Price: in.Price , Day: in.Day , RankPlace: in.RankPlace , Rank: in.Rank ,
+		Doing: in.Doing , Scheduled: in.Scheduled , Archived: in.Archived , Price: in.Price , Day: in.Day , RankPlace: in.RankPlace , Rank: in.Rank ,
 	}
 	return
 }
@@ -219,6 +222,7 @@ func ( handlers *Handlers ) patchCardRule( principal *access.Principal , board *
 		return
 	}
 	handlers.Notify.CardChanged( board.ID , card.ID , change , principal.UserID , principal.Name )
+	handlers.googleTouch( board.ID )
 	return
 }
 
@@ -244,6 +248,7 @@ func ( handlers *Handlers ) deleteCard( c fiber.Ctx , in *cardPath ) ( reply *ok
 		return
 	}
 	handlers.activity( principal , board.ID , "card_trashed" , map[string]string{ "card": card.Title } )
+	handlers.googleTouch( board.ID )
 	reply = &okReply{ Ok: true }
 	return
 }

@@ -46,6 +46,13 @@
   /* TodoBoard's boards: a column, and the card faces on it. */
   --app-column: #e5eaeb;
   --app-face: #fbfdfd;
+  /* A card's lit Doing / Done icons, and the greyscale ones (theme.js derived). */
+  --app-status-doing: #1f5fd6;
+  --app-status-doing-fg: #ffffff;
+  --app-status-done: #dcefe6;
+  --app-status-done-fg: #146c43;
+  --app-status-plain: #ebedee;
+  --app-status-plain-fg: #5b6265;
   /* The other buttons: fill, label on it, and the outline's label (theme.js variants). */
   --app-btn-secondary: #6c7f80;
   --app-btn-secondary-fg: #0b0d10;
@@ -97,6 +104,12 @@
   --app-border: #41464b;
   --app-column: #1d2325;
   --app-face: #22272c;
+  --app-status-doing: #6ea0ff;
+  --app-status-doing-fg: #0b0d10;
+  --app-status-done: #27443a;
+  --app-status-done-fg: #74d6a6;
+  --app-status-plain: #33383d;
+  --app-status-plain-fg: #b4bbc1;
   --app-btn-secondary: #859a9c;
   --app-btn-secondary-fg: #0b0d10;
   --app-btn-secondary-text: #859a9c;

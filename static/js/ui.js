@@ -551,6 +551,18 @@ const Dates = {
     return this.formatter( options ).format( new Date( value ) );
   },
 
+  // "15NOV2026 @ 23:34:59" in the person's zone: a card's last-changed stamp.
+  // Always this one style, so it reads the same on every card and screen.
+  months: [ "JAN" , "FEB" , "MAR" , "APR" , "MAY" , "JUN" , "JUL" , "AUG" , "SEP" , "OCT" , "NOV" , "DEC" ],
+  stamp( value ) {
+    if ( !value ) return "";
+    const date = new Date( value );
+    if ( isNaN( date.getTime() ) ) return "";
+    const parts = this.zoned( date );
+    const two = function ( number ) { return String( number ).padStart( 2 , "0" ); };
+    return two( parts.day ) + this.months[ parts.month - 1 ] + parts.year + " @ " + two( parts.hour ) + ":" + two( parts.minute ) + ":" + two( date.getSeconds() );
+  },
+
   // "14:05" or "2:05 PM", per the person's clock.
   formatTime( value ) {
     return this.formatter( { hour: "numeric" , minute: "2-digit" } ).format( new Date( value ) );
@@ -609,6 +621,16 @@ const CardBits = {
       wrap.appendChild( Tone.paint( Dom.el( "span" , { class: "label-chip " + Tone.className( label.color ) , text: label.name , attrs: { title: label.name } } ) , label.color ) );
     } );
     return wrap.childNodes.length ? wrap : null;
+  },
+
+  // When the card was last changed, for its face's bottom-right corner, where
+  // the board or its column turns that on. Public links get no updated_at.
+  updated( card , ctx ) {
+    if ( !card.updated_at || !ctx.showUpdated || !ctx.showUpdated( card ) ) return null;
+    const stamp = Dates.stamp( card.updated_at );
+    if ( !stamp ) return null;
+    const attrs = { title: I18n.fill( "card.updated_stamp_title" , { when: Dates.format( card.updated_at , false , true ) } ) };
+    return Dom.el( "time" , { class: "card-updated-stamp" , text: stamp , attrs: Object.assign( attrs , { datetime: card.updated_at } ) } );
   },
 
   due( card ) {
@@ -975,7 +997,8 @@ const CardBits = {
         } );
       } );
     } else if ( ctx.isStaged() || ( ctx.isCalendar && ctx.isCalendar() ) ) {
-      [ "doing" , "done" ].forEach( function ( stage ) {
+      // Every stage after the first (To do, Ready for review: no flag).
+      Stages.order.slice( 1 ).forEach( function ( stage ) {
         const here = Stages.of( card ) === stage;
         icon( stage , Stages.label( ctx , stage ) , here , card.access === "edit" && card.mirror !== "copy" , function () { CardBits.setStage( card , here ? "todo" : stage , ctx ); } );
       } );

@@ -73,7 +73,7 @@ const PrintPage = {
         const article = Dom.el( "article" , { class: "print-card" + ( card.done ? " is-done" : "" ) } );
         const cardTitle = Dom.el( "h3" );
         if ( card.done ) cardTitle.appendChild( Dom.el( "span" , { class: "done-tick" , text: T( "card.done_symbol" ) + " " } ) );
-        if ( staged && card.doing ) cardTitle.appendChild( Dom.el( "span" , { class: "done-tick" , text: T( "board.status_doing_symbol" ) + " " } ) );
+        if ( staged && ( card.doing || card.scheduled ) ) cardTitle.appendChild( Dom.el( "span" , { class: "done-tick" , text: T( "board.status_doing_symbol" ) + " " } ) );
         if ( staged && card.rank_place ) cardTitle.appendChild( Dom.el( "span" , { text: I18n.fill( "board.rank_chip" , { n: card.rank_place } ) + " " } ) );
         const text = Dom.el( "span" );
         Markdown.renderInline( card.title , text );

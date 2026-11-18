@@ -85,6 +85,11 @@ type Card struct {
 	// Doing is the middle stage on a staged board: neither flag is To do,
 	// Doing is Doing, Done is Done. The two are never both set.
 	Doing       bool              `json:"doing"`
+	// Scheduled is the third of four stages on a board with the review
+	// stage set (Board.StageSet): Ready for review (no flag), Working
+	// (Doing), Scheduled, Resolved (Done). At most one of Doing, Scheduled
+	// and Done is ever set.
+	Scheduled   bool              `json:"scheduled,omitempty"`
 	// Rank orders a card among all the board's cards, whatever list it is
 	// in: smaller is more important, 0 is unranked. It is a float for the
 	// same reason Position is; the number people see comes from RankPlaces.
@@ -289,6 +294,7 @@ type CardPatch struct {
 	DueAt    *string `json:"due_at"`
 	Done     *bool   `json:"done"`
 	Doing    *bool   `json:"doing"`
+	Scheduled *bool  `json:"scheduled"`
 	Archived *bool   `json:"archived"`
 	Price    *string `json:"price"`
 	// Day: "2026-11-07", or "" for none. See Card.Day.
@@ -383,7 +389,12 @@ func ( patch *CardPatch ) apply( board *Board , card *Card ) ( change CardChange
 		err = ErrStale
 		return
 	}
-	if patch.Done != nil && *patch.Done && patch.Doing != nil && *patch.Doing { return change , ErrBadInput }
+	// At most one stage flag at a time.
+	set := 0
+	for _ , flag := range []*bool{ patch.Done , patch.Doing , patch.Scheduled } {
+		if flag != nil && *flag { set += 1 }
+	}
+	if set > 1 { return change , ErrBadInput }
 	if patch.Title != nil {
 		clean , ok := cleanTitle( *patch.Title , maxCardTitleChars )
 		if ok == false { return change , ErrBadInput }
@@ -446,10 +457,16 @@ func ( patch *CardPatch ) apply( board *Board , card *Card ) ( change CardChange
 	if patch.Doing != nil {
 		change.Edited = change.Edited || *patch.Doing != card.Doing
 		card.Doing = *patch.Doing
+		if card.Doing { card.Scheduled = false }
 	}
-	// Starting a finished card reopens it.
+	if patch.Scheduled != nil {
+		change.Edited = change.Edited || *patch.Scheduled != card.Scheduled
+		card.Scheduled = *patch.Scheduled
+		if card.Scheduled { card.Doing = false }
+	}
+	// Starting (or scheduling) a finished card reopens it.
 	done := patch.Done
-	if done == nil && card.Doing {
+	if done == nil && ( card.Doing || card.Scheduled ) {
 		reopened := false
 		done = &reopened
 	}
@@ -464,7 +481,7 @@ func ( patch *CardPatch ) apply( board *Board , card *Card ) ( change CardChange
 			change.Reopened = true
 		}
 	}
-	if card.Done { card.Doing = false }
+	if card.Done { card.Doing , card.Scheduled = false , false }
 	if patch.Rank != nil {
 		if math.IsNaN( *patch.Rank ) || math.IsInf( *patch.Rank , 0 ) || *patch.Rank < 0 { return change , ErrBadInput }
 		card.Rank = *patch.Rank

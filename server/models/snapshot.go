@@ -52,6 +52,7 @@ type CardSnapshot struct {
 	Done        bool                 `json:"done"`
 	DoneAt      *time.Time           `json:"done_at"`
 	Doing       bool                 `json:"doing,omitempty"`
+	Scheduled   bool                 `json:"scheduled,omitempty"`
 	Rank        float64              `json:"rank,omitempty"`
 	Day         string               `json:"day,omitempty"`
 	Archived    bool                 `json:"archived"`
@@ -68,6 +69,7 @@ type ListSnapshot struct {
 	Shopping bool            `json:"shopping,omitempty"`
 	StageView string         `json:"stage_view,omitempty"`
 	StageTabs string         `json:"stage_tabs,omitempty"`
+	ShowUpdated string       `json:"show_updated,omitempty"`
 	Cards    []*CardSnapshot `json:"cards"`
 }
 
@@ -82,8 +84,11 @@ type BoardSnapshot struct {
 	Shopping    bool             `json:"shopping,omitempty"`
 	CenterColumns bool           `json:"center_columns,omitempty"`
 	StageTabs   bool             `json:"stage_tabs,omitempty"`
+	ShowUpdated bool             `json:"show_updated,omitempty"`
 	StageTodo   string           `json:"stage_todo,omitempty"`
 	StageDoing  string           `json:"stage_doing,omitempty"`
+	StageScheduled string        `json:"stage_scheduled,omitempty"`
+	StageSet    string           `json:"stage_set,omitempty"`
 	StageDone   string           `json:"stage_done,omitempty"`
 	CarryOver   *bool            `json:"carry_over,omitempty"`
 	PurposeEnabled bool          `json:"purpose_enabled,omitempty"`
@@ -117,7 +122,7 @@ func SnapshotBoard( board *Board , cards []*Card , visible func( card *Card ) bo
 	snap = &BoardSnapshot{
 		Title: board.Title , Slug: board.Slug , Layout: board.Layout , Numbering: board.Numbering ,
 		DefaultView: board.DefaultView , Color: board.Color , Theme: board.Theme , Shopping: board.Shopping ,
-		CenterColumns: board.CenterColumns , StageTabs: board.StageTabs , StageTodo: board.StageTodo , StageDoing: board.StageDoing , StageDone: board.StageDone , CarryOver: board.CarryOver ,
+		CenterColumns: board.CenterColumns , StageTabs: board.StageTabs , ShowUpdated: board.ShowUpdated , StageTodo: board.StageTodo , StageDoing: board.StageDoing , StageScheduled: board.StageScheduled , StageSet: board.StageSet , StageDone: board.StageDone , CarryOver: board.CarryOver ,
 		PurposeEnabled: board.PurposeEnabled , Purpose: board.Purpose , Notes: board.Notes ,
 		Labels: snapshotLabels( board , nil ) , Lists: []*ListSnapshot{} ,
 	}
@@ -130,7 +135,7 @@ func SnapshotBoard( board *Board , cards []*Card , visible func( card *Card ) bo
 
 // SnapshotList is one list with its visible cards, in column order.
 func SnapshotList( list *List , cards []*Card , visible func( card *Card ) bool , person func( id uint64 ) string ) ( snap *ListSnapshot ) {
-	snap = &ListSnapshot{ Title: list.Title , Archived: list.Archived , Shopping: list.Shopping , StageView: list.StageView , StageTabs: list.StageTabs , Cards: []*CardSnapshot{} }
+	snap = &ListSnapshot{ Title: list.Title , Archived: list.Archived , Shopping: list.Shopping , StageView: list.StageView , StageTabs: list.StageTabs , ShowUpdated: list.ShowUpdated , Cards: []*CardSnapshot{} }
 	mine := []*Card{}
 	for _ , card := range cards {
 		if card.ListID == list.ID && visible( card ) { mine = append( mine , card ) }
@@ -171,7 +176,7 @@ func snapshotCard( card *Card , person func( id uint64 ) string ) ( snap *CardSn
 	snap = &CardSnapshot{
 		Title: card.Title , Description: card.Description , Labels: append( []uint64{} , card.LabelIDs... ) ,
 		StartAt: card.StartAt , StartTimed: card.StartTimed , DueAt: card.DueAt , DueAllDay: card.DueAllDay ,
-		Done: card.Done , DoneAt: card.DoneAt , Doing: card.Doing , Rank: card.Rank , Day: card.Day , Archived: card.Archived , Checklist: []*ChecklistSnapshot{} ,
+		Done: card.Done , DoneAt: card.DoneAt , Doing: card.Doing , Scheduled: card.Scheduled , Rank: card.Rank , Day: card.Day , Archived: card.Archived , Checklist: []*ChecklistSnapshot{} ,
 		Price: card.PriceText() ,
 	}
 	items := append( []*ChecklistItem{} , card.Checklist... )
@@ -202,13 +207,15 @@ func ImportBoardSkeleton( store *db.Store , owner_id uint64 , snap *BoardSnapsho
 		board = &Board{
 			ID: id , Title: title , OwnerID: owner_id , Members: map[uint64]string{} ,
 			Lists: []*List{} , Labels: []*Label{} , Layout: LayoutFree , DefaultView: ViewKanban ,
-			Shopping: snap.Shopping , CenterColumns: snap.CenterColumns , StageTabs: snap.StageTabs , PurposeEnabled: snap.PurposeEnabled , Rev: 1 , CreatedAt: now , UpdatedAt: now ,
+			Shopping: snap.Shopping , CenterColumns: snap.CenterColumns , StageTabs: snap.StageTabs , ShowUpdated: snap.ShowUpdated , PurposeEnabled: snap.PurposeEnabled , Rev: 1 , CreatedAt: now , UpdatedAt: now ,
 		}
 		if snap.Layout == LayoutThree || snap.Layout == LayoutStaged || snap.Layout == LayoutCalendar { board.Layout = snap.Layout }
 		board.CarryOver = snap.CarryOver
 		// A file can say anything; a name too long is the same as none.
 		if clean , ok := cleanStageName( snap.StageTodo ); ok { board.StageTodo = clean }
 		if clean , ok := cleanStageName( snap.StageDoing ); ok { board.StageDoing = clean }
+		if clean , ok := cleanStageName( snap.StageScheduled ); ok { board.StageScheduled = clean }
+		if ValidStageSet( snap.StageSet ) { board.StageSet = snap.StageSet }
 		if clean , ok := cleanStageName( snap.StageDone ); ok { board.StageDone = clean }
 		if snap.Numbering == NumberingOn || snap.Numbering == NumberingOff { board.Numbering = snap.Numbering }
 		if ValidBoardView( snap.DefaultView ) { board.DefaultView = snap.DefaultView }
@@ -228,6 +235,7 @@ func ImportBoardSkeleton( store *db.Store , owner_id uint64 , snap *BoardSnapsho
 			added := &List{ ID: board.nextID() , Title: list_title , Position: float64( index + 1 ) * positionStep , Archived: list.Archived , Shopping: list.Shopping }
 			if validStageView( list.StageView ) { added.StageView = list.StageView }
 			if validStageTabs( list.StageTabs ) { added.StageTabs = list.StageTabs }
+			if validStageTabs( list.ShowUpdated ) { added.ShowUpdated = list.ShowUpdated }
 			board.Lists = append( board.Lists , added )
 			lists = append( lists , added.ID )
 		}
@@ -303,7 +311,7 @@ func importedCard( snap *CardSnapshot , by_ref map[uint64]uint64 ) ( card *Card 
 		Title: title , Description: snap.Description , Price: price ,
 		StartAt: utcTime( snap.StartAt ) , StartTimed: snap.StartTimed && snap.StartAt != nil ,
 		DueAt: utcTime( snap.DueAt ) , DueAllDay: snap.DueAllDay && snap.DueAt != nil ,
-		Done: snap.Done , Doing: snap.Doing && snap.Done == false , Archived: snap.Archived ,
+		Done: snap.Done , Doing: snap.Doing && snap.Done == false , Scheduled: snap.Scheduled && snap.Done == false && snap.Doing == false , Archived: snap.Archived ,
 	}
 	if ValidDay( snap.Day ) { card.Day = snap.Day }
 	if snap.Rank > 0 && math.IsInf( snap.Rank , 0 ) == false { card.Rank = snap.Rank }

@@ -55,8 +55,11 @@ type updateBoardRequest struct {
 	ShowRank      *bool   `json:"show_rank,omitempty" jsonschema_description:"Show each card's place in the board-wide ranking."`
 	CenterColumns *bool   `json:"center_columns,omitempty" jsonschema_description:"Centre the columns on wide screens."`
 	StageTabs     *bool   `json:"stage_tabs,omitempty" jsonschema_description:"On a staged board, give every column its own To do / Doing / Done buttons."`
+	ShowUpdated   *bool   `json:"show_updated,omitempty" jsonschema_description:"Every card face shows when it was last changed, in its bottom-right corner. A column's own show_updated can override it."`
 	StageTodo     *string `json:"stage_todo,omitempty" jsonschema_description:"What the To do stage is called on this board; empty for the default."`
 	StageDoing    *string `json:"stage_doing,omitempty" jsonschema_description:"What the Doing stage is called on this board; empty for the default."`
+	StageScheduled *string `json:"stage_scheduled,omitempty" jsonschema_description:"With stage_set review: what the Scheduled stage is called; empty for the default."`
+	StageSet      *string `json:"stage_set,omitempty" jsonschema:"enum=,enum=review" jsonschema_description:"On a staged or calendar board, its stages: \"\" for To do / Doing / Done, or \"review\" for Ready for review / Working / Scheduled / Resolved (cards' doing, scheduled and done flags)."`
 	StageDone     *string `json:"stage_done,omitempty" jsonschema_description:"What the Done stage is called on this board; empty for the default."`
 	CarryOver     *bool   `json:"carry_over,omitempty" jsonschema_description:"On a calendar board, move unfinished cards from past days to today."`
 	AllowQuickShare   *bool `json:"allow_quick_share,omitempty" jsonschema_description:"Let the board's cards be shared by quick link. The owner's, from a browser only: refused through a key."`
@@ -72,8 +75,8 @@ func ( in *updateBoardRequest ) settings() ( settings *models.BoardSettings ) {
 	settings = &models.BoardSettings{
 		Title: in.Title , DefaultView: in.DefaultView , Color: in.Color , Slug: in.Slug , Layout: in.Layout ,
 		Numbering: in.Numbering , ListTitles: in.ListTitles , Theme: in.Theme , ClearTheme: in.ClearTheme ,
-		Shopping: in.Shopping , ShowRank: in.ShowRank , CenterColumns: in.CenterColumns , StageTabs: in.StageTabs ,
-		StageTodo: in.StageTodo , StageDoing: in.StageDoing , StageDone: in.StageDone ,
+		Shopping: in.Shopping , ShowRank: in.ShowRank , CenterColumns: in.CenterColumns , StageTabs: in.StageTabs , ShowUpdated: in.ShowUpdated ,
+		StageTodo: in.StageTodo , StageDoing: in.StageDoing , StageScheduled: in.StageScheduled , StageSet: in.StageSet , StageDone: in.StageDone ,
 		AllowQuickShare: in.AllowQuickShare , AllowAnonComments: in.AllowAnonComments , CarryOver: in.CarryOver ,
 		DonePlacement: in.DonePlacement , AddPlacement: in.AddPlacement ,
 		PurposeEnabled: in.PurposeEnabled , Purpose: in.Purpose , PurposeRev: in.PurposeRev , Notes: in.Notes , NotesRev: in.NotesRev ,
@@ -151,12 +154,13 @@ type updateListRequest struct {
 	Archived  *bool    `json:"archived,omitempty" jsonschema_description:"true hides the column; false brings it back."`
 	Shopping  *bool    `json:"shopping,omitempty" jsonschema_description:"A shopping column: its cards carry products and prices."`
 	Width     *int     `json:"width,omitempty" jsonschema_description:"The column's width in pixels (200-800); 0 puts it back to the standard width."`
-	StageView *string  `json:"stage_view,omitempty" jsonschema:"enum=,enum=todo,enum=doing,enum=done" jsonschema_description:"On a staged board, the stage this column shows for everyone; empty follows the navbar."`
+	StageView *string  `json:"stage_view,omitempty" jsonschema:"enum=,enum=todo,enum=doing,enum=scheduled,enum=done" jsonschema_description:"On a staged board, the stage this column shows for everyone; empty follows the navbar."`
 	StageTabs *string  `json:"stage_tabs,omitempty" jsonschema:"enum=,enum=on,enum=off" jsonschema_description:"On a staged board, this column's own To do / Doing / Done buttons: on, off, or empty to follow the board's setting."`
+	ShowUpdated *string `json:"show_updated,omitempty" jsonschema:"enum=,enum=on,enum=off" jsonschema_description:"Whether this column's cards show when they were last changed: on, off, or empty to follow the board's show_updated."`
 }
 
 func ( in *updateListRequest ) update() ( update *models.ListUpdate ) {
-	update = &models.ListUpdate{ Title: in.Title , Position: in.Position , Archived: in.Archived , Shopping: in.Shopping , Width: in.Width , StageView: in.StageView , StageTabs: in.StageTabs }
+	update = &models.ListUpdate{ Title: in.Title , Position: in.Position , Archived: in.Archived , Shopping: in.Shopping , Width: in.Width , StageView: in.StageView , StageTabs: in.StageTabs , ShowUpdated: in.ShowUpdated }
 	return
 }
 
@@ -354,6 +358,7 @@ func quickBoardPayload( principal *access.Principal , board *models.Board , all_
 			"due_all_day": card.DueAllDay,
 			"done":        card.Done,
 			"doing":       card.Doing,
+			"scheduled":   card.Scheduled,
 			"checklist":   card.Checklist,
 			"archived":    card.Archived,
 			"rev":         card.Rev,
@@ -471,6 +476,7 @@ func ( handlers *Handlers ) boardPayload( principal *access.Principal , board *m
 			me[ "collapsed_lists" ] = ref.CollapsedLists
 			if ref.CollapsedLists == nil { me[ "collapsed_lists" ] = []uint64{} }
 			me[ "archived" ] = ref.Archived
+			me[ "google_sync" ] = ref.GoogleSync
 		}
 	}
 
@@ -489,8 +495,11 @@ func ( handlers *Handlers ) boardPayload( principal *access.Principal , board *m
 		"show_rank":    board.ShowRank,
 		"center_columns": board.CenterColumns,
 		"stage_tabs":   board.StageTabs,
+		"show_updated": board.ShowUpdated,
 		"stage_todo":   board.StageTodo,
 		"stage_doing":  board.StageDoing,
+		"stage_scheduled": board.StageScheduled,
+		"stage_set":    board.StageSet,
 		"stage_done":   board.StageDone,
 		"theme":        board.Theme,
 		"rev":          board.Rev,
@@ -567,6 +576,7 @@ func cardPayload( card *models.Card , level access.Level , board_level access.Le
 		"done":        card.Done,
 		"done_at":     card.DoneAt,
 		"doing":       card.Doing,
+		"scheduled":   card.Scheduled,
 		"rank":        card.Rank,
 		"checklist":   card.Checklist,
 		"archived":    card.Archived,
@@ -1162,6 +1172,7 @@ func ( handlers *Handlers ) carryOver( c fiber.Ctx , in *carryOverRequest ) ( re
 		err = modelErr( carry_err )
 		return
 	}
+	if moved > 0 { handlers.googleTouch( board.ID ) }
 	reply = &carryOverReply{ Moved: moved }
 	return
 }

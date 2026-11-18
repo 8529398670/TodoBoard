@@ -119,11 +119,21 @@ type Board struct {
 	// Done buttons, which flip just that column for whoever presses them.
 	// List.StageTabs can turn them on or off for one column.
 	StageTabs   bool              `json:"stage_tabs"`
+	// ShowUpdated: every card face shows when it was last changed, in its
+	// bottom-right corner. List.ShowUpdated can turn it on or off for one
+	// column.
+	ShowUpdated bool              `json:"show_updated"`
 	// What a staged board calls its stages. Empty is the app's own word, in
 	// whatever language it is set to. Three fields rather than a map so that
 	// saving one name cannot overwrite another person's change to the next.
 	StageTodo   string            `json:"stage_todo"`
 	StageDoing  string            `json:"stage_doing"`
+	// StageScheduled: the review stage set's third stage (see StageSet).
+	StageScheduled string         `json:"stage_scheduled"`
+	// StageSet: which stages a staged or calendar board has. Empty is To do,
+	// Doing, Done; StageSetReview is Ready for review, Working, Scheduled,
+	// Resolved -- the same flags plus Card.Scheduled.
+	StageSet    string            `json:"stage_set"`
 	StageDone   string            `json:"stage_done"`
 	// AllowQuickShare lets the owner and editors make a read-only public link
 	// to one card from its menu. Off pauses those links without revoking
@@ -186,6 +196,10 @@ type List struct {
 	// StageTabs: this column's own stage buttons. Empty follows
 	// Board.StageTabs; "on" or "off" decides for this column alone.
 	StageTabs string `json:"stage_tabs"`
+	// ShowUpdated: whether this column's cards show when they were last
+	// changed. Empty follows Board.ShowUpdated; "on" or "off" decides for
+	// this column alone.
+	ShowUpdated string `json:"show_updated"`
 }
 
 type Label struct {
@@ -446,8 +460,11 @@ type BoardSettings struct {
 	ShowRank    *bool    `json:"show_rank"`
 	CenterColumns *bool  `json:"center_columns"`
 	StageTabs   *bool    `json:"stage_tabs"`
+	ShowUpdated *bool    `json:"show_updated"`
 	StageTodo   *string  `json:"stage_todo"`
 	StageDoing  *string  `json:"stage_doing"`
+	StageScheduled *string `json:"stage_scheduled"`
+	StageSet    *string  `json:"stage_set"`
 	StageDone   *string  `json:"stage_done"`
 	AllowQuickShare *bool `json:"allow_quick_share"`
 	AllowAnonComments *bool `json:"allow_anon_comments"`
@@ -509,9 +526,15 @@ func ( settings *BoardSettings ) Apply( board *Board ) ( err error ) {
 	if settings.ShowRank != nil { board.ShowRank = *settings.ShowRank }
 	if settings.CenterColumns != nil { board.CenterColumns = *settings.CenterColumns }
 	if settings.StageTabs != nil { board.StageTabs = *settings.StageTabs }
+	if settings.ShowUpdated != nil { board.ShowUpdated = *settings.ShowUpdated }
+	if settings.StageSet != nil {
+		if ValidStageSet( *settings.StageSet ) == false { return ErrBadInput }
+		board.StageSet = *settings.StageSet
+	}
 	for _ , stage := range []struct{ value *string ; field *string }{
 		{ settings.StageTodo , &board.StageTodo } ,
 		{ settings.StageDoing , &board.StageDoing } ,
+		{ settings.StageScheduled , &board.StageScheduled } ,
 		{ settings.StageDone , &board.StageDone } ,
 	} {
 		if stage.value == nil { continue }
@@ -612,6 +635,7 @@ type ListUpdate struct {
 	Width    *int     `json:"width"`
 	StageView *string `json:"stage_view"`
 	StageTabs *string `json:"stage_tabs"`
+	ShowUpdated *string `json:"show_updated"`
 }
 
 // A dragged column stays between these; 0 puts it back to the standard width.
@@ -653,16 +677,30 @@ func ( update *ListUpdate ) Apply( board *Board , list_id uint64 ) ( err error )
 		if validStageTabs( *update.StageTabs ) == false { return ErrBadInput }
 		list.StageTabs = *update.StageTabs
 	}
+	if update.ShowUpdated != nil {
+		if validStageTabs( *update.ShowUpdated ) == false { return ErrBadInput }
+		list.ShowUpdated = *update.ShowUpdated
+	}
 	return
 }
 
+// validStageTabs: a column's own say over a board setting -- empty follows
+// the board, "on" or "off" decides. Used by StageTabs and ShowUpdated.
 func validStageTabs( value string ) ( ok bool ) {
 	ok = value == "" || value == "on" || value == "off"
 	return
 }
 
 func validStageView( view string ) ( ok bool ) {
-	ok = view == "" || view == "todo" || view == "doing" || view == "done"
+	ok = view == "" || view == "todo" || view == "doing" || view == "scheduled" || view == "done"
+	return
+}
+
+// The stage sets a board can have (Board.StageSet).
+const StageSetReview = "review"
+
+func ValidStageSet( set string ) ( ok bool ) {
+	ok = set == "" || set == StageSetReview
 	return
 }
 
@@ -786,6 +824,9 @@ type BoardRef struct {
 	// off their home grid into Archived, and nobody else sees a change.
 	// Board.ArchivedAt is the owner's archive for everyone.
 	Archived bool `json:"archived,omitempty"`
+	// GoogleSync: this person copies the board's dated cards into their
+	// connected Google Calendar, both ways (server/gcal). Theirs alone.
+	GoogleSync bool `json:"google_sync,omitempty"`
 }
 
 // GetBoardRef is one person's row for one board, or nil when they are not on

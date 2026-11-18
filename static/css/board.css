@@ -122,6 +122,8 @@ button.label-chip.selected { border-color: var(--tone); }
 
 .card-labels { display: flex; flex-wrap: wrap; gap: 0.3rem; }
 .card-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.5rem; font-size: 0.78rem; color: var(--fg-muted); }
+/* A card's last-changed stamp (show_updated): the meta row's far right. */
+.card-updated-stamp { margin-left: auto; font-size: 0.7rem; font-variant-numeric: tabular-nums; letter-spacing: 0.02em; white-space: nowrap; color: var(--fg-muted); }
 
 .due-chip {
   display: inline-block;
@@ -896,12 +898,22 @@ input.card-number:focus { color: var(--fg); background: var(--bg); border-color:
 }
 .status-icon:hover:not(:disabled) { color: var(--fg); border-color: var(--accent); }
 .status-icon:disabled { cursor: default; opacity: 0.7; }
-.status-doing[aria-pressed="true"] { color: var(--accent-fg); background: var(--accent); border-color: var(--accent); }
-.status-done[aria-pressed="true"] { color: var(--c-green); background: var(--c-green-bg); border-color: var(--c-green); }
-/* "Grey Doing / Done icons" (Board settings, per person): lit icons in
-   greyscale, so state still shows without the colour. */
+.status-doing[aria-pressed="true"] { color: var(--app-status-doing-fg); background: var(--app-status-doing); border-color: var(--app-status-doing); }
+.status-done[aria-pressed="true"] { color: var(--app-status-done-fg); background: var(--app-status-done); border-color: var(--app-status-done-fg); }
+.status-scheduled[aria-pressed="true"] { color: var(--c-purple); background: var(--c-purple-bg); border-color: var(--c-purple); }
+/* The review stage set has three lit stages, so three icons. */
+.card-face.has-status:has(> .status-icons > :nth-child(3)) { padding-right: 5.6rem; }
+/* "Grey Doing / Done icons" (Board settings, per person): lit icons in a
+   light grey, so state still shows without colour or a heavy dark dot.
+   Lighter symbols throughout, lit or not. */
+.plain-status .status-icon { font-weight: 400; border-color: color-mix(in srgb, var(--border) 70%, transparent); }
 .plain-status .status-doing[aria-pressed="true"],
-.plain-status .status-done[aria-pressed="true"] { color: var(--face-bg); background: var(--fg-muted); border-color: var(--fg-muted); }
+.plain-status .status-scheduled[aria-pressed="true"],
+.plain-status .status-done[aria-pressed="true"] {
+  color: var(--app-status-plain-fg);
+  background: var(--app-status-plain);
+  border-color: color-mix(in srgb, var(--app-status-plain-fg) 40%, transparent);
+}
 .todo-row > .status-icons { flex: 0 0 auto; padding-top: 0.45rem; }
 
 .archive-pick-all { margin-bottom: 0.4rem; font-weight: 600; }
@@ -1114,6 +1126,7 @@ input.card-number:focus { color: var(--fg); background: var(--bg); border-color:
 .calendar-counts { display: flex; gap: 0.2rem; flex-wrap: wrap; }
 .calendar-count { font-size: 0.7rem; font-weight: 600; padding: 0 0.4rem; border-radius: 999px; background: var(--bg); border: 1px solid var(--border); }
 .calendar-count.stage-doing { border-color: var(--accent); color: var(--accent); }
+.calendar-count.stage-scheduled { border-color: var(--c-purple); color: var(--c-purple); }
 .calendar-count.stage-done { opacity: 0.6; }
 .calendar-titles { display: flex; flex-direction: column; gap: 0.1rem; font-size: 0.75rem; min-width: 0; }
 .calendar-card-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

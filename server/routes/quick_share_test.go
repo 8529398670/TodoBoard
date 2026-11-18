@@ -78,7 +78,7 @@ func TestQuickSharePayloadIsOnlyTheCard( t *testing.T ) {
 	cards := payload[ "cards" ].( []any )
 	if len( cards ) != 1 { t.Fatalf( "%d cards" , len( cards ) ) }
 	row := cards[ 0 ].( map[ string ]any )
-	want := "access archived assignees checklist description doing done due_all_day due_at id image_at label_ids list_id position price product rev start_all_day start_at title"
+	want := "access archived assignees checklist description doing done due_all_day due_at id image_at label_ids list_id position price product rev scheduled start_all_day start_at title"
 	if got := strings.Join( keysOf( row ) , " " ); got != want { t.Errorf( "card keys: %s" , got ) }
 	if row[ "access" ] != "view" { t.Errorf( "access: %v" , row[ "access" ] ) }
 }

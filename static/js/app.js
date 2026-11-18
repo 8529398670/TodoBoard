@@ -239,6 +239,7 @@ const App = {
     const loading = [];
     loading.push( ThemeEditor.init( me ) );
     loading.push( NotifySettings.init( me ) );
+    loading.push( GoogleSettings.init( me ) );
     Pin.init( me );
     LoginLink.init( me );
     Password.init( me );

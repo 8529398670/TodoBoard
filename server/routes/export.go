@@ -109,6 +109,8 @@ func ( handlers *Handlers ) exportTable( principal *access.Principal , board *mo
 	// A stage's heading is the board's own name for it, if it has one.
 	stage_heading := func( key string , own string ) string {
 		if staged && own != "" { return own }
+		// The review stage set's own words: Working, Scheduled, Resolved.
+		if staged && board.StageSet == models.StageSetReview { return text( strings.Replace( key , "col_" , "col_review_" , 1 ) ) }
 		return text( key )
 	}
 	table = &sheet.Sheet{
@@ -142,7 +144,13 @@ func ( handlers *Handlers ) exportTable( principal *access.Principal , board *mo
 	places := models.RankPlaces( board , all_cards )
 	if staged {
 		table.Numeric[ len( table.Header ) + 1 ] = true
-		table.Header = append( table.Header , stage_heading( "col_doing" , board.StageDoing ) , text( "col_rank" ) )
+		table.Header = append( table.Header , stage_heading( "col_doing" , board.StageDoing ) )
+		if board.StageSet == models.StageSetReview {
+			delete( table.Numeric , len( table.Header ) )
+			table.Numeric[ len( table.Header ) + 1 ] = true
+			table.Header = append( table.Header , stage_heading( "col_scheduled" , board.StageScheduled ) )
+		}
+		table.Header = append( table.Header , text( "col_rank" ) )
 	}
 	if with_archived { table.Header = append( table.Header , text( "col_archived" ) ) }
 
@@ -196,7 +204,9 @@ func ( handlers *Handlers ) exportTable( principal *access.Principal , board *mo
 			if staged {
 				rank := ""
 				if place := places[ card.ID ]; place > 0 { rank = strconv.Itoa( place ) }
-				row = append( row , yes( card.Doing , text( "yes" ) ) , rank )
+				row = append( row , yes( card.Doing , text( "yes" ) ) )
+				if board.StageSet == models.StageSetReview { row = append( row , yes( card.Scheduled , text( "yes" ) ) ) }
+				row = append( row , rank )
 			}
 			if with_archived { row = append( row , yes( card.Archived , text( "yes" ) ) ) }
 			table.Rows = append( table.Rows , row )

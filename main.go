@@ -41,6 +41,7 @@ import (
 	db "todoboard/server/db"
 	errorpage "todoboard/server/errorpage"
 	healthcheck "todoboard/server/healthcheck"
+	gcal "todoboard/server/gcal"
 	jobs "todoboard/server/jobs"
 	language "todoboard/server/language"
 	logs "todoboard/server/logs"
@@ -267,6 +268,13 @@ func run() ( err error ) {
 	registry := jobs.New( store , logger )
 	jobs.Housekeeping( registry , store , logger , settings )
 	handlers.Jobs = registry
+	// Google Calendar sync: idle until google.client_id and client_secret
+	// (and server.public_url) are set, which can happen while it runs.
+	calendar := gcal.New( store , handlers.GoogleSettings )
+	calendar.Start()
+	defer calendar.Stop()
+	handlers.Google = calendar
+	registry.Register( "google_calendar" , gcal.JobInterval , calendar.Run )
 	handlers.ErrorPages = error_pages
 	handlers.OpenAPI = embeddedOpenAPI
 	handlers.MCPManifest = embeddedMCPManifest

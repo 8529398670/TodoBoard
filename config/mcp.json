@@ -1429,7 +1429,7 @@
                       "additionalProperties": {
                         "type": "string"
                       },
-                      "description": "Worked-out colors replaced by name: text, accent, accentFg, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back.",
+                      "description": "Worked-out colors replaced by name: text, accent, accentFg, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, column, face, statusDoing, statusDoingFg, statusDone, statusDoneFg, statusPlain, statusPlainFg (a card's lit Doing/Done icons and the greyscale ones), and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back.",
                       "type": "object"
                     },
                     "second": {
@@ -2098,6 +2098,13 @@
               "null"
             ]
           },
+          "scheduled": {
+            "description": "On a staged board with stage_set review, the Scheduled stage (after Working, i.e. doing). At most one of doing, scheduled and done.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
           "start_at": {
             "description": "2026-10-30 for an all-day date, an RFC 3339 timestamp for a time, an empty string to clear.",
             "type": [
@@ -2576,6 +2583,29 @@
     {
       "adminOnly": false,
       "annotations": {
+        "destructiveHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Disconnect your Google Calendar"
+      },
+      "description": "Stops syncing and forgets your Google account here (and asks Google to revoke the access). remove_events also deletes the events it made; otherwise they stay on your calendar, no longer synced.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "remove_events": {
+            "description": "true also deletes the events this server made on your calendar; otherwise they stay as they are.",
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "name": "disconnect_google_calendar",
+      "route": "POST /api/google/disconnect",
+      "title": "Disconnect your Google Calendar"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
         "destructiveHint": false,
         "openWorldHint": false,
         "readOnlyHint": false,
@@ -2957,6 +2987,24 @@
         "destructiveHint": false,
         "openWorldHint": false,
         "readOnlyHint": true,
+        "title": "Your Google Calendar connection"
+      },
+      "description": "Whether Google Calendar sync is available on this server, whether your account is connected (and which Google account and calendar), the boards you sync, and how the last sync went. Connecting happens in a browser, in Settings: Google asks you there.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "name": "get_google_calendar",
+      "route": "GET /api/google",
+      "title": "Your Google Calendar connection"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true,
         "title": "Your notification settings"
       },
       "description": "How and when you are told about things: Pushover (the key only masked) or this browser's push, timezone, reminder lead times, the hour for all-day reminders, the events you hear about as an assignee or watcher, whether shares with you are announced, and whether it is all paused. Also whether the server can send push at all and whether anything would reach you.",
@@ -3140,6 +3188,24 @@
       "name": "list_comments",
       "route": "GET /api/boards/{board_id}/cards/{card_id}/comments",
       "title": "Read a card's comments"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true,
+        "title": "Your Google calendars"
+      },
+      "description": "The calendars in your connected Google account that you can add events to. 404 google_off or not_connected; 409 google_unreachable: Google did not answer, or refused (connect again).",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "name": "list_google_calendars",
+      "route": "GET /api/google/calendars",
+      "title": "Your Google calendars"
     },
     {
       "adminOnly": false,
@@ -4352,6 +4418,34 @@
         "destructiveHint": false,
         "openWorldHint": false,
         "readOnlyHint": false,
+        "title": "Choose your Google calendar"
+      },
+      "description": "Which calendar your synced cards go on. Events already made move to it on the next sync. 404 google_off or not_connected.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "calendar_id": {
+            "description": "A calendar id from list_google_calendars; primary is the account's main calendar.",
+            "maxLength": 300,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "calendar_id"
+        ],
+        "type": "object"
+      },
+      "name": "set_google_calendar",
+      "route": "POST /api/google",
+      "title": "Choose your Google calendar"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
         "title": "Save your label colours"
       },
       "description": "Replace your own saved label colours with this list, in its order. Labels already using a colour you leave out keep it. Answers your display settings.",
@@ -4386,6 +4480,46 @@
       "name": "set_label_colors",
       "route": "POST /api/account/label-colors",
       "title": "Save your label colours"
+    },
+    {
+      "adminOnly": false,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Sync a board to your Google Calendar"
+      },
+      "description": "Turns syncing this board's dated cards with your Google Calendar on or off, for you alone. Off deletes the events it made for this board. 404 not_connected: connect Google first.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "board": {
+            "description": "The board's id, or its URL slug (the part after /b/), from list_boards.",
+            "oneOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "minimum": 1,
+                "type": "integer"
+              }
+            ]
+          },
+          "sync": {
+            "description": "true copies this board's dated cards to your Google Calendar and back; false stops, and takes its events off your calendar.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "board",
+          "sync"
+        ],
+        "type": "object"
+      },
+      "name": "set_my_board_google_sync",
+      "route": "POST /api/boards/{board_id}/my-view/google",
+      "title": "Sync a board to your Google Calendar"
     },
     {
       "adminOnly": false,
@@ -4793,7 +4927,7 @@
                       "additionalProperties": {
                         "type": "string"
                       },
-                      "description": "Worked-out colors replaced by name: text, accent, accentFg, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back.",
+                      "description": "Worked-out colors replaced by name: text, accent, accentFg, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, column, face, statusDoing, statusDoingFg, statusDone, statusDoneFg, statusPlain, statusPlainFg (a card's lit Doing/Done icons and the greyscale ones), and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back.",
                       "type": "object"
                     },
                     "second": {
@@ -5121,6 +5255,13 @@
               "null"
             ]
           },
+          "show_updated": {
+            "description": "Every card face shows when it was last changed, in its bottom-right corner. A column's own show_updated can override it.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
           "slug": {
             "description": "The board's URL name (the part after /b/). Empty picks one from the title. 409 slug_taken if another board has it.",
             "type": [
@@ -5137,6 +5278,24 @@
           },
           "stage_done": {
             "description": "What the Done stage is called on this board; empty for the default.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "stage_scheduled": {
+            "description": "With stage_set review: what the Scheduled stage is called; empty for the default.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "stage_set": {
+            "description": "On a staged or calendar board, its stages: \"\" for To do / Doing / Done, or \"review\" for Ready for review / Working / Scheduled / Resolved (cards' doing, scheduled and done flags).",
+            "enum": [
+              "",
+              "review"
+            ],
             "type": [
               "string",
               "null"
@@ -5544,6 +5703,13 @@
               "null"
             ]
           },
+          "scheduled": {
+            "description": "On a staged board with stage_set review, the Scheduled stage (after Working, i.e. doing). true clears doing and reopens a done card. At most one of doing, scheduled and done.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
           "start_at": {
             "description": "2026-10-30 for an all-day date, an RFC 3339 timestamp for a time, an empty string to clear.",
             "type": [
@@ -5715,6 +5881,13 @@
                     "null"
                   ]
                 },
+                "scheduled": {
+                  "description": "On a staged board with stage_set review, the Scheduled stage (after Working, i.e. doing). true clears doing and reopens a done card. At most one of doing, scheduled and done.",
+                  "type": [
+                    "boolean",
+                    "null"
+                  ]
+                },
                 "start_at": {
                   "description": "2026-10-30 for an all-day date, an RFC 3339 timestamp for a time, an empty string to clear.",
                   "type": [
@@ -5853,6 +6026,13 @@
                 "description": "The rev from get_card / get_board. Pass it when changing title or description: if someone edited the card since, the change is refused rather than written over theirs.",
                 "type": [
                   "integer",
+                  "null"
+                ]
+              },
+              "scheduled": {
+                "description": "On a staged board with stage_set review, the Scheduled stage (after Working, i.e. doing). true clears doing and reopens a done card. At most one of doing, scheduled and done.",
+                "type": [
+                  "boolean",
                   "null"
                 ]
               },
@@ -6051,6 +6231,18 @@
               "null"
             ]
           },
+          "show_updated": {
+            "description": "Whether this column's cards show when they were last changed: on, off, or empty to follow the board's show_updated.",
+            "enum": [
+              "",
+              "on",
+              "off"
+            ],
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "stage_tabs": {
             "description": "On a staged board, this column's own To do / Doing / Done buttons: on, off, or empty to follow the board's setting.",
             "enum": [
@@ -6069,6 +6261,7 @@
               "",
               "todo",
               "doing",
+              "scheduled",
               "done"
             ],
             "type": [

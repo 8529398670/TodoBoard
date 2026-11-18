@@ -237,6 +237,8 @@ func liveConfig( boot *Config , boot_file *File , file *File ) ( next *Config ) 
 	next.Repo = cleanRepo( file.App.Repo )
 	next.Description = file.App.Description
 	next.ShowAbout = file.App.ShowAbout
+	next.GoogleClientID = strings.TrimSpace( file.Google.ClientID )
+	next.GoogleClientSecret = strings.TrimSpace( file.Google.ClientSecret )
 
 	next.SessionTTL = seconds( file.Auth.SessionTTLSeconds )
 	next.SessionMaxAge = seconds( file.Auth.SessionMaxAgeSeconds )

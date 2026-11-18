@@ -66,6 +66,7 @@ Every tool POST /mcp offers. Written by scripts/api_docs.sh from the registered 
 | [`delete_label`](#delete_label) | [`POST /api/boards/{board_id}/labels/{label_id}/delete`](api.md#post-apiboardsboard_idlabelslabel_iddelete) | any key | Delete a label |
 | [`delete_list`](#delete_list) | [`POST /api/boards/{board_id}/lists/{list_id}/delete`](api.md#post-apiboardsboard_idlistslist_iddelete) | any key | Delete a column |
 | [`delete_share`](#delete_share) | [`POST /api/boards/{board_id}/shares/{link_id}/delete`](api.md#post-apiboardsboard_idshareslink_iddelete) | any key | Delete a share link |
+| [`disconnect_google_calendar`](#disconnect_google_calendar) | [`POST /api/google/disconnect`](api.md#post-apigoogledisconnect) | any key | Disconnect your Google Calendar |
 | [`duplicate_board`](#duplicate_board) | [`POST /api/boards/{board_id}/duplicate`](api.md#post-apiboardsboard_idduplicate) | any key | Duplicate a board |
 | [`edit_comment`](#edit_comment) | [`POST /api/boards/{board_id}/cards/{card_id}/comments/{comment_id}`](api.md#post-apiboardsboard_idcardscard_idcommentscomment_id) | any key | Edit a comment |
 | [`empty_trash`](#empty_trash) | [`POST /api/boards/{board_id}/trash/empty`](api.md#post-apiboardsboard_idtrashempty) | any key | Empty a board's trash |
@@ -75,12 +76,14 @@ Every tool POST /mcp offers. Written by scripts/api_docs.sh from the registered 
 | [`get_board_subscription`](#get_board_subscription) | [`GET /api/boards/{board_id}/subscription`](api.md#get-apiboardsboard_idsubscription) | any key | Your notifications for a board |
 | [`get_card`](#get_card) | [`GET /api/boards/{board_id}/cards/{card_id}`](api.md#get-apiboardsboard_idcardscard_id) | any key | Read a card |
 | [`get_card_subscription`](#get_card_subscription) | [`GET /api/boards/{board_id}/cards/{card_id}/subscription`](api.md#get-apiboardsboard_idcardscard_idsubscription) | any key | Your notifications for a card |
+| [`get_google_calendar`](#get_google_calendar) | [`GET /api/google`](api.md#get-apigoogle) | any key | Your Google Calendar connection |
 | [`get_notify_prefs`](#get_notify_prefs) | [`GET /api/notify/prefs`](api.md#get-apinotifyprefs) | any key | Your notification settings |
 | [`label_my_session`](#label_my_session) | [`POST /api/account/sessions/{session_id}/label`](api.md#post-apiaccountsessionssession_idlabel) | any key | Name one of your devices |
 | [`leave_board`](#leave_board) | [`POST /api/boards/{board_id}/leave`](api.md#post-apiboardsboard_idleave) | any key | Leave a board |
 | [`list_boards`](#list_boards) | [`GET /api/boards`](api.md#get-apiboards) | any key | List my boards |
 | [`list_card_links`](#list_card_links) | [`GET /api/boards/{board_id}/cards/{card_id}/links`](api.md#get-apiboardsboard_idcardscard_idlinks) | any key | List a card's mirrors |
 | [`list_comments`](#list_comments) | [`GET /api/boards/{board_id}/cards/{card_id}/comments`](api.md#get-apiboardsboard_idcardscard_idcomments) | any key | Read a card's comments |
+| [`list_google_calendars`](#list_google_calendars) | [`GET /api/google/calendars`](api.md#get-apigooglecalendars) | any key | Your Google calendars |
 | [`list_my_sessions`](#list_my_sessions) | [`GET /api/account/sessions`](api.md#get-apiaccountsessions) | any key | Your signed-in devices |
 | [`list_shares`](#list_shares) | [`GET /api/boards/{board_id}/shares`](api.md#get-apiboardsboard_idshares) | any key | List a board's share links |
 | [`list_team`](#list_team) | [`GET /api/team`](api.md#get-apiteam) | any key | List team |
@@ -106,7 +109,9 @@ Every tool POST /mcp offers. Written by scripts/api_docs.sh from the registered 
 | [`set_board_subscription`](#set_board_subscription) | [`POST /api/boards/{board_id}/subscription`](api.md#post-apiboardsboard_idsubscription) | any key | Set your notifications for a board |
 | [`set_card_subscription`](#set_card_subscription) | [`POST /api/boards/{board_id}/cards/{card_id}/subscription`](api.md#post-apiboardsboard_idcardscard_idsubscription) | any key | Set your notifications for a card |
 | [`set_display`](#set_display) | [`POST /api/account/display`](api.md#post-apiaccountdisplay) | any key | Save your display settings |
+| [`set_google_calendar`](#set_google_calendar) | [`POST /api/google`](api.md#post-apigoogle) | any key | Choose your Google calendar |
 | [`set_label_colors`](#set_label_colors) | [`POST /api/account/label-colors`](api.md#post-apiaccountlabel-colors) | any key | Save your label colours |
+| [`set_my_board_google_sync`](#set_my_board_google_sync) | [`POST /api/boards/{board_id}/my-view/google`](api.md#post-apiboardsboard_idmy-viewgoogle) | any key | Sync a board to your Google Calendar |
 | [`set_my_board_view`](#set_my_board_view) | [`POST /api/boards/{board_id}/my-view`](api.md#post-apiboardsboard_idmy-view) | any key | Your own view of a board |
 | [`set_my_collapsed_lists`](#set_my_collapsed_lists) | [`POST /api/boards/{board_id}/my-view/collapsed`](api.md#post-apiboardsboard_idmy-viewcollapsed) | any key | Your collapsed columns |
 | [`set_notify_prefs`](#set_notify_prefs) | [`POST /api/notify/prefs`](api.md#post-apinotifyprefs) | any key | Save your notification settings |
@@ -673,7 +678,7 @@ Replace the theme list everyone without their own list sees, 1 to 40 themes in t
 | `themes[].light.surface` | string | no |  | Cards. Left out: the mode's own. |
 | `themes[].mode` | string | yes | one of `light`, `dark` |  |
 | `themes[].name` | string | yes |  | 1 to 60 characters. |
-| `themes[].overrides` | map of string | no |  | Worked-out colors replaced by name: text, accent, accentFg, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back. |
+| `themes[].overrides` | map of string | no |  | Worked-out colors replaced by name: text, accent, accentFg, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, column, face, statusDoing, statusDoingFg, statusDone, statusDoneFg, statusPlain, statusPlainFg (a card's lit Doing/Done icons and the greyscale ones), and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back. |
 | `themes[].second` | string | yes |  | Says where you are: active nav item, headings, info. |
 | `themes[].surface` | string | no |  | Cards. Left out: the mode's own. |
 
@@ -917,6 +922,7 @@ Add a card to a column. The other fields are optional and set in the same call. 
 | `list_id` | integer | yes |  | The column's id, from get_board (board.lists). |
 | `position` | number or null | no |  | Sort position within the column; lower comes first. Leave out to put it at the end. |
 | `rank_place` | integer or null | no | at least 0 | Importance across the whole board: 1 is the most important, and other cards shift to make room. 0 takes the card out of the ranking. Needs edit rights on the board. |
+| `scheduled` | boolean or null | no |  | On a staged board with stage_set review, the Scheduled stage (after Working, i.e. doing). At most one of doing, scheduled and done. |
 | `start_at` | string or null | no |  | 2026-10-30 for an all-day date, an RFC 3339 timestamp for a time, an empty string to clear. |
 | `title` | string | yes |  |  |
 
@@ -1111,6 +1117,22 @@ Remove one of the board's share links from the list (link_id from list_shares); 
 | `board` | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
 | `link_id` | string | yes | at least 1 characters | A share link's id, from list_shares. |
 
+## disconnect_google_calendar
+
+Stops syncing and forgets your Google account here (and asks Google to revoke the access). remove_events also deletes the events it made; otherwise they stay on your calendar, no longer synced.
+
+|  |  |
+|---|---|
+| Route | [`POST /api/google/disconnect`](api.md#post-apigoogledisconnect) |
+| Read only | no |
+| Destructive | yes |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `remove_events` | boolean | no |  | true also deletes the events this server made on your calendar; otherwise they stay as they are. |
+
 ## duplicate_board
 
 A new board owned by you, copied from one you can open: its settings, notes, labels, columns, and the cards you can see with their checklists. Comments, card pictures, members and share links are not copied. Returns the copy's id and slug. A key held to some boards cannot make one.
@@ -1268,6 +1290,21 @@ Which of the card's events reach you and where that comes from (source: your def
 | `board` | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
 | `card_id` | integer | yes |  | A card's id, from get_board or find_cards. |
 
+## get_google_calendar
+
+Whether Google Calendar sync is available on this server, whether your account is connected (and which Google account and calendar), the boards you sync, and how the last sync went. Connecting happens in a browser, in Settings: Google asks you there.
+
+|  |  |
+|---|---|
+| Route | [`GET /api/google`](api.md#get-apigoogle) |
+| Read only | yes |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+
 ## get_notify_prefs
 
 How and when you are told about things: Pushover (the key only masked) or this browser's push, timezone, reminder lead times, the hour for all-day reminders, the events you hear about as an assignee or watcher, whether shares with you are announced, and whether it is all paused. Also whether the server can send push at all and whether anything would reach you.
@@ -1365,6 +1402,21 @@ A card's comments, oldest first: who wrote each (by: a member's name, guest:Name
 |---|---|---|---|---|
 | `board` | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
 | `card_id` | integer | yes |  | A card's id, from get_board or find_cards. |
+
+## list_google_calendars
+
+The calendars in your connected Google account that you can add events to. 404 google_off or not_connected; 409 google_unreachable: Google did not answer, or refused (connect again).
+
+|  |  |
+|---|---|
+| Route | [`GET /api/google/calendars`](api.md#get-apigooglecalendars) |
+| Read only | yes |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
 
 ## list_my_sessions
 
@@ -1835,6 +1887,22 @@ How times and boards are shown to you. timezone (empty for the browser's own) an
 | `theme.surface` | string | no |  |  |
 | `timezone` | string | no |  |  |
 
+## set_google_calendar
+
+Which calendar your synced cards go on. Events already made move to it on the next sync. 404 google_off or not_connected.
+
+|  |  |
+|---|---|
+| Route | [`POST /api/google`](api.md#post-apigoogle) |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `calendar_id` | string | yes | 1 to 300 characters | A calendar id from list_google_calendars; primary is the account's main calendar. |
+
 ## set_label_colors
 
 Replace your own saved label colours with this list, in its order. Labels already using a colour you leave out keep it. Answers your display settings.
@@ -1852,6 +1920,23 @@ Replace your own saved label colours with this list, in its order. Labels alread
 | `colors` | array of object | yes |  | Your whole list of saved label colours, in order; it replaces the one stored. |
 | `colors[].color` | string | yes |  |  |
 | `colors[].name` | string | yes |  |  |
+
+## set_my_board_google_sync
+
+Turns syncing this board's dated cards with your Google Calendar on or off, for you alone. Off deletes the events it made for this board. 404 not_connected: connect Google first.
+
+|  |  |
+|---|---|
+| Route | [`POST /api/boards/{board_id}/my-view/google`](api.md#post-apiboardsboard_idmy-viewgoogle) |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `board` | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `sync` | boolean | yes |  | true copies this board's dated cards to your Google Calendar and back; false stops, and takes its events off your calendar. |
 
 ## set_my_board_view
 
@@ -1977,7 +2062,7 @@ Replace your whole list of color themes (1 to 40) and pick the one you use. them
 | `themes[].light.surface` | string | no |  | Cards. Left out: the mode's own. |
 | `themes[].mode` | string | yes | one of `light`, `dark` |  |
 | `themes[].name` | string | yes |  | 1 to 60 characters. |
-| `themes[].overrides` | map of string | no |  | Worked-out colors replaced by name: text, accent, accentFg, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back. |
+| `themes[].overrides` | map of string | no |  | Worked-out colors replaced by name: text, accent, accentFg, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, column, face, statusDoing, statusDoingFg, statusDone, statusDoneFg, statusPlain, statusPlainFg (a card's lit Doing/Done icons and the greyscale ones), and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back. |
 | `themes[].second` | string | yes |  | Says where you are: active nav item, headings, info. |
 | `themes[].surface` | string | no |  | Cards. Left out: the mode's own. |
 
@@ -2052,9 +2137,12 @@ Change any of a board's settings; leave out what should not change: its title, U
 | `purpose_rev` | integer or null | no |  | The purpose_rev the purpose was read at: if it moved since, 409 board_text_stale instead of writing over someone's change. |
 | `shopping` | boolean or null | no |  | A shopping board: cards carry products and prices. |
 | `show_rank` | boolean or null | no |  | Show each card's place in the board-wide ranking. |
+| `show_updated` | boolean or null | no |  | Every card face shows when it was last changed, in its bottom-right corner. A column's own show_updated can override it. |
 | `slug` | string or null | no |  | The board's URL name (the part after /b/). Empty picks one from the title. 409 slug_taken if another board has it. |
 | `stage_doing` | string or null | no |  | What the Doing stage is called on this board; empty for the default. |
 | `stage_done` | string or null | no |  | What the Done stage is called on this board; empty for the default. |
+| `stage_scheduled` | string or null | no |  | With stage_set review: what the Scheduled stage is called; empty for the default. |
+| `stage_set` | string or null | no | one of ``, `review` | On a staged or calendar board, its stages: "" for To do / Doing / Done, or "review" for Ready for review / Working / Scheduled / Resolved (cards' doing, scheduled and done flags). |
 | `stage_tabs` | boolean or null | no |  | On a staged board, give every column its own To do / Doing / Done buttons. |
 | `stage_todo` | string or null | no |  | What the To do stage is called on this board; empty for the default. |
 | `theme` | object or null | no |  | The board's own theme, shown to everyone on it. |
@@ -2135,6 +2223,7 @@ Change any of a card's fields; leave out what should not change. Moving it (list
 | `rank` | number or null | no |  | The stored rank value itself (the rank from get_card), for putting a card back exactly as it was; rank_place is the usual way. Needs edit rights on the board. |
 | `rank_place` | integer or null | no | at least 0 | Importance across the whole board: 1 is the most important, and other cards shift to make room. 0 takes the card out of the ranking. Needs edit rights on the board. |
 | `rev` | integer or null | no |  | The rev from get_card / get_board. Pass it when changing title or description: if someone edited the card since, the change is refused rather than written over theirs. |
+| `scheduled` | boolean or null | no |  | On a staged board with stage_set review, the Scheduled stage (after Working, i.e. doing). true clears doing and reopens a done card. At most one of doing, scheduled and done. |
 | `start_at` | string or null | no |  | 2026-10-30 for an all-day date, an RFC 3339 timestamp for a time, an empty string to clear. |
 | `title` | string or null | no |  |  |
 
@@ -2169,6 +2258,7 @@ Runs update_card once per item: items holds each call's arguments, shared the ar
 | `items[].rank` | number or null | no |  | The stored rank value itself (the rank from get_card), for putting a card back exactly as it was; rank_place is the usual way. Needs edit rights on the board. |
 | `items[].rank_place` | integer or null | no | at least 0 | Importance across the whole board: 1 is the most important, and other cards shift to make room. 0 takes the card out of the ranking. Needs edit rights on the board. |
 | `items[].rev` | integer or null | no |  | The rev from get_card / get_board. Pass it when changing title or description: if someone edited the card since, the change is refused rather than written over theirs. |
+| `items[].scheduled` | boolean or null | no |  | On a staged board with stage_set review, the Scheduled stage (after Working, i.e. doing). true clears doing and reopens a done card. At most one of doing, scheduled and done. |
 | `items[].start_at` | string or null | no |  | 2026-10-30 for an all-day date, an RFC 3339 timestamp for a time, an empty string to clear. |
 | `items[].title` | string or null | no |  |  |
 | `shared` | object | no |  | Fields every item gets, unless the item sets its own. |
@@ -2186,6 +2276,7 @@ Runs update_card once per item: items holds each call's arguments, shared the ar
 | `shared.rank` | number or null | no |  | The stored rank value itself (the rank from get_card), for putting a card back exactly as it was; rank_place is the usual way. Needs edit rights on the board. |
 | `shared.rank_place` | integer or null | no | at least 0 | Importance across the whole board: 1 is the most important, and other cards shift to make room. 0 takes the card out of the ranking. Needs edit rights on the board. |
 | `shared.rev` | integer or null | no |  | The rev from get_card / get_board. Pass it when changing title or description: if someone edited the card since, the change is refused rather than written over theirs. |
+| `shared.scheduled` | boolean or null | no |  | On a staged board with stage_set review, the Scheduled stage (after Working, i.e. doing). true clears doing and reopens a done card. At most one of doing, scheduled and done. |
 | `shared.start_at` | string or null | no |  | 2026-10-30 for an all-day date, an RFC 3339 timestamp for a time, an empty string to clear. |
 | `shared.title` | string or null | no |  |  |
 
@@ -2248,8 +2339,9 @@ Change a column's title, position or width, archive it (archived: true hides it;
 | `list_id` | integer | yes |  | A column's id, from get_board (board.lists). |
 | `position` | number or null | no |  | Sort position among the columns; lower comes first. |
 | `shopping` | boolean or null | no |  | A shopping column: its cards carry products and prices. |
+| `show_updated` | string or null | no | one of ``, `on`, `off` | Whether this column's cards show when they were last changed: on, off, or empty to follow the board's show_updated. |
 | `stage_tabs` | string or null | no | one of ``, `on`, `off` | On a staged board, this column's own To do / Doing / Done buttons: on, off, or empty to follow the board's setting. |
-| `stage_view` | string or null | no | one of ``, `todo`, `doing`, `done` | On a staged board, the stage this column shows for everyone; empty follows the navbar. |
+| `stage_view` | string or null | no | one of ``, `todo`, `doing`, `scheduled`, `done` | On a staged board, the stage this column shows for everyone; empty follows the navbar. |
 | `title` | string or null | no | at most 120 characters |  |
 | `width` | integer or null | no |  | The column's width in pixels (200-800); 0 puts it back to the standard width. |
 

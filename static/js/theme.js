@@ -133,6 +133,9 @@ const Theme = {
   // TodoBoard: how much of the text color darkens (or lightens) the page for
   // a board column, and a dark card face off its card.
   boardTints: { column: 5 , face: 4 },
+  // How much of green (Done) and of the text color (greyscale icons) tints a
+  // lit status icon's fill, in percent, over the card face.
+  statusTints: { done: 18 , plain: 9 },
 
   // How much of the second color goes into each layer, in percent, so a nested
   // card stands off its card and the card off the page.
@@ -158,6 +161,12 @@ const Theme = {
     border: "--app-border",
     column: "--app-column",
     face: "--app-face",
+    statusDoing: "--app-status-doing",
+    statusDoingFg: "--app-status-doing-fg",
+    statusDone: "--app-status-done",
+    statusDoneFg: "--app-status-done-fg",
+    statusPlain: "--app-status-plain",
+    statusPlainFg: "--app-status-plain-fg",
   },
 
   // Pairs that must stay readable: [ front , back ] fields of colors(). check()
@@ -174,6 +183,9 @@ const Theme = {
     sidebar_link: [ "navLink" , "chrome" ],
     text_column: [ "text" , "column" ],
     text_face: [ "text" , "face" ],
+    status_doing: [ "statusDoingFg" , "statusDoing" ],
+    status_done: [ "statusDoneFg" , "statusDone" ],
+    status_plain: [ "statusPlainFg" , "statusPlain" ],
   },
 
   // The themes on offer, and the one in use (its id).
@@ -564,6 +576,16 @@ const Theme = {
     // (in dark, a shade lighter than a card, as they sit on a dark column).
     result.column = this.mix( mode.text , result.background , this.boardTints.column );
     result.face = theme.mode === "dark" ? this.mix( mode.text , card , this.boardTints.face ) : card;
+    // A card's lit Doing / Done icons: Doing in the accent, Done a soft green,
+    // and the greyscale ones (plain icons) a light grey that stays out of the
+    // way, each with a symbol that reads on it.
+    const semanticStatus = this.semantic[ theme.mode ] || this.semantic.light;
+    result.statusDoing = theme.accent;
+    result.statusDoingFg = this.readableOn( theme.accent );
+    result.statusDone = this.mix( semanticStatus.success , result.face , this.statusTints.done );
+    result.statusDoneFg = this.asText( semanticStatus.success , result.statusDone );
+    result.statusPlain = this.mix( mode.text , result.face , this.statusTints.plain );
+    result.statusPlainFg = this.asText( this.mix( mode.text , result.face , 50 ) , result.statusPlain );
     // The other buttons. A fill stays close to its color but is moved until
     // black or white reads on it; an outline's label is read on the card.
     const semantic = this.semantic[ theme.mode ] || this.semantic.light;

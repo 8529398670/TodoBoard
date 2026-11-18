@@ -403,6 +403,7 @@ const KanbanView = {
       CardBits.comments( card ),
       CardBits.mirror( card ),
       CardBits.assignees( card , ctx.people ),
+      CardBits.updated( card , ctx ),
     ].filter( Boolean ).forEach( function ( node ) { meta.appendChild( node ); } );
     if ( meta.childNodes.length ) face.appendChild( meta );
     return face;
@@ -662,6 +663,7 @@ const CardMenu = {
     const link = ctx.cardLink ? ctx.cardLink( card ) : "";
     if ( link ) items.push( { key: "card.copy_link" , action: function () { Ui.copyText( link ); } } );
     items.push( { key: "export.copy_card_markdown" , action: function () { Ui.copyText( CardExport.markdown( ctx , card ) ); } } );
+    items.push( { key: "export.copy_card_text" , action: function () { Ui.copyText( CardExport.text( ctx , card ) ); } } );
     items.push( { key: "export.card_button" , action: function () { CardExport.open( ctx , card ); } } );
     if ( ctx.board.allow_quick_share && ctx.canEdit && !ctx.isGuest && !card.archived ) {
       items.push( { key: "share.quick_menu" , action: function () { Sharing.quickShare( ctx , card ); } } );
@@ -850,6 +852,17 @@ const ListMenu = {
         form.appendChild( Ui.field( "board.column_tabs_label" , stageTabs ) );
         form.appendChild( Dom.el( "p" , { class: "muted small-print" , text: T( "board.column_tabs_hint" ) } ) );
       }
+      const showUpdated = Ui.select( [
+        { value: "" , text: T( ctx.board.show_updated ? "board.column_updated_follow_on" : "board.column_updated_follow_off" ) },
+        { value: "on" , text: T( "board.column_tabs_on" ) },
+        { value: "off" , text: T( "board.column_tabs_off" ) },
+      ] , list.show_updated || "" );
+      showUpdated.addEventListener( "change" , async function () {
+        Dom.text( status , T( "card.autosave_saving" ) );
+        const result = await ctx.mutate( function () { return ctx.client.updateList( list.id , { show_updated: showUpdated.value } ); } );
+        Dom.text( status , result ? T( "card.autosave_saved" ) : "" );
+      } );
+      form.appendChild( Ui.field( "board.column_updated_label" , showUpdated ) );
       // The name saves itself after a pause in typing, or when it is left;
       // Enter saves and closes the menu.
       const status = Dom.el( "p" , { class: "muted small-print autosave-status" , attrs: { "aria-live": "polite" } } );

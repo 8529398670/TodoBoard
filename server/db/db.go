@@ -60,6 +60,8 @@ const (
 	BucketPushSubscriptions = "push_subscriptions" // userID|LookupKey(endpoint): one browser that takes notifications
 	BucketCardLinks     = "card_links"     // linkID: two cards on any boards that mirror each other
 	BucketCardLinkRefs  = "card_link_refs" // boardID|cardID|linkID: the links a card is in
+	BucketGoogleAccounts = "google_accounts" // userID: one person's connected Google Calendar (server/gcal)
+	BucketGoogleLinks   = "google_links"   // userID|boardID|cardID: the calendar event a card is synced to
 	// BucketSchema holds the schema version, unencrypted. See migrate.go.
 	BucketSchema      = "schema"
 )
@@ -70,7 +72,7 @@ var bucketNames = []string{
 	BucketBoards , BucketCards , BucketUserBoards , BucketUserCards , BucketShareLinks ,
 	BucketUserPrefs , BucketSubscriptions , BucketNotifySent , BucketBoardSlugs , BucketFolders ,
 	BucketTrash , BucketProductImages , BucketCardImages , BucketPushSubscriptions , BucketComments ,
-	BucketCardLinks , BucketCardLinkRefs ,
+	BucketCardLinks , BucketCardLinkRefs , BucketGoogleAccounts , BucketGoogleLinks ,
 }
 
 // Key joins big-endian uint64s into one composite key.

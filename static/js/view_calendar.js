@@ -205,10 +205,9 @@ const CalendarView = {
     dates.appendChild( this.navButtons( ctx , mode ) );
     dates.appendChild( Dom.el( "span" , { class: "calendar-navbar-title" , text: this.title( mode , true ) } ) );
     wrap.appendChild( dates );
-    const counts = { todo: 0 , doing: 0 , done: 0 };
-    this.shownDays( mode ).forEach( function ( day ) {
-      ( days[ day ] || [] ).forEach( function ( card ) { counts[ Stages.of( card ) ] += 1; } );
-    } );
+    let shown = [];
+    this.shownDays( mode ).forEach( function ( day ) { shown = shown.concat( days[ day ] || [] ); } );
+    const counts = Stages.counts( shown );
     wrap.appendChild( Stages.buttons( ctx , "stage-bar" , "board.stage_bar" , Stages.order , this.stage() , counts , function ( stage ) { BoardPage.setStage( stage ); } ) );
     return wrap;
   },
@@ -337,8 +336,7 @@ const CalendarView = {
     for ( let date = start; date <= last || date.getDay() !== 1; date = Dates.addDays( date , 1 ) ) {
       const day = this.iso( date );
       const cards = days[ day ] || [];
-      const counts = { todo: 0 , doing: 0 , done: 0 };
-      cards.forEach( function ( card ) { counts[ Stages.of( card ) ] += 1; } );
+      const counts = Stages.counts( cards );
       const cell = Dom.el( "button" , {
         class: "calendar-cell" + ( day === today ? " is-today" : "" ) + ( date.getMonth() !== anchor.getMonth() ? " other-month" : "" ) + ( day < today ? " is-past" : "" ),
         attrs: { type: "button" , "data-day": day , "aria-label": this.format( date , { weekday: "long" , month: "long" , day: "numeric" } ) + ( cards.length ? " · " + I18n.fill( "calendar.cards_count" , { n: cards.length } ) : "" ) },
@@ -357,7 +355,7 @@ const CalendarView = {
       const open = cards.filter( function ( card ) { return !card.done; } );
       const titles = Dom.el( "span" , { class: "calendar-titles" } );
       open.slice( 0 , 3 ).forEach( function ( card ) {
-        const line = Dom.el( "span" , { class: "calendar-card-title" + ( card.doing ? " is-doing" : "" ) } );
+        const line = Dom.el( "span" , { class: "calendar-card-title" + ( card.doing || card.scheduled ? " is-doing" : "" ) } );
         Markdown.renderInline( card.title , line );
         titles.appendChild( line );
       } );

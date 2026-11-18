@@ -192,6 +192,7 @@ const History = {
       due_at: this.encodeDate( copy.due_at , copy.due_all_day ),
       done: copy.done,
       doing: !!copy.doing,
+      scheduled: !!copy.scheduled,
       archived: copy.archived,
       price: copy.price || "",
     } ) );
@@ -240,7 +241,7 @@ const History = {
       const cardId = args[ 0 ];
       const card = this.findCard( before , cardId );
       if ( !card ) return null;
-      const keys = [ "title" , "description" , "list_id" , "position" , "label_ids" , "assignees" , "start_at" , "due_at" , "done" , "doing" , "archived" , "price" , "rank_place" ];
+      const keys = [ "title" , "description" , "list_id" , "position" , "label_ids" , "assignees" , "start_at" , "due_at" , "done" , "doing" , "scheduled" , "archived" , "price" , "rank_place" ];
       const change = this.previous( card , args[ 1 ] , keys , ( source , key ) => this.cardValue( source , key ) );
       if ( !change ) return null;
       const fields = Object.keys( change.forward );
@@ -356,7 +357,7 @@ const History = {
       const listId = args[ 0 ];
       const list = before.board.lists.find( function ( item ) { return item.id === listId; } );
       if ( !list ) return null;
-      const change = this.previous( list , args[ 1 ] , [ "title" , "position" , "archived" , "stage_view" , "stage_tabs" ] , function ( source , key ) { return source[ key ]; } );
+      const change = this.previous( list , args[ 1 ] , [ "title" , "position" , "archived" , "stage_view" , "stage_tabs" , "show_updated" ] , function ( source , key ) { return source[ key ]; } );
       if ( !change ) return null;
       return {
         undo: () => this.raw.updateList( this.id( "list" , listId ) , change.back ),
@@ -380,6 +381,7 @@ const History = {
           if ( copy.archived ) await this.raw.updateList( created.id , { archived: true } );
           if ( copy.stage_view ) await this.raw.updateList( created.id , { stage_view: copy.stage_view } );
           if ( copy.stage_tabs ) await this.raw.updateList( created.id , { stage_tabs: copy.stage_tabs } );
+          if ( copy.show_updated ) await this.raw.updateList( created.id , { show_updated: copy.show_updated } );
           for ( const card of cards ) await this.untrash( this.id( "card" , card.id ) , created.id , card.position );
         },
         redo: () => this.raw.deleteList( this.id( "list" , listId ) ),
@@ -456,8 +458,8 @@ const History = {
     // Each step hands the revs it ends on to the next.
     updateBoard( before , args , result ) {
       const fields = args[ 0 ];
-      const change = this.previous( before.board , fields , [ "title" , "default_view" , "color" , "layout" , "numbering" , "done_placement" , "add_placement" , "center_columns" , "stage_tabs" , "stage_todo" , "stage_doing" , "stage_done" , "purpose_enabled" , "purpose" , "notes" ] , function ( source , key ) {
-        if ( key === "purpose_enabled" || key === "center_columns" || key === "stage_tabs" ) return !!source[ key ];
+      const change = this.previous( before.board , fields , [ "title" , "default_view" , "color" , "layout" , "numbering" , "done_placement" , "add_placement" , "center_columns" , "stage_tabs" , "show_updated" , "stage_todo" , "stage_doing" , "stage_scheduled" , "stage_done" , "stage_set" , "purpose_enabled" , "purpose" , "notes" ] , function ( source , key ) {
+        if ( key === "purpose_enabled" || key === "center_columns" || key === "stage_tabs" || key === "show_updated" ) return !!source[ key ];
         return source[ key ] || "";
       } );
       if ( !change ) return null;

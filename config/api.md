@@ -20,6 +20,7 @@ This file is generated: do not edit it. Change the docs next to the handlers and
 - [Cards](#cards)
 - [Comments](#comments)
 - [Folders](#folders)
+- [Google Calendar](#google-calendar)
 - [Notifications](#notifications)
 - [Shared](#shared)
 - [Sharing](#sharing)
@@ -2795,10 +2796,12 @@ Make a new board you own from one board of a backup file, with its columns and l
 | `board.lists[].cards[].labels` | array of integer | yes |  |  |
 | `board.lists[].cards[].price` | string | no |  |  |
 | `board.lists[].cards[].rank` | number | no |  |  |
+| `board.lists[].cards[].scheduled` | boolean | no |  |  |
 | `board.lists[].cards[].start_at` | string (date-time) or null | yes |  |  |
 | `board.lists[].cards[].start_timed` | boolean | yes |  |  |
 | `board.lists[].cards[].title` | string | yes |  |  |
 | `board.lists[].shopping` | boolean | no |  |  |
+| `board.lists[].show_updated` | string | no |  |  |
 | `board.lists[].stage_tabs` | string | no |  |  |
 | `board.lists[].stage_view` | string | no |  |  |
 | `board.lists[].title` | string | yes |  |  |
@@ -2807,9 +2810,12 @@ Make a new board you own from one board of a backup file, with its columns and l
 | `board.purpose` | string | no |  |  |
 | `board.purpose_enabled` | boolean | no |  |  |
 | `board.shopping` | boolean | no |  |  |
+| `board.show_updated` | boolean | no |  |  |
 | `board.slug` | string | yes |  |  |
 | `board.stage_doing` | string | no |  |  |
 | `board.stage_done` | string | no |  |  |
+| `board.stage_scheduled` | string | no |  |  |
+| `board.stage_set` | string | no |  |  |
 | `board.stage_tabs` | boolean | no |  |  |
 | `board.stage_todo` | string | no |  |  |
 | `board.theme` | object or null | yes |  |  |
@@ -2907,6 +2913,7 @@ Append the cards of a column's file (or a batch of a backup board's cards) to a 
 | `cards[].labels` | array of integer | yes |  |  |
 | `cards[].price` | string | no |  |  |
 | `cards[].rank` | number | no |  |  |
+| `cards[].scheduled` | boolean | no |  |  |
 | `cards[].start_at` | string (date-time) or null | yes |  |  |
 | `cards[].start_timed` | boolean | yes |  |  |
 | `cards[].title` | string | yes |  |  |
@@ -3054,9 +3061,12 @@ Change any of a board's settings; leave out what should not change: its title, U
 | `purpose_rev` | integer or null | no |  | The purpose_rev the purpose was read at: if it moved since, 409 board_text_stale instead of writing over someone's change. |
 | `shopping` | boolean or null | no |  | A shopping board: cards carry products and prices. |
 | `show_rank` | boolean or null | no |  | Show each card's place in the board-wide ranking. |
+| `show_updated` | boolean or null | no |  | Every card face shows when it was last changed, in its bottom-right corner. A column's own show_updated can override it. |
 | `slug` | string or null | no |  | The board's URL name (the part after /b/). Empty picks one from the title. 409 slug_taken if another board has it. |
 | `stage_doing` | string or null | no |  | What the Doing stage is called on this board; empty for the default. |
 | `stage_done` | string or null | no |  | What the Done stage is called on this board; empty for the default. |
+| `stage_scheduled` | string or null | no |  | With stage_set review: what the Scheduled stage is called; empty for the default. |
+| `stage_set` | string or null | no | one of ``, `review` | On a staged or calendar board, its stages: "" for To do / Doing / Done, or "review" for Ready for review / Working / Scheduled / Resolved (cards' doing, scheduled and done flags). |
 | `stage_tabs` | boolean or null | no |  | On a staged board, give every column its own To do / Doing / Done buttons. |
 | `stage_todo` | string or null | no |  | What the To do stage is called on this board; empty for the default. |
 | `theme` | object or null | no |  | The board's own theme, shown to everyone on it. |
@@ -3407,6 +3417,7 @@ Add a column (list) to a board, at the end or at position. Needs edit rights on 
 | `id` | integer | yes |  |  |
 | `position` | number | yes |  |  |
 | `shopping` | boolean | yes |  |  |
+| `show_updated` | string | yes |  |  |
 | `stage_tabs` | string | yes |  |  |
 | `stage_view` | string | yes |  |  |
 | `title` | string | yes |  |  |
@@ -3439,8 +3450,9 @@ Change a column's title, position or width, archive it (archived: true hides it;
 | `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
 | `position` | number or null | no |  | Sort position among the columns; lower comes first. |
 | `shopping` | boolean or null | no |  | A shopping column: its cards carry products and prices. |
+| `show_updated` | string or null | no | one of ``, `on`, `off` | Whether this column's cards show when they were last changed: on, off, or empty to follow the board's show_updated. |
 | `stage_tabs` | string or null | no | one of ``, `on`, `off` | On a staged board, this column's own To do / Doing / Done buttons: on, off, or empty to follow the board's setting. |
-| `stage_view` | string or null | no | one of ``, `todo`, `doing`, `done` | On a staged board, the stage this column shows for everyone; empty follows the navbar. |
+| `stage_view` | string or null | no | one of ``, `todo`, `doing`, `scheduled`, `done` | On a staged board, the stage this column shows for everyone; empty follows the navbar. |
 | `title` | string or null | no | at most 120 characters |  |
 | `width` | integer or null | no |  | The column's width in pixels (200-800); 0 puts it back to the standard width. |
 
@@ -3683,6 +3695,7 @@ Add a card to a column. The other fields are optional and set in the same call. 
 | `list_id` | integer | yes |  | The column's id, from get_board (board.lists). |
 | `position` | number or null | no |  | Sort position within the column; lower comes first. Leave out to put it at the end. |
 | `rank_place` | integer or null | no | at least 0 | Importance across the whole board: 1 is the most important, and other cards shift to make room. 0 takes the card out of the ranking. Needs edit rights on the board. |
+| `scheduled` | boolean or null | no |  | On a staged board with stage_set review, the Scheduled stage (after Working, i.e. doing). At most one of doing, scheduled and done. |
 | `start_at` | string or null | no |  | 2026-10-30 for an all-day date, an RFC 3339 timestamp for a time, an empty string to clear. |
 | `title` | string | yes |  |  |
 
@@ -3751,6 +3764,7 @@ Change any of a card's fields; leave out what should not change. Moving it (list
 | `rank` | number or null | no |  | The stored rank value itself (the rank from get_card), for putting a card back exactly as it was; rank_place is the usual way. Needs edit rights on the board. |
 | `rank_place` | integer or null | no | at least 0 | Importance across the whole board: 1 is the most important, and other cards shift to make room. 0 takes the card out of the ranking. Needs edit rights on the board. |
 | `rev` | integer or null | no |  | The rev from get_card / get_board. Pass it when changing title or description: if someone edited the card since, the change is refused rather than written over theirs. |
+| `scheduled` | boolean or null | no |  | On a staged board with stage_set review, the Scheduled stage (after Working, i.e. doing). true clears doing and reopens a done card. At most one of doing, scheduled and done. |
 | `start_at` | string or null | no |  | 2026-10-30 for an all-day date, an RFC 3339 timestamp for a time, an empty string to clear. |
 | `title` | string or null | no |  |  |
 
@@ -4245,6 +4259,7 @@ Runs POST /api/boards/{board_id}/cards/{card_id} once per item: items holds each
 | `items[].rank` | number or null | no |  | The stored rank value itself (the rank from get_card), for putting a card back exactly as it was; rank_place is the usual way. Needs edit rights on the board. |
 | `items[].rank_place` | integer or null | no | at least 0 | Importance across the whole board: 1 is the most important, and other cards shift to make room. 0 takes the card out of the ranking. Needs edit rights on the board. |
 | `items[].rev` | integer or null | no |  | The rev from get_card / get_board. Pass it when changing title or description: if someone edited the card since, the change is refused rather than written over theirs. |
+| `items[].scheduled` | boolean or null | no |  | On a staged board with stage_set review, the Scheduled stage (after Working, i.e. doing). true clears doing and reopens a done card. At most one of doing, scheduled and done. |
 | `items[].start_at` | string or null | no |  | 2026-10-30 for an all-day date, an RFC 3339 timestamp for a time, an empty string to clear. |
 | `items[].title` | string or null | no |  |  |
 | `shared` | object | no |  | Fields every item gets, unless the item sets its own. |
@@ -4262,6 +4277,7 @@ Runs POST /api/boards/{board_id}/cards/{card_id} once per item: items holds each
 | `shared.rank` | number or null | no |  | The stored rank value itself (the rank from get_card), for putting a card back exactly as it was; rank_place is the usual way. Needs edit rights on the board. |
 | `shared.rank_place` | integer or null | no | at least 0 | Importance across the whole board: 1 is the most important, and other cards shift to make room. 0 takes the card out of the ranking. Needs edit rights on the board. |
 | `shared.rev` | integer or null | no |  | The rev from get_card / get_board. Pass it when changing title or description: if someone edited the card since, the change is refused rather than written over theirs. |
+| `shared.scheduled` | boolean or null | no |  | On a staged board with stage_set review, the Scheduled stage (after Working, i.e. doing). true clears doing and reopens a done card. At most one of doing, scheduled and done. |
 | `shared.start_at` | string or null | no |  | 2026-10-30 for an all-day date, an RFC 3339 timestamp for a time, an empty string to clear. |
 | `shared.title` | string or null | no |  |  |
 
@@ -4647,6 +4663,184 @@ Put one of your folders inside another of yours, or back at the top (parent_id 0
 | `name` | string | yes |  |  |
 | `parent_id` | integer | yes |  |  |
 | `position` | number | yes |  |  |
+
+## Google Calendar
+
+| Method | Path | Summary | Who may call |
+|---|---|---|---|
+| POST | [`/api/boards/{board_id}/my-view/google`](#post-apiboardsboard_idmy-viewgoogle) | Sync a board to your Google Calendar | browser session or API key, anyone signed in |
+| GET | [`/api/google`](#get-apigoogle) | Your Google Calendar connection | browser session or API key, anyone signed in |
+| POST | [`/api/google`](#post-apigoogle) | Choose your Google calendar | browser session or API key, anyone signed in |
+| GET | [`/api/google/calendars`](#get-apigooglecalendars) | Your Google calendars | browser session or API key, anyone signed in |
+| GET | [`/api/google/callback`](#get-apigooglecallback) | Google's answer to a connection | anyone |
+| GET | [`/api/google/connect`](#get-apigoogleconnect) | Connect your Google Calendar | browser session only, anyone signed in |
+| POST | [`/api/google/disconnect`](#post-apigoogledisconnect) | Disconnect your Google Calendar | browser session or API key, anyone signed in |
+
+### POST /api/boards/{board_id}/my-view/google
+
+Sync a board to your Google Calendar
+
+Turns syncing this board's dated cards with your Google Calendar on or off, for you alone. Off deletes the events it made for this board. 404 not_connected: connect Google first.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`set_my_board_google_sync`](mcp.md#set_my_board_google_sync) |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `board_id` | path | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `sync` | boolean | yes |  | true copies this board's dated cards to your Google Calendar and back; false stops, and takes its events off your calendar. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `sync` | boolean | yes |  |  |
+
+### GET /api/google
+
+Your Google Calendar connection
+
+Whether Google Calendar sync is available on this server, whether your account is connected (and which Google account and calendar), the boards you sync, and how the last sync went. Connecting happens in a browser, in Settings: Google asks you there.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`get_google_calendar`](mcp.md#get_google_calendar) |
+| Errors | 401, 429, 503 |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `available` | boolean | yes |  | Whether this server is set up for Google Calendar at all. |
+| `boards` | array of integer | yes |  | Ids of the boards you sync. |
+| `calendar_id` | string | no |  | The calendar cards go to; primary is the account's main one. |
+| `connected` | boolean | yes |  |  |
+| `email` | string | no |  | The connected Google account. |
+| `last_sync` | string (date-time) or null | no |  |  |
+| `problem` | string | no |  | Why the last sync failed: revoked (connect again) or failed (it will try again). |
+
+### POST /api/google
+
+Choose your Google calendar
+
+Which calendar your synced cards go on. Events already made move to it on the next sync. 404 google_off or not_connected.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`set_google_calendar`](mcp.md#set_google_calendar) |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `calendar_id` | string | yes | 1 to 300 characters | A calendar id from list_google_calendars; primary is the account's main calendar. |
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `available` | boolean | yes |  | Whether this server is set up for Google Calendar at all. |
+| `boards` | array of integer | yes |  | Ids of the boards you sync. |
+| `calendar_id` | string | no |  | The calendar cards go to; primary is the account's main one. |
+| `connected` | boolean | yes |  |  |
+| `email` | string | no |  | The connected Google account. |
+| `last_sync` | string (date-time) or null | no |  |  |
+| `problem` | string | no |  | Why the last sync failed: revoked (connect again) or failed (it will try again). |
+
+### GET /api/google/calendars
+
+Your Google calendars
+
+The calendars in your connected Google account that you can add events to. 404 google_off or not_connected; 409 google_unreachable: Google did not answer, or refused (connect again).
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`list_google_calendars`](mcp.md#list_google_calendars) |
+| Errors | 401, 404, 409, 429, 503 |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `calendars` | array of object | yes |  |  |
+| `calendars[].id` | string | yes |  |  |
+| `calendars[].primary` | boolean | no |  |  |
+| `calendars[].summary` | string | yes |  |  |
+
+### GET /api/google/callback
+
+Google's answer to a connection
+
+Where Google sends you back after you answer. Takes the answer only in the browser that began connecting, within ten minutes, once; then redirects to the Google Calendar screen.
+
+|  |  |
+|---|---|
+| Who may call | anyone |
+| Errors | 400, 429, 503 |
+
+**Parameters**
+
+| Name | In | Type | Required | Limits | Description |
+|---|---|---|---|---|---|
+| `code` | query | string | no |  |  |
+| `state` | query | string | no |  |  |
+| `error` | query | string | no |  |  |
+
+**Reply 200**: Success
+
+### GET /api/google/connect
+
+Connect your Google Calendar
+
+Redirects to Google, which asks you to let this server manage events on your calendars. 404 google_off: the server has no Google OAuth client set up.
+
+|  |  |
+|---|---|
+| Who may call | browser session only, anyone signed in |
+| Errors | 401, 403, 404, 429, 503 |
+
+**Reply 200**: Success
+
+### POST /api/google/disconnect
+
+Disconnect your Google Calendar
+
+Stops syncing and forgets your Google account here (and asks Google to revoke the access). remove_events also deletes the events it made; otherwise they stay on your calendar, no longer synced.
+
+|  |  |
+|---|---|
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`disconnect_google_calendar`](mcp.md#disconnect_google_calendar) |
+| Errors | 400, 401, 403, 404, 429, 503 |
+
+**Request body**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
+| `remove_events` | boolean | no |  | true also deletes the events this server made on your calendar; otherwise they stay as they are. |
+
+**Reply 200**: Success
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `ok` | boolean | yes |  |  |
 
 ## Notifications
 
@@ -5044,9 +5238,12 @@ updateBoard for a guest holding an edit share link in X-Share-Token. Never the p
 | `purpose_rev` | integer or null | no |  | The purpose_rev the purpose was read at: if it moved since, 409 board_text_stale instead of writing over someone's change. |
 | `shopping` | boolean or null | no |  | A shopping board: cards carry products and prices. |
 | `show_rank` | boolean or null | no |  | Show each card's place in the board-wide ranking. |
+| `show_updated` | boolean or null | no |  | Every card face shows when it was last changed, in its bottom-right corner. A column's own show_updated can override it. |
 | `slug` | string or null | no |  | The board's URL name (the part after /b/). Empty picks one from the title. 409 slug_taken if another board has it. |
 | `stage_doing` | string or null | no |  | What the Doing stage is called on this board; empty for the default. |
 | `stage_done` | string or null | no |  | What the Done stage is called on this board; empty for the default. |
+| `stage_scheduled` | string or null | no |  | With stage_set review: what the Scheduled stage is called; empty for the default. |
+| `stage_set` | string or null | no | one of ``, `review` | On a staged or calendar board, its stages: "" for To do / Doing / Done, or "review" for Ready for review / Working / Scheduled / Resolved (cards' doing, scheduled and done flags). |
 | `stage_tabs` | boolean or null | no |  | On a staged board, give every column its own To do / Doing / Done buttons. |
 | `stage_todo` | string or null | no |  | What the To do stage is called on this board; empty for the default. |
 | `theme` | object or null | no |  | The board's own theme, shown to everyone on it. |
@@ -5117,6 +5314,7 @@ createCard for a guest holding a share link in X-Share-Token.
 | `list_id` | integer | yes |  | The column's id, from get_board (board.lists). |
 | `position` | number or null | no |  | Sort position within the column; lower comes first. Leave out to put it at the end. |
 | `rank_place` | integer or null | no | at least 0 | Importance across the whole board: 1 is the most important, and other cards shift to make room. 0 takes the card out of the ranking. Needs edit rights on the board. |
+| `scheduled` | boolean or null | no |  | On a staged board with stage_set review, the Scheduled stage (after Working, i.e. doing). At most one of doing, scheduled and done. |
 | `start_at` | string or null | no |  | 2026-10-30 for an all-day date, an RFC 3339 timestamp for a time, an empty string to clear. |
 | `title` | string | yes |  |  |
 
@@ -5160,6 +5358,7 @@ patchCard for a guest holding a share link in X-Share-Token.
 | `rank` | number or null | no |  | The stored rank value itself (the rank from get_card), for putting a card back exactly as it was; rank_place is the usual way. Needs edit rights on the board. |
 | `rank_place` | integer or null | no | at least 0 | Importance across the whole board: 1 is the most important, and other cards shift to make room. 0 takes the card out of the ranking. Needs edit rights on the board. |
 | `rev` | integer or null | no |  | The rev from get_card / get_board. Pass it when changing title or description: if someone edited the card since, the change is refused rather than written over theirs. |
+| `scheduled` | boolean or null | no |  | On a staged board with stage_set review, the Scheduled stage (after Working, i.e. doing). true clears doing and reopens a done card. At most one of doing, scheduled and done. |
 | `start_at` | string or null | no |  | 2026-10-30 for an all-day date, an RFC 3339 timestamp for a time, an empty string to clear. |
 | `title` | string or null | no |  |  |
 
@@ -5690,6 +5889,7 @@ createList for a guest holding an edit share link in X-Share-Token.
 | `id` | integer | yes |  |  |
 | `position` | number | yes |  |  |
 | `shopping` | boolean | yes |  |  |
+| `show_updated` | string | yes |  |  |
 | `stage_tabs` | string | yes |  |  |
 | `stage_view` | string | yes |  |  |
 | `title` | string | yes |  |  |
@@ -5720,8 +5920,9 @@ updateList for a guest holding an edit share link in X-Share-Token.
 | `archived` | boolean or null | no |  | true hides the column; false brings it back. |
 | `position` | number or null | no |  | Sort position among the columns; lower comes first. |
 | `shopping` | boolean or null | no |  | A shopping column: its cards carry products and prices. |
+| `show_updated` | string or null | no | one of ``, `on`, `off` | Whether this column's cards show when they were last changed: on, off, or empty to follow the board's show_updated. |
 | `stage_tabs` | string or null | no | one of ``, `on`, `off` | On a staged board, this column's own To do / Doing / Done buttons: on, off, or empty to follow the board's setting. |
-| `stage_view` | string or null | no | one of ``, `todo`, `doing`, `done` | On a staged board, the stage this column shows for everyone; empty follows the navbar. |
+| `stage_view` | string or null | no | one of ``, `todo`, `doing`, `scheduled`, `done` | On a staged board, the stage this column shows for everyone; empty follows the navbar. |
 | `title` | string or null | no | at most 120 characters |  |
 | `width` | integer or null | no |  | The column's width in pixels (200-800); 0 puts it back to the standard width. |
 
@@ -5845,6 +6046,7 @@ importColumn for a guest holding a share link in X-Share-Token.
 | `cards[].labels` | array of integer | yes |  |  |
 | `cards[].price` | string | no |  |  |
 | `cards[].rank` | number | no |  |  |
+| `cards[].scheduled` | boolean | no |  |  |
 | `cards[].start_at` | string (date-time) or null | yes |  |  |
 | `cards[].start_timed` | boolean | yes |  |  |
 | `cards[].title` | string | yes |  |  |
@@ -6791,7 +6993,7 @@ One of these:
 | `light.surface` | string | no |  | Cards. Left out: the mode's own. |
 | `mode` | string | yes | one of `light`, `dark` |  |
 | `name` | string | yes |  | 1 to 60 characters. |
-| `overrides` | map of string | no |  | Worked-out colors replaced by name: text, accent, accentFg, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back. |
+| `overrides` | map of string | no |  | Worked-out colors replaced by name: text, accent, accentFg, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, column, face, statusDoing, statusDoingFg, statusDone, statusDoneFg, statusPlain, statusPlainFg (a card's lit Doing/Done icons and the greyscale ones), and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back. |
 | `second` | string | yes |  | Says where you are: active nav item, headings, info. |
 | `surface` | string | no |  | Cards. Left out: the mode's own. |
 

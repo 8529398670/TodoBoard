@@ -185,19 +185,37 @@ const BoardSettings = {
     // the placeholder. Each saves by itself when it is left. Only a staged
     // board has them: on three columns the column titles are the names.
     const stageNames = Dom.el( "div" );
+    // Which stages: To do / Doing / Done, or the review set's four.
+    const stageSet = Ui.select( [
+      { value: "" , text: T( "settings.stage_set_default" ) },
+      { value: "review" , text: T( "settings.stage_set_review" ) },
+    ] , ctx.board.stage_set || "" );
+    stageNames.appendChild( Ui.field( "settings.stage_set_label" , stageSet ) );
     const stageFields = Dom.el( "div" , { class: "form-row" } );
-    Stages.order.forEach( function ( stage ) {
-      const key = "stage_" + stage;
-      const input = Dom.el( "input" , { class: "form-control" , attrs: { maxlength: "40" , placeholder: T( "board." + key ) } } );
-      input.value = ctx.board[ key ] || "";
-      let saved = input.value;
-      input.addEventListener( "change" , function () {
-        input.value = input.value.trim();
-        if ( input.value === saved ) return;
-        saved = input.value;
-        save( { [ key ]: saved } );
+    const fillStageFields = function ( set ) {
+      const board = Object.assign( {} , ctx.board , { stage_set: set } );
+      stageFields.replaceChildren();
+      Stages.orderFor( board ).forEach( function ( stage , index ) {
+        const key = "stage_" + stage;
+        const input = Dom.el( "input" , { class: "form-control" , attrs: { maxlength: "40" , placeholder: Stages.defaultLabel( board , stage ) } } );
+        input.value = ctx.board[ key ] || "";
+        let saved = input.value;
+        input.addEventListener( "change" , function () {
+          input.value = input.value.trim();
+          if ( input.value === saved ) return;
+          saved = input.value;
+          save( { [ key ]: saved } );
+        } );
+        const field = Ui.field( "settings.stage_todo_label" , input );
+        const label = field.querySelector( "label" );
+        if ( label ) label.textContent = I18n.fill( "settings.stage_position_label" , { n: index + 1 } );
+        stageFields.appendChild( field );
       } );
-      stageFields.appendChild( Ui.field( "settings." + key + "_label" , input ) );
+    };
+    fillStageFields( ctx.board.stage_set || "" );
+    stageSet.addEventListener( "change" , function () {
+      fillStageFields( stageSet.value );
+      save( { stage_set: stageSet.value } );
     } );
     stageNames.appendChild( stageFields );
     stageNames.appendChild( Dom.el( "p" , { class: "muted small-print" , text: T( "settings.stage_names_hint" ) } ) );
@@ -217,6 +235,10 @@ const BoardSettings = {
     ] } );
     Dom.show( centerColumns , layout.value !== "three" );
     form.appendChild( centerColumns );
+    form.appendChild( Dom.el( "div" , { children: [
+      Ui.checkbox( "settings.show_updated_label" , ctx.board.show_updated , function ( checked ) { save( { show_updated: checked } ); } ),
+      Dom.el( "p" , { class: "muted small-print" , text: T( "settings.show_updated_hint" ) } ),
+    ] } ) );
     form.appendChild( Ui.field( "settings.numbering_label" , numbering ) );
     const placements = Dom.el( "div" , { class: "form-row" } );
     placements.appendChild( Ui.field( "settings.done_placement_label" , donePlacement ) );
@@ -327,7 +349,31 @@ const BoardSettings = {
     } );
     section.appendChild( Ui.field( "settings.plain_icons" , icons ) );
     section.appendChild( Dom.el( "p" , { class: "muted small-print" , text: T( "settings.plain_icons_hint" ) } ) );
+    section.appendChild( this.google( ctx ) );
     return section;
+  },
+
+  // Syncing this board with your own Google Calendar: a switch once your
+  // account is connected, a pointer to Settings before, nothing on a
+  // server without Google set up.
+  google( ctx ) {
+    const wrap = Dom.el( "div" , { class: "mt-3" } );
+    Api.request( "/api/google" ).then( function ( status ) {
+      if ( !status.available ) return;
+      if ( !status.connected ) {
+        wrap.appendChild( Dom.el( "p" , { class: "muted small-print" , children: [
+          Dom.el( "span" , { text: T( "google.board_connect_first" ) + " " } ),
+          Dom.el( "a" , { text: T( "google.board_connect_link" ) , attrs: { href: "/#google" } } ),
+        ] } ) );
+        return;
+      }
+      wrap.appendChild( Ui.checkbox( "google.board_sync" , !!ctx.data.me.google_sync , async function ( checked ) {
+        const result = await ctx.mutate( function () { return ctx.client.setMyGoogle( checked ); } );
+        if ( result ) Ui.toast( T( checked ? "google.board_sync_on" : "google.board_sync_off" ) , "ok" );
+      } ) );
+      wrap.appendChild( Dom.el( "p" , { class: "muted small-print" , text: I18n.fill( "google.board_sync_hint" , { email: status.email || "" } ) } ) );
+    } ).catch( function () { /* no Google section, then */ } );
+    return wrap;
   },
 
   labelsEditor( ctx ) {

@@ -1321,7 +1321,7 @@
             "additionalProperties": {
               "type": "string"
             },
-            "description": "Worked-out colors replaced by name: text, accent, accentFg, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back.",
+            "description": "Worked-out colors replaced by name: text, accent, accentFg, second, secondFg, secondText, link, navLink, background, surface, nested, chrome, info, infoBorder, border, column, face, statusDoing, statusDoingFg, statusDone, statusDoneFg, statusPlain, statusPlainFg (a card's lit Doing/Done icons and the greyscale ones), and for each button variant V (Secondary, Success, Danger, Warning, Info, Light, Dark) btnV, btnVFg and btnVText. Leaving one out puts the readable color back.",
             "type": "object"
           },
           "second": {
@@ -6162,6 +6162,9 @@
                                       "rank": {
                                         "type": "number"
                                       },
+                                      "scheduled": {
+                                        "type": "boolean"
+                                      },
                                       "start_at": {
                                         "format": "date-time",
                                         "type": [
@@ -6195,6 +6198,9 @@
                                 },
                                 "shopping": {
                                   "type": "boolean"
+                                },
+                                "show_updated": {
+                                  "type": "string"
                                 },
                                 "stage_tabs": {
                                   "type": "string"
@@ -6230,6 +6236,9 @@
                           "shopping": {
                             "type": "boolean"
                           },
+                          "show_updated": {
+                            "type": "boolean"
+                          },
                           "slug": {
                             "type": "string"
                           },
@@ -6237,6 +6246,12 @@
                             "type": "string"
                           },
                           "stage_done": {
+                            "type": "string"
+                          },
+                          "stage_scheduled": {
+                            "type": "string"
+                          },
+                          "stage_set": {
                             "type": "string"
                           },
                           "stage_tabs": {
@@ -7195,6 +7210,13 @@
                       "null"
                     ]
                   },
+                  "show_updated": {
+                    "description": "Every card face shows when it was last changed, in its bottom-right corner. A column's own show_updated can override it.",
+                    "type": [
+                      "boolean",
+                      "null"
+                    ]
+                  },
                   "slug": {
                     "description": "The board's URL name (the part after /b/). Empty picks one from the title. 409 slug_taken if another board has it.",
                     "type": [
@@ -7211,6 +7233,24 @@
                   },
                   "stage_done": {
                     "description": "What the Done stage is called on this board; empty for the default.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "stage_scheduled": {
+                    "description": "With stage_set review: what the Scheduled stage is called; empty for the default.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "stage_set": {
+                    "description": "On a staged or calendar board, its stages: \"\" for To do / Doing / Done, or \"review\" for Ready for review / Working / Scheduled / Resolved (cards' doing, scheduled and done flags).",
+                    "enum": [
+                      "",
+                      "review"
+                    ],
                     "type": [
                       "string",
                       "null"
@@ -7705,6 +7745,13 @@
                       "null"
                     ]
                   },
+                  "scheduled": {
+                    "description": "On a staged board with stage_set review, the Scheduled stage (after Working, i.e. doing). At most one of doing, scheduled and done.",
+                    "type": [
+                      "boolean",
+                      "null"
+                    ]
+                  },
                   "start_at": {
                     "description": "2026-10-30 for an all-day date, an RFC 3339 timestamp for a time, an empty string to clear.",
                     "type": [
@@ -7998,6 +8045,13 @@
                     "description": "The rev from get_card / get_board. Pass it when changing title or description: if someone edited the card since, the change is refused rather than written over theirs.",
                     "type": [
                       "integer",
+                      "null"
+                    ]
+                  },
+                  "scheduled": {
+                    "description": "On a staged board with stage_set review, the Scheduled stage (after Working, i.e. doing). true clears doing and reopens a done card. At most one of doing, scheduled and done.",
+                    "type": [
+                      "boolean",
                       "null"
                     ]
                   },
@@ -11373,6 +11427,9 @@
                     "shopping": {
                       "type": "boolean"
                     },
+                    "show_updated": {
+                      "type": "string"
+                    },
                     "stage_tabs": {
                       "type": "string"
                     },
@@ -11391,6 +11448,7 @@
                     "id",
                     "position",
                     "shopping",
+                    "show_updated",
                     "stage_tabs",
                     "stage_view",
                     "title",
@@ -11502,6 +11560,18 @@
                       "null"
                     ]
                   },
+                  "show_updated": {
+                    "description": "Whether this column's cards show when they were last changed: on, off, or empty to follow the board's show_updated.",
+                    "enum": [
+                      "",
+                      "on",
+                      "off"
+                    ],
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
                   "stage_tabs": {
                     "description": "On a staged board, this column's own To do / Doing / Done buttons: on, off, or empty to follow the board's setting.",
                     "enum": [
@@ -11520,6 +11590,7 @@
                       "",
                       "todo",
                       "doing",
+                      "scheduled",
                       "done"
                     ],
                     "type": [
@@ -12012,6 +12083,9 @@
                         "rank": {
                           "type": "number"
                         },
+                        "scheduled": {
+                          "type": "boolean"
+                        },
                         "start_at": {
                           "format": "date-time",
                           "type": [
@@ -12438,6 +12512,106 @@
         "summary": "Your collapsed columns",
         "tags": [
           "Boards"
+        ]
+      }
+    },
+    "/api/boards/{board_id}/my-view/google": {
+      "post": {
+        "description": "Turns syncing this board's dated cards with your Google Calendar on or off, for you alone. Off deletes the events it made for this board. 404 not_connected: connect Google first.",
+        "operationId": "post_api_boards_board_id_my_view_google",
+        "parameters": [
+          {
+            "description": "The board's id, or its URL slug (the part after /b/), from list_boards.",
+            "in": "path",
+            "name": "board_id",
+            "required": true,
+            "schema": {
+              "oneOf": [
+                {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "csrf_token": {
+                    "description": "From GET /api/me. Browser sessions only.",
+                    "type": "string"
+                  },
+                  "sync": {
+                    "description": "true copies this board's dated cards to your Google Calendar and back; false stops, and takes its events off your calendar.",
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "sync"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "sync": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "sync"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "404": {
+            "$ref": "#/components/responses/E404"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "503": {
+            "$ref": "#/components/responses/E503"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "summary": "Sync a board to your Google Calendar",
+        "tags": [
+          "Google Calendar"
         ]
       }
     },
@@ -14944,6 +15118,13 @@
                             "null"
                           ]
                         },
+                        "scheduled": {
+                          "description": "On a staged board with stage_set review, the Scheduled stage (after Working, i.e. doing). true clears doing and reopens a done card. At most one of doing, scheduled and done.",
+                          "type": [
+                            "boolean",
+                            "null"
+                          ]
+                        },
                         "start_at": {
                           "description": "2026-10-30 for an all-day date, an RFC 3339 timestamp for a time, an empty string to clear.",
                           "type": [
@@ -15082,6 +15263,13 @@
                         "description": "The rev from get_card / get_board. Pass it when changing title or description: if someone edited the card since, the change is refused rather than written over theirs.",
                         "type": [
                           "integer",
+                          "null"
+                        ]
+                      },
+                      "scheduled": {
+                        "description": "On a staged board with stage_set review, the Scheduled stage (after Working, i.e. doing). true clears doing and reopens a done card. At most one of doing, scheduled and done.",
+                        "type": [
+                          "boolean",
                           "null"
                         ]
                       },
@@ -15942,6 +16130,428 @@
         "summary": "Move a folder",
         "tags": [
           "Folders"
+        ]
+      }
+    },
+    "/api/google": {
+      "get": {
+        "description": "Whether Google Calendar sync is available on this server, whether your account is connected (and which Google account and calendar), the boards you sync, and how the last sync went. Connecting happens in a browser, in Settings: Google asks you there.",
+        "operationId": "get_api_google",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "available": {
+                      "description": "Whether this server is set up for Google Calendar at all.",
+                      "type": "boolean"
+                    },
+                    "boards": {
+                      "description": "Ids of the boards you sync.",
+                      "items": {
+                        "type": "integer"
+                      },
+                      "type": "array"
+                    },
+                    "calendar_id": {
+                      "description": "The calendar cards go to; primary is the account's main one.",
+                      "type": "string"
+                    },
+                    "connected": {
+                      "type": "boolean"
+                    },
+                    "email": {
+                      "description": "The connected Google account.",
+                      "type": "string"
+                    },
+                    "last_sync": {
+                      "format": "date-time",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "problem": {
+                      "description": "Why the last sync failed: revoked (connect again) or failed (it will try again).",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "available",
+                    "boards",
+                    "connected"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "503": {
+            "$ref": "#/components/responses/E503"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "summary": "Your Google Calendar connection",
+        "tags": [
+          "Google Calendar"
+        ]
+      },
+      "post": {
+        "description": "Which calendar your synced cards go on. Events already made move to it on the next sync. 404 google_off or not_connected.",
+        "operationId": "post_api_google",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "calendar_id": {
+                    "description": "A calendar id from list_google_calendars; primary is the account's main calendar.",
+                    "maxLength": 300,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "csrf_token": {
+                    "description": "From GET /api/me. Browser sessions only.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "calendar_id"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "available": {
+                      "description": "Whether this server is set up for Google Calendar at all.",
+                      "type": "boolean"
+                    },
+                    "boards": {
+                      "description": "Ids of the boards you sync.",
+                      "items": {
+                        "type": "integer"
+                      },
+                      "type": "array"
+                    },
+                    "calendar_id": {
+                      "description": "The calendar cards go to; primary is the account's main one.",
+                      "type": "string"
+                    },
+                    "connected": {
+                      "type": "boolean"
+                    },
+                    "email": {
+                      "description": "The connected Google account.",
+                      "type": "string"
+                    },
+                    "last_sync": {
+                      "format": "date-time",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "problem": {
+                      "description": "Why the last sync failed: revoked (connect again) or failed (it will try again).",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "available",
+                    "boards",
+                    "connected"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "404": {
+            "$ref": "#/components/responses/E404"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "503": {
+            "$ref": "#/components/responses/E503"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "summary": "Choose your Google calendar",
+        "tags": [
+          "Google Calendar"
+        ]
+      }
+    },
+    "/api/google/calendars": {
+      "get": {
+        "description": "The calendars in your connected Google account that you can add events to. 404 google_off or not_connected; 409 google_unreachable: Google did not answer, or refused (connect again).",
+        "operationId": "get_api_google_calendars",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "calendars": {
+                      "items": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "primary": {
+                            "type": "boolean"
+                          },
+                          "summary": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "summary"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "calendars"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "404": {
+            "$ref": "#/components/responses/E404"
+          },
+          "409": {
+            "$ref": "#/components/responses/E409"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "503": {
+            "$ref": "#/components/responses/E503"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "summary": "Your Google calendars",
+        "tags": [
+          "Google Calendar"
+        ]
+      }
+    },
+    "/api/google/callback": {
+      "get": {
+        "description": "Where Google sends you back after you answer. Takes the answer only in the browser that began connecting, within ten minutes, once; then redirects to the Google Calendar screen.",
+        "operationId": "get_api_google_callback",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "code",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "error",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "503": {
+            "$ref": "#/components/responses/E503"
+          }
+        },
+        "security": [],
+        "summary": "Google's answer to a connection",
+        "tags": [
+          "Google Calendar"
+        ]
+      }
+    },
+    "/api/google/connect": {
+      "get": {
+        "description": "Redirects to Google, which asks you to let this server manage events on your calendars. 404 google_off: the server has no Google OAuth client set up.",
+        "operationId": "get_api_google_connect",
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "404": {
+            "$ref": "#/components/responses/E404"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "503": {
+            "$ref": "#/components/responses/E503"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Connect your Google Calendar",
+        "tags": [
+          "Google Calendar"
+        ]
+      }
+    },
+    "/api/google/disconnect": {
+      "post": {
+        "description": "Stops syncing and forgets your Google account here (and asks Google to revoke the access). remove_events also deletes the events it made; otherwise they stay on your calendar, no longer synced.",
+        "operationId": "post_api_google_disconnect",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "csrf_token": {
+                    "description": "From GET /api/me. Browser sessions only.",
+                    "type": "string"
+                  },
+                  "remove_events": {
+                    "description": "true also deletes the events this server made on your calendar; otherwise they stay as they are.",
+                    "type": "boolean"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/E400"
+          },
+          "401": {
+            "$ref": "#/components/responses/E401"
+          },
+          "403": {
+            "$ref": "#/components/responses/E403"
+          },
+          "404": {
+            "$ref": "#/components/responses/E404"
+          },
+          "429": {
+            "$ref": "#/components/responses/E429"
+          },
+          "503": {
+            "$ref": "#/components/responses/E503"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "apiKey": []
+          }
+        ],
+        "summary": "Disconnect your Google Calendar",
+        "tags": [
+          "Google Calendar"
         ]
       }
     },
@@ -19358,6 +19968,13 @@
                       "null"
                     ]
                   },
+                  "show_updated": {
+                    "description": "Every card face shows when it was last changed, in its bottom-right corner. A column's own show_updated can override it.",
+                    "type": [
+                      "boolean",
+                      "null"
+                    ]
+                  },
                   "slug": {
                     "description": "The board's URL name (the part after /b/). Empty picks one from the title. 409 slug_taken if another board has it.",
                     "type": [
@@ -19374,6 +19991,24 @@
                   },
                   "stage_done": {
                     "description": "What the Done stage is called on this board; empty for the default.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "stage_scheduled": {
+                    "description": "With stage_set review: what the Scheduled stage is called; empty for the default.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "stage_set": {
+                    "description": "On a staged or calendar board, its stages: \"\" for To do / Doing / Done, or \"review\" for Ready for review / Working / Scheduled / Resolved (cards' doing, scheduled and done flags).",
+                    "enum": [
+                      "",
+                      "review"
+                    ],
                     "type": [
                       "string",
                       "null"
@@ -19742,6 +20377,13 @@
                       "null"
                     ]
                   },
+                  "scheduled": {
+                    "description": "On a staged board with stage_set review, the Scheduled stage (after Working, i.e. doing). At most one of doing, scheduled and done.",
+                    "type": [
+                      "boolean",
+                      "null"
+                    ]
+                  },
                   "start_at": {
                     "description": "2026-10-30 for an all-day date, an RFC 3339 timestamp for a time, an empty string to clear.",
                     "type": [
@@ -19949,6 +20591,13 @@
                     "description": "The rev from get_card / get_board. Pass it when changing title or description: if someone edited the card since, the change is refused rather than written over theirs.",
                     "type": [
                       "integer",
+                      "null"
+                    ]
+                  },
+                  "scheduled": {
+                    "description": "On a staged board with stage_set review, the Scheduled stage (after Working, i.e. doing). true clears doing and reopens a done card. At most one of doing, scheduled and done.",
+                    "type": [
+                      "boolean",
                       "null"
                     ]
                   },
@@ -21673,6 +22322,9 @@
                     "shopping": {
                       "type": "boolean"
                     },
+                    "show_updated": {
+                      "type": "string"
+                    },
                     "stage_tabs": {
                       "type": "string"
                     },
@@ -21691,6 +22343,7 @@
                     "id",
                     "position",
                     "shopping",
+                    "show_updated",
                     "stage_tabs",
                     "stage_view",
                     "title",
@@ -21788,6 +22441,18 @@
                       "null"
                     ]
                   },
+                  "show_updated": {
+                    "description": "Whether this column's cards show when they were last changed: on, off, or empty to follow the board's show_updated.",
+                    "enum": [
+                      "",
+                      "on",
+                      "off"
+                    ],
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
                   "stage_tabs": {
                     "description": "On a staged board, this column's own To do / Doing / Done buttons: on, off, or empty to follow the board's setting.",
                     "enum": [
@@ -21806,6 +22471,7 @@
                       "",
                       "todo",
                       "doing",
+                      "scheduled",
                       "done"
                     ],
                     "type": [
@@ -22235,6 +22901,9 @@
                         },
                         "rank": {
                           "type": "number"
+                        },
+                        "scheduled": {
+                          "type": "boolean"
                         },
                         "start_at": {
                           "format": "date-time",
@@ -22917,6 +23586,9 @@
     },
     {
       "name": "Folders"
+    },
+    {
+      "name": "Google Calendar"
     },
     {
       "name": "Notifications"

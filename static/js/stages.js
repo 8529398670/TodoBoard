@@ -9,7 +9,30 @@
 // more stop than a column: All, one centred list of every list's cards, which
 // flips through the stages with its own tabs.
 const Stages = {
-  order: [ "todo" , "doing" , "done" ],
+  // The open board's stages, in order. A board with the review stage set
+  // (stage_set "review") has four: Ready for review, Working, Scheduled and
+  // Resolved, which are the same flags plus scheduled.
+  sets: {
+    "": [ "todo" , "doing" , "done" ],
+    review: [ "todo" , "doing" , "scheduled" , "done" ],
+  },
+  get order() {
+    return this.orderFor( typeof BoardPage !== "undefined" && BoardPage.data ? BoardPage.data.board : null );
+  },
+  orderFor( board ) {
+    return ( board && this.sets[ board.stage_set || "" ] ) || this.sets[ "" ];
+  },
+  isReview( board ) {
+    return !!board && board.stage_set === "review";
+  },
+
+  // Cards counted by stage, every stage there (at 0 if none).
+  counts( cards ) {
+    const counts = {};
+    this.order.forEach( function ( stage ) { counts[ stage ] = 0; } );
+    cards.forEach( ( card ) => { counts[ this.of( card ) ] += 1; } );
+    return counts;
+  },
 
   // One full-width column at a time. The query is board.css's for
   // .swipe-columns, word for word. Every column follows the bar here, even
@@ -20,22 +43,30 @@ const Stages = {
     return document.body.classList.contains( "swipe-columns" ) && this.query.matches;
   },
 
+  // A card's stage. A scheduled card on a board that has since left the
+  // review set shows as Doing: it is still under way.
   of( card ) {
     if ( card.done ) return "done";
+    if ( card.scheduled ) return this.order.indexOf( "scheduled" ) >= 0 ? "scheduled" : "doing";
     return card.doing ? "doing" : "todo";
   },
 
   // A patch or new card's fields for a stage. Both flags always, so undoing
   // comes back to the stage the card left, not just the flag it lost.
   fields( stage ) {
-    return { doing: stage === "doing" , done: stage === "done" };
+    return { doing: stage === "doing" , scheduled: stage === "scheduled" , done: stage === "done" };
   },
 
   // A stage's name: the board's own if it has one, the app's otherwise. All
   // is no stage, so it always has the app's word; a link that is not told the
   // board's settings falls back the same way.
   label( ctx , stage ) {
-    return ( stage !== "all" && ctx.board[ "stage_" + stage ] ) || T( "board.stage_" + stage );
+    return ( stage !== "all" && ctx.board[ "stage_" + stage ] ) || this.defaultLabel( ctx.board , stage );
+  },
+
+  // The app's word for a stage, in the board's stage set.
+  defaultLabel( board , stage ) {
+    return T( ( stage !== "all" && this.isReview( board ) ? "board.stage_review_" : "board.stage_" ) + stage );
   },
 
   // Where the bar and the arrow keys can go.
@@ -69,8 +100,7 @@ const Stages = {
   // Flips one column, or the All list, apart from the bar. key is the list
   // id or "all"; cards are all of its cards, for the counts.
   tabs( key , cards , ctx ) {
-    const counts = { todo: 0 , doing: 0 , done: 0 };
-    cards.forEach( ( card ) => { counts[ this.of( card ) ] += 1; } );
+    const counts = this.counts( cards );
     const label = key === "all" ? "board.stage_tabs" : "board.column_stage_tabs";
     return this.buttons( ctx , "stage-tabs" , label , this.order , ctx.stageIn( key ) , counts , function ( stage ) {
       if ( key === "all" ) BoardPage.setAllStage( stage );

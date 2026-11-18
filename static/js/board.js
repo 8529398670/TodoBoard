@@ -346,6 +346,14 @@ const BoardPage = {
         const list = data.board.lists.find( function ( item ) { return item.id === card.list_id; } );
         return !!( list && list.shopping );
       },
+      // Whether a card shows when it was last changed: its column's own
+      // choice, or the board's (Board settings).
+      showUpdated( card ) {
+        const list = data.board.lists.find( function ( item ) { return item.id === card.list_id; } );
+        if ( list && list.show_updated === "on" ) return true;
+        if ( list && list.show_updated === "off" ) return false;
+        return !!data.board.show_updated;
+      },
       // Whether cards outside the All list show their rank (Board settings).
       showRank() {
         return this.isStaged() && !!data.board.show_rank;

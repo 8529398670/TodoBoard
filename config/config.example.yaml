@@ -242,6 +242,16 @@ auth:
   # [live]
   invite_links: true
 
+# Google Calendar sync. [live] Each person connects their own Google account in
+# Settings and picks which boards to sync; dated cards become events on their
+# calendar, and moving or renaming an event there moves or renames the card.
+# Make an OAuth client (type "Web application") in a Google Cloud project with
+# the Google Calendar API enabled, and add <server.public_url>/api/google/callback
+# as an authorized redirect URI. Needs server.public_url. Empty switches it off.
+google:
+  client_id: ""
+  client_secret: ""
+
 # Push notifications through Pushover. [restart]
 pushover:
   # The application token from https://pushover.net/apps/build. Each person

@@ -236,3 +236,42 @@ func TestRankRespaceLeavesRev( t *testing.T ) {
 	idle , _ := GetCard( store , board.ID , unranked.ID )
 	if idle.Rank != 0 { t.Errorf( "an unranked card stays unranked: %v" , idle.Rank ) }
 }
+
+// The review stage set: Ready for review, Working (doing), Scheduled,
+// Resolved (done). At most one flag is set.
+func TestReviewStages( t *testing.T ) {
+	store , board , list , owner := stagedBoard( t )
+	review := StageSetReview
+	board , err := UpdateBoardSettings( store , board.ID , &BoardSettings{ StageSet: &review } )
+	if err != nil { t.Fatal( err ) }
+	if board.StageSet != StageSetReview { t.Fatalf( "stage_set not saved: %q" , board.StageSet ) }
+	bad := "kanban"
+	if _ , err = UpdateBoardSettings( store , board.ID , &BoardSettings{ StageSet: &bad } ); errors.Is( err , ErrBadInput ) == false {
+		t.Errorf( "unknown stage set: got %v" , err )
+	}
+	card , _ := CreateCard( store , board.ID , list , "Task" , nil , owner.ID , "Owner" )
+	yes := true
+
+	working , _ , err := PatchCard( store , board.ID , card.ID , &CardPatch{ Doing: &yes } , "Owner" )
+	if err != nil { t.Fatal( err ) }
+	scheduled , change , err := PatchCard( store , board.ID , card.ID , &CardPatch{ Scheduled: &yes } , "Owner" )
+	if err != nil { t.Fatal( err ) }
+	if working.Doing == false || scheduled.Scheduled == false || scheduled.Doing || change.Edited == false {
+		t.Errorf( "scheduling a working card leaves Working: %+v %+v" , scheduled , change )
+	}
+	resolved , _ , err := PatchCard( store , board.ID , card.ID , &CardPatch{ Done: &yes } , "Owner" )
+	if err != nil { t.Fatal( err ) }
+	if resolved.Scheduled || resolved.Done == false { t.Errorf( "resolving clears Scheduled: %+v" , resolved ) }
+	reopened , change , err := PatchCard( store , board.ID , card.ID , &CardPatch{ Scheduled: &yes } , "Owner" )
+	if err != nil { t.Fatal( err ) }
+	if reopened.Done || reopened.Scheduled == false || change.Reopened == false { t.Errorf( "scheduling a resolved card reopens it: %+v" , reopened ) }
+	if _ , _ , err = PatchCard( store , board.ID , card.ID , &CardPatch{ Doing: &yes , Scheduled: &yes } , "Owner" ); errors.Is( err , ErrBadInput ) == false {
+		t.Errorf( "two stages at once: got %v" , err )
+	}
+
+	board , _ = GetBoard( store , board.ID )
+	snap := SnapshotBoard( board , nil , everyCard , 0 , nil )
+	copy , _ , err := ImportBoardSkeleton( store , owner.ID , snap )
+	if err != nil { t.Fatal( err ) }
+	if copy.StageSet != StageSetReview { t.Error( "a restored board lost its stage set" ) }
+}

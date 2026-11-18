@@ -188,3 +188,32 @@ func TestCollapsedListsArePersonal( t *testing.T ) {
 		t.Errorf( "someone with no row on the board has nowhere to keep this, got %v" , err )
 	}
 }
+
+func TestShowUpdated( t *testing.T ) {
+	store := testStore( t )
+	owner , _ := CreateUser( store , "Owner" , RoleAdmin )
+	board , err := CreateBoard( store , owner.ID , "Stamps" , []string{ "Work" , "Home" } )
+	if err != nil { t.Fatal( err ) }
+	if board.ShowUpdated { t.Error( "a new board shows no last-changed stamps" ) }
+	list := board.SortedLists()[ 0 ]
+
+	on := true
+	board , err = UpdateBoardSettings( store , board.ID , &BoardSettings{ ShowUpdated: &on } )
+	if err != nil { t.Fatal( err ) }
+	if board.ShowUpdated == false { t.Error( "show_updated was not saved" ) }
+
+	set := func( value string ) ( err error ) {
+		update := &ListUpdate{ ShowUpdated: &value }
+		_ , err = MutateBoard( store , board.ID , func( board *Board ) error { return update.Apply( board , list.ID ) } )
+		return
+	}
+	if err = set( "maybe" ); errors.Is( err , ErrBadInput ) == false { t.Errorf( "only on, off or empty, got %v" , err ) }
+	if err = set( "off" ); err != nil { t.Fatal( err ) }
+
+	board , _ = GetBoard( store , board.ID )
+	snap := SnapshotBoard( board , nil , everyCard , 0 , nil )
+	copy , _ , err := ImportBoardSkeleton( store , owner.ID , snap )
+	if err != nil { t.Fatal( err ) }
+	if copy.ShowUpdated == false { t.Error( "a restored board lost show_updated" ) }
+	if copy.SortedLists()[ 0 ].ShowUpdated != "off" { t.Error( "a restored column lost show_updated" ) }
+}

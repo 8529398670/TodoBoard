@@ -19,6 +19,7 @@ import (
 	config "todoboard/server/config"
 	db "todoboard/server/db"
 	errorpage "todoboard/server/errorpage"
+	gcal "todoboard/server/gcal"
 	jobs "todoboard/server/jobs"
 	language "todoboard/server/language"
 	logs "todoboard/server/logs"
@@ -59,6 +60,9 @@ type Handlers struct {
 	// or switched off, nothing is logged and its routes answer 404
 	// (RequireLogs).
 	Logs *logs.Logger
+	// Google is Google Calendar sync (server/gcal), set by main.go. Nil, or
+	// with no OAuth client configured, its routes answer 404 google_off.
+	Google *gcal.Service
 	// Jobs is the background job registry (server/jobs), set by main.go.
 	Jobs *jobs.Registry
 	// LogStream is who has the Logs screen open with Live on, set by main.go.

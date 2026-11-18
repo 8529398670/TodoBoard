@@ -704,6 +704,12 @@ func ( handlers *Handlers ) mountDeclared( app *fiber.App ) {
 		Tag: "Boards",
 		Errors: []int{ 400 , 401 , 403 , 404 },
 	} , handlers.setMyCollapsedLists , handlers.Guard.RequireLogin )
+	apidoc.Mount( app , "POST" , "/api/boards/{board_id}/my-view/google" , apidoc.Op{
+		Summary: "Sync a board to your Google Calendar",
+		Description: "Turns syncing this board's dated cards with your Google Calendar on or off, for you alone. Off deletes the events it made for this board. 404 not_connected: connect Google first.",
+		Tag: "Google Calendar",
+		Errors: []int{ 400 , 401 , 403 , 404 },
+	} , handlers.setBoardGoogleSync , handlers.Guard.RequireLogin )
 	apidoc.Mount( app , "GET" , "/api/boards/{board_id}/notes" , apidoc.Op{
 		Summary: "Read a board's purpose and notes",
 		Description: "Just the board's notes and purpose, without its cards. notes holds links, documents and reference material. purpose says what the board is for and how to work on it, and is only there when purpose_enabled is true. Both are markdown, and may be empty. Read them before working on a board. The revs go back to update_board_notes.",
@@ -943,6 +949,44 @@ func ( handlers *Handlers ) mountDeclared( app *fiber.App ) {
 		Tag: "Folders",
 		Errors: []int{ 400 , 401 , 403 },
 	} , handlers.moveFolder , handlers.Guard.RequireLogin )
+	apidoc.Mount( app , "GET" , "/api/google" , apidoc.Op{
+		Summary: "Your Google Calendar connection",
+		Description: "Whether Google Calendar sync is available on this server, whether your account is connected (and which Google account and calendar), the boards you sync, and how the last sync went. Connecting happens in a browser, in Settings: Google asks you there.",
+		Tag: "Google Calendar",
+		Errors: []int{ 401 },
+	} , handlers.getGoogleStatus , handlers.Guard.RequireLogin )
+	apidoc.Mount( app , "POST" , "/api/google" , apidoc.Op{
+		Summary: "Choose your Google calendar",
+		Description: "Which calendar your synced cards go on. Events already made move to it on the next sync. 404 google_off or not_connected.",
+		Tag: "Google Calendar",
+		Errors: []int{ 400 , 401 , 403 , 404 },
+	} , handlers.setGoogleCalendar , handlers.Guard.RequireLogin )
+	apidoc.Mount( app , "GET" , "/api/google/calendars" , apidoc.Op{
+		Summary: "Your Google calendars",
+		Description: "The calendars in your connected Google account that you can add events to. 404 google_off or not_connected; 409 google_unreachable: Google did not answer, or refused (connect again).",
+		Tag: "Google Calendar",
+		Errors: []int{ 401 , 404 , 409 },
+	} , handlers.listGoogleCalendars , handlers.Guard.RequireLogin )
+	apidoc.MountStream( app , "GET" , "/api/google/callback" , apidoc.Op{
+		Summary: "Google's answer to a connection",
+		Description: "Where Google sends you back after you answer. Takes the answer only in the browser that began connecting, within ten minutes, once; then redirects to the Google Calendar screen.",
+		Tag: "Google Calendar",
+		Access: apidoc.Public,
+		Errors: []int{ 400 },
+	} , handlers.googleCallback )
+	apidoc.MountStream( app , "GET" , "/api/google/connect" , apidoc.Op{
+		Summary: "Connect your Google Calendar",
+		Description: "Redirects to Google, which asks you to let this server manage events on your calendars. 404 google_off: the server has no Google OAuth client set up.",
+		Tag: "Google Calendar",
+		Access: apidoc.SessionOnly,
+		Errors: []int{ 401 , 403 , 404 },
+	} , handlers.connectGoogle , handlers.Guard.RequireLogin , handlers.Guard.RequireSession )
+	apidoc.Mount( app , "POST" , "/api/google/disconnect" , apidoc.Op{
+		Summary: "Disconnect your Google Calendar",
+		Description: "Stops syncing and forgets your Google account here (and asks Google to revoke the access). remove_events also deletes the events it made; otherwise they stay on your calendar, no longer synced.",
+		Tag: "Google Calendar",
+		Errors: []int{ 400 , 401 , 403 , 404 },
+	} , handlers.disconnectGoogle , handlers.Guard.RequireLogin )
 	apidoc.Mount( app , "GET" , "/api/health" , apidoc.Op{
 		Summary: "Is the process up",
 		Tag: "Monitoring",
@@ -1899,6 +1943,12 @@ func ( handlers *Handlers ) registerDeclaredTools( server *mcp.Server ) {
 		Description: "Remove one of the board's share links from the list (link_id from list_shares); a live one stops working. Only the board's owner may.",
 		Destructive: true,
 	} , nil ) )
+	server.Register( mcp.ForRoute( "POST /api/google/disconnect" , handlers.disconnectGoogle , mcp.Tool{
+		Name: "disconnect_google_calendar",
+		Title: "Disconnect your Google Calendar",
+		Description: "Stops syncing and forgets your Google account here (and asks Google to revoke the access). remove_events also deletes the events it made; otherwise they stay on your calendar, no longer synced.",
+		Destructive: true,
+	} , nil ) )
 	server.Register( mcp.ForRoute( "POST /api/boards/{board_id}/duplicate" , handlers.duplicateBoard , mcp.Tool{
 		Name: "duplicate_board",
 		Title: "Duplicate a board",
@@ -1951,6 +2001,12 @@ func ( handlers *Handlers ) registerDeclaredTools( server *mcp.Server ) {
 		Description: "Which of the card's events reach you and where that comes from (source: your defaults, the board's override or this card's), with whether push is on and whether anything would reach you.",
 		ReadOnly: true,
 	} , nil ) )
+	server.Register( mcp.ForRoute( "GET /api/google" , handlers.getGoogleStatus , mcp.Tool{
+		Name: "get_google_calendar",
+		Title: "Your Google Calendar connection",
+		Description: "Whether Google Calendar sync is available on this server, whether your account is connected (and which Google account and calendar), the boards you sync, and how the last sync went. Connecting happens in a browser, in Settings: Google asks you there.",
+		ReadOnly: true,
+	} , nil ) )
 	server.Register( mcp.ForRoute( "GET /api/notify/prefs" , handlers.getNotifyPrefs , mcp.Tool{
 		Name: "get_notify_prefs",
 		Title: "Your notification settings",
@@ -1984,6 +2040,12 @@ func ( handlers *Handlers ) registerDeclaredTools( server *mcp.Server ) {
 		Name: "list_comments",
 		Title: "Read a card's comments",
 		Description: "A card's comments, oldest first: who wrote each (by: a member's name, guest:Name for a guest, guest: alone for an anonymous one) and when, and whether you may post one (can_comment).",
+		ReadOnly: true,
+	} , nil ) )
+	server.Register( mcp.ForRoute( "GET /api/google/calendars" , handlers.listGoogleCalendars , mcp.Tool{
+		Name: "list_google_calendars",
+		Title: "Your Google calendars",
+		Description: "The calendars in your connected Google account that you can add events to. 404 google_off or not_connected; 409 google_unreachable: Google did not answer, or refused (connect again).",
 		ReadOnly: true,
 	} , nil ) )
 	server.Register( mcp.ForRoute( "GET /api/account/sessions" , handlers.listMySessions , mcp.Tool{
@@ -2123,10 +2185,20 @@ func ( handlers *Handlers ) registerDeclaredTools( server *mcp.Server ) {
 		Title: "Save your display settings",
 		Description: "How times and boards are shown to you. timezone (empty for the browser's own) and hour12 (null for the locale's) are always set from what is sent; every other field changes only when sent: number_cards, plain_icons (grey status icons), done_on_top, add_on_top, theme (clear_theme goes back to plain light), own_theme_on_boards (keep your theme on boards that have their own), swipe_columns (phones) and folder_sort. Answers your display settings.",
 	} , nil ) )
+	server.Register( mcp.ForRoute( "POST /api/google" , handlers.setGoogleCalendar , mcp.Tool{
+		Name: "set_google_calendar",
+		Title: "Choose your Google calendar",
+		Description: "Which calendar your synced cards go on. Events already made move to it on the next sync. 404 google_off or not_connected.",
+	} , nil ) )
 	server.Register( mcp.ForRoute( "POST /api/account/label-colors" , handlers.saveLabelColors , mcp.Tool{
 		Name: "set_label_colors",
 		Title: "Save your label colours",
 		Description: "Replace your own saved label colours with this list, in its order. Labels already using a colour you leave out keep it. Answers your display settings.",
+	} , nil ) )
+	server.Register( mcp.ForRoute( "POST /api/boards/{board_id}/my-view/google" , handlers.setBoardGoogleSync , mcp.Tool{
+		Name: "set_my_board_google_sync",
+		Title: "Sync a board to your Google Calendar",
+		Description: "Turns syncing this board's dated cards with your Google Calendar on or off, for you alone. Off deletes the events it made for this board. 404 not_connected: connect Google first.",
 	} , nil ) )
 	server.Register( mcp.ForRoute( "POST /api/boards/{board_id}/my-view" , handlers.setMyBoardView , mcp.Tool{
 		Name: "set_my_board_view",

@@ -251,7 +251,7 @@ func ListCardLinks( store *db.Store , board_id uint64 , card_id uint64 ) ( views
 // syncedEqual reports whether two cards agree on everything a mirror syncs.
 func syncedEqual( a *Card , b *Card ) ( result bool ) {
 	if a.Title != b.Title || a.Description != b.Description || a.Price != b.Price { return }
-	if a.Done != b.Done || a.Doing != b.Doing { return }
+	if a.Done != b.Done || a.Doing != b.Doing || a.Scheduled != b.Scheduled { return }
 	if timeChanged( a.StartAt , b.StartAt ) || a.StartTimed != b.StartTimed { return }
 	if timeChanged( a.DueAt , b.DueAt ) || a.DueAllDay != b.DueAllDay { return }
 	if timeChanged( a.ImageAt , b.ImageAt ) { return }
@@ -274,7 +274,7 @@ func copyTime( value *time.Time ) ( result *time.Time ) {
 // copySynced puts from's synced fields on to.
 func copySynced( from *Card , to *Card ) {
 	to.Title , to.Description , to.Price = from.Title , from.Description , from.Price
-	to.Done , to.Doing , to.DoneAt = from.Done , from.Doing , copyTime( from.DoneAt )
+	to.Done , to.Doing , to.Scheduled , to.DoneAt = from.Done , from.Doing , from.Scheduled , copyTime( from.DoneAt )
 	to.StartAt , to.StartTimed = copyTime( from.StartAt ) , from.StartTimed
 	to.DueAt , to.DueAllDay = copyTime( from.DueAt ) , from.DueAllDay
 	to.ImageAt = copyTime( from.ImageAt )

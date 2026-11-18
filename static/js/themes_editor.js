@@ -37,12 +37,15 @@ const ThemeEditor = {
   // The base colors, then the worked-out ones. Labels: theme.color_<key>.
   baseFields: [ "accent" , "second" , "background" , "surface" ],
   fineFields: [ "text" , "background" , "surface" , "nested" , "chrome" , "border" , "link" , "navLink" ,
-    "accentFg" , "secondText" , "secondFg" , "info" , "infoBorder" , "column" , "face" ],
+    "accentFg" , "secondText" , "secondFg" , "info" , "infoBorder" , "column" , "face" ,
+    "statusDoing" , "statusDoingFg" , "statusDone" , "statusDoneFg" , "statusPlain" , "statusPlainFg" ],
   labelKeys: {
     accent: "accent" , second: "second" , background: "background" , surface: "surface" , text: "text" ,
     nested: "nested" , chrome: "chrome" , border: "border" , link: "link" , navLink: "nav_link" ,
     accentFg: "accent_fg" , secondText: "second_text" , secondFg: "second_fg" , info: "info" , infoBorder: "info_border" ,
     column: "column" , face: "face" ,
+    statusDoing: "status_doing" , statusDoingFg: "status_doing_fg" , statusDone: "status_done" ,
+    statusDoneFg: "status_done_fg" , statusPlain: "status_plain" , statusPlainFg: "status_plain_fg" ,
   },
 
   // A label for a color of theme.js: its own key, or for a button variant's

@@ -195,6 +195,7 @@ func ( handlers *Handlers ) findCards( c fiber.Ctx , in *findCardsRequest ) ( re
 				"due_at":      card.DueAt,
 				"done":        card.Done,
 				"doing":       card.Doing,
+				"scheduled":   card.Scheduled,
 				"rank_place":  places[ card.ID ],
 				"archived":    card.Archived,
 				"assignees":   card.Assignees,
