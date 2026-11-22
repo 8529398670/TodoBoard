@@ -19,38 +19,42 @@ type meReply struct {
 	Display            fiber.Map             `json:"display" jsonschema_description:"How you want times and boards shown, as POST /api/account/display sets it."`
 	ID                 uint64                `json:"id"`
 	DisplayName        string                `json:"display_name"`
-	Role               string                `json:"role" jsonschema_description:"The effective role: never higher than an API key's own."`
-	AccountRole        string                `json:"account_role"`
+	Role               string                `json:"role" jsonschema:"enum=admin,enum=user,enum=viewer" jsonschema_description:"The effective role: never higher than an API key's own. A viewer may read, and change nothing."`
+	AccountRole        string                `json:"account_role" jsonschema:"enum=admin,enum=user,enum=viewer"`
+	Contract           int                   `json:"contract" jsonschema_description:"Which version of the portal contract this app speaks (ProjectPortal's CROSS_PROJECT.md)."`
+	Capabilities       []string              `json:"capabilities" jsonschema_description:"The optional parts of that contract this app has on now: viewer_role, account_expiry, key_minting, invite_links, key_sign_in."`
+	MayMintKeys        bool                  `json:"may_mint_keys,omitempty" jsonschema_description:"API keys only: whether this key may make keys for other accounts." jsonschema_extras:"x-feature=api_keys"`
 	IsOwner            bool                  `json:"is_owner"`
-	Maintenance        string                `json:"maintenance" jsonschema:"enum=none,enum=read_only,enum=full"`
-	HasPIN             bool                  `json:"has_pin"`
-	Username           string                `json:"username"`
-	HasPassword        bool                  `json:"has_password"`
-	PasswordBlocked    bool                  `json:"password_blocked"`
-	TwoFactor          bool                  `json:"two_factor"`
-	PasswordsEnabled   bool                  `json:"passwords_enabled"`
-	TwoFactorEnabled   bool                  `json:"two_factor_enabled"`
+	Maintenance        string                `json:"maintenance" jsonschema:"enum=none,enum=read_only,enum=full" jsonschema_extras:"x-feature=maintenance"`
+	HasPIN             bool                  `json:"has_pin" jsonschema_extras:"x-feature=invite_links"`
+	Username           string                `json:"username" jsonschema_extras:"x-feature=passwords"`
+	HasPassword        bool                  `json:"has_password" jsonschema_extras:"x-feature=passwords"`
+	PasswordBlocked    bool                  `json:"password_blocked" jsonschema_extras:"x-feature=passwords"`
+	TwoFactor          bool                  `json:"two_factor" jsonschema_extras:"x-feature=two_factor"`
+	PasswordsEnabled   bool                  `json:"passwords_enabled" jsonschema_extras:"x-feature=passwords"`
+	TwoFactorEnabled   bool                  `json:"two_factor_enabled" jsonschema_extras:"x-feature=two_factor"`
 	Auth               string                `json:"auth"`
-	APIKeysEnabled     bool                  `json:"api_keys_enabled"`
-	MCPEnabled         bool                  `json:"mcp_enabled" jsonschema_description:"server.mcp: whether POST /mcp answers."`
-	InviteLinksEnabled bool                  `json:"invite_links_enabled" jsonschema_description:"Whether invite links are on."`
-	LogsEnabled        bool                  `json:"logs_enabled"`
-	LogsUIClicks       bool                  `json:"logs_ui_clicks"`
+	APIKeysEnabled     bool                  `json:"api_keys_enabled" jsonschema_extras:"x-feature=api_keys"`
+	MCPEnabled         bool                  `json:"mcp_enabled" jsonschema_description:"server.mcp: whether POST /mcp answers." jsonschema_extras:"x-feature=mcp"`
+	InviteLinksEnabled bool                  `json:"invite_links_enabled" jsonschema_description:"Whether invite links are on." jsonschema_extras:"x-feature=invite_links"`
+	LogsEnabled        bool                  `json:"logs_enabled" jsonschema_extras:"x-feature=logs"`
+	LogsUIClicks       bool                  `json:"logs_ui_clicks" jsonschema_extras:"x-feature=logs"`
 	CSRFToken          string                `json:"csrf_token,omitempty" jsonschema_description:"Browser sessions only."`
-	APIKeyID           string                `json:"api_key_id,omitempty" jsonschema_description:"API keys only."`
-	APIKeyName         string                `json:"api_key_name,omitempty" jsonschema_description:"API keys only."`
+	APIKeyID           string                `json:"api_key_id,omitempty" jsonschema_description:"API keys only." jsonschema_extras:"x-feature=api_keys"`
+	APIKeyName         string                `json:"api_key_name,omitempty" jsonschema_description:"API keys only." jsonschema_extras:"x-feature=api_keys"`
 	Version            string                `json:"version" jsonschema_description:"The running build. dev when none was stamped."`
 	Announcement       string                `json:"announcement" jsonschema_description:"server.announcement. Empty when there is none."`
 	Repo               string                `json:"repo" jsonschema_description:"app.repo without a trailing / or .git: where the source lives. Empty when it is not set."`
 	Description        string                `json:"description" jsonschema_description:"app.description. Empty when there is none."`
-	ShowAbout          bool                  `json:"show_about" jsonschema_description:"app.show_about: whether the menu has About."`
-	OpenapiURL         string                `json:"openapi_url" jsonschema_description:"Where to read this API's reference: config/api.json in app.repo, or /api/api.json when there is no repo."`
-	APIDocURL          string                `json:"api_doc_url" jsonschema_description:"Where to read the API reference as a page for people: config/api.md in app.repo, or /docs/api when there is no repo."`
-	MCPDocURL          string                `json:"mcp_doc_url" jsonschema_description:"Where to read the MCP tools as a page for people: config/mcp.md in app.repo, or /docs/mcp when there is no repo."`
-	MCPURL             string                `json:"mcp_url" jsonschema_description:"Where to read the MCP reference: config/mcp.json in app.repo, or /api/mcp.json when there is no repo. Only with server.mcp on."`
-	Themes             []models.Theme        `json:"themes" jsonschema:"nullable" jsonschema_description:"Your themes (see the Theme schema): your own list, else the app's defaults, else null for the built-in ones."`
-	ThemesCustom       bool                  `json:"themes_custom" jsonschema_description:"Whether you have your own list rather than following the defaults."`
-	ThemeID            string                `json:"theme_id" jsonschema_description:"The theme you use. Empty: the first."`
+	ShowAbout          bool                  `json:"show_about" jsonschema_description:"app.show_about: whether the menu has About." jsonschema_extras:"x-feature=about"`
+	OpenapiURL         string                `json:"openapi_url" jsonschema_description:"Where to read this API's reference: config/api.json in app.repo, or /api/api.json when there is no repo." jsonschema_extras:"x-feature=openapi"`
+	MCPURL             string                `json:"mcp_url" jsonschema_description:"Where to read the MCP reference: config/mcp.json in app.repo, or /api/mcp.json when there is no repo. Only with server.mcp on." jsonschema_extras:"x-feature=mcp"`
+	APIDocURL          string                `json:"api_doc_url" jsonschema_description:"Where to read the API reference as a page for people: config/api.md in app.repo, or /docs/api when there is no repo." jsonschema_extras:"x-feature=openapi"`
+	MCPDocURL          string                `json:"mcp_doc_url" jsonschema_description:"Where to read the MCP tools as a page for people: config/mcp.md in app.repo, or /docs/mcp when there is no repo." jsonschema_extras:"x-feature=mcp"`
+	Themes             []models.Theme        `json:"themes" jsonschema:"nullable" jsonschema_description:"Your themes (see the Theme schema): your own list, else the app's defaults, else null for the built-in ones." jsonschema_extras:"x-feature=appearance"`
+	ThemesCustom       bool                  `json:"themes_custom" jsonschema_description:"Whether you have your own list rather than following the defaults." jsonschema_extras:"x-feature=appearance"`
+	ThemesBuiltIns     int                   `json:"themes_builtins" jsonschema_description:"Which built-in themes that list has seen (see builtins on POST /api/account/themes)." jsonschema_extras:"x-feature=appearance"`
+	ThemeID            string                `json:"theme_id" jsonschema_description:"The theme you use. Empty: the first." jsonschema_extras:"x-feature=appearance"`
 	LoginLink          *models.LoginLinkInfo `json:"login_link" jsonschema_description:"Your own live login link, or null."`
 }
 
@@ -85,7 +89,7 @@ func ( handlers *Handlers ) getMe( c fiber.Ctx , in *apidoc.None ) ( reply *meRe
 	login_link , err := models.LiveLoginLink( handlers.Store , user.ID )
 	if err != nil { return }
 
-	themes , themes_custom , err := handlers.myThemes( user )
+	themes , themes_custom , themes_builtins , err := handlers.myThemes( user )
 	if err != nil { return }
 	display := fiber.Map{ "timezone": "" , "hour12": nil , "number_cards": false , "plain_icons": false , "done_on_top": false , "add_on_top": false , "theme": nil , "own_theme_on_boards": false , "swipe_columns": true , "folder_sort": "" , "label_colors": []models.SavedColor{} }
 	if prefs , prefs_err := models.GetUserPrefs( handlers.Store , user.ID ); prefs_err == nil {
@@ -99,6 +103,8 @@ func ( handlers *Handlers ) getMe( c fiber.Ctx , in *apidoc.None ) ( reply *meRe
 		DisplayName:        user.DisplayName,
 		Role:               actor.Role,
 		AccountRole:        user.Role,
+		Contract:           portalContract,
+		Capabilities:       handlers.capabilities(),
 		IsOwner:            user.ID == owner_id,
 		LoginLink:          login_link,
 		Maintenance:        cfg.MaintenanceMode(),
@@ -113,6 +119,7 @@ func ( handlers *Handlers ) getMe( c fiber.Ctx , in *apidoc.None ) ( reply *meRe
 		MCPDocURL:          handlers.mcpDocURL(),
 		Themes:             themes,
 		ThemesCustom:       themes_custom,
+		ThemesBuiltIns:     themes_builtins,
 		ThemeID:            user.ThemeID,
 		HasPIN:             user.HasPin(),
 		Username:           user.Username,
@@ -138,7 +145,29 @@ func ( handlers *Handlers ) getMe( c fiber.Ctx , in *apidoc.None ) ( reply *meRe
 	if actor.APIKey != nil {
 		reply.APIKeyID = actor.APIKey.ID
 		reply.APIKeyName = actor.APIKey.Name
+		reply.MayMintKeys = actor.APIKey.MayMintKeys
 	}
+	return
+}
+
+// portalContract is the version of ProjectPortal's contract this app
+// speaks: what it may call from outside, field for field (its CROSS_PROJECT.md,
+// "Portal contract v2"). The webserver-upgrade skill's status reads it.
+const portalContract = 2
+
+// capabilities are the optional parts of that contract this app has on right
+// now. The portal turns each one on only when it is listed here.
+func ( handlers *Handlers ) capabilities() ( result []string ) {
+	// One line per capability, in the contract's order, so an app that left
+	// one of them out drops its line and nothing else.
+	result = []string{}
+	keys := false
+	keys = handlers.cfg().APIKeysEnabled
+	result = append( result , "viewer_role" )
+	result = append( result , "account_expiry" )
+	if keys { result = append( result , "key_minting" ) }
+	if handlers.inviteLinksOn() { result = append( result , "invite_links" ) }
+	if keys { result = append( result , "key_sign_in" ) }
 	return
 }
 

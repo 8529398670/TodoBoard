@@ -1,7 +1,7 @@
 # Written by the skill that scaffolded this app; `webserver-upgrade` reads and
 # updates it. Commit it: it is how an update knows where this app started.
 skill: go-webserver
-commit: 3073105d034bf9606b9d87dad6f1f317be8be38e
+commit: ea9f39c0671ff280d26ca743251807908e4e9bf8
 project_name: "TodoBoard"
 slug: todoboard
 module_path: todoboard

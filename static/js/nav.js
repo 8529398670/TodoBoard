@@ -33,14 +33,16 @@ const Nav = {
     // Moving between screens is not an undo step: Back and Forward already
     // are that, and an undo that only changed the screen would get in the way
     // of undoing what was done on it.
-    window.addEventListener( "hashchange" , () => this.render() );
+    window.addEventListener( "hashchange" , () => {
+      if ( !Fresh.swap() ) this.render();
+    } );
     this.render();
   },
 
   // Undo uses this to go back to the screen an action happened on.
   show( name ) {
     window.location.hash = "#" + name;
-    this.render();
+    if ( !Fresh.swap() ) this.render();
   },
 
   available( name ) {
@@ -69,6 +71,8 @@ const Nav = {
     } );
     window.scrollTo( 0 , 0 );
     this.announce( name );
+    // How a screen hears it was opened (Jobs refreshes then).
+    window.dispatchEvent( new CustomEvent( "nav" , { detail: { screen: name } } ) );
   },
 
   // Changing screen reloads nothing, so nothing tells a screen reader or the

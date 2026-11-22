@@ -39,6 +39,7 @@ import (
 	config "todoboard/server/config"
 	control "todoboard/server/control"
 	db "todoboard/server/db"
+	livereload "todoboard/server/livereload"
 	errorpage "todoboard/server/errorpage"
 	healthcheck "todoboard/server/healthcheck"
 	gcal "todoboard/server/gcal"
@@ -88,15 +89,15 @@ var (
 	// into this binary, so a copy on disk could only disagree with them.
 	//go:embed config/api.json
 	embeddedOpenAPI []byte
+	// The same reference as tables for people, which /docs/api renders.
+	//go:embed config/api.md
+	embeddedAPIDoc []byte
 
 	// The tools /mcp offers, written by scripts/api_docs.sh from the
 	// registered tools; embedded for the same reason as api.json.
 	//go:embed config/mcp.json
 	embeddedMCPManifest []byte
-
-	// The same references as tables for people, for the /docs pages.
-	//go:embed config/api.md
-	embeddedAPIDoc []byte
+	// The same tools as tables for people, which /docs/mcp renders.
 	//go:embed config/mcp.md
 	embeddedMCPDoc []byte
 
@@ -264,6 +265,12 @@ func run() ( err error ) {
 
 	handlers := routes.New( store , settings , guard , lang , static_server , version )
 	handlers.Notify = notifier
+	// Tell open pages about a change to the frontend (server.live_reload).
+	// See server/livereload.
+	if cfg.LiveReloads( version , bundle.StaticDir ) {
+		handlers.LiveReload = livereload.New( bundle.StaticDir )
+		defer handlers.LiveReload.Close()
+	}
 	handlers.Logs = logger
 	registry := jobs.New( store , logger )
 	jobs.Housekeeping( registry , store , logger , settings )
@@ -340,6 +347,8 @@ func run() ( err error ) {
 		// Streams never finish by themselves, so the drain would wait out its
 		// whole timeout for any page left open.
 		log_stream.Close()
+		// A page waiting on a save is answered now rather than in 25 seconds.
+		if handlers.LiveReload != nil { handlers.LiveReload.Close() }
 		drain()
 	}()
 

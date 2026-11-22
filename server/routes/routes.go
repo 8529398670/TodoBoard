@@ -18,6 +18,7 @@ import (
 	apidoc "todoboard/server/apidoc"
 	config "todoboard/server/config"
 	db "todoboard/server/db"
+	livereload "todoboard/server/livereload"
 	errorpage "todoboard/server/errorpage"
 	gcal "todoboard/server/gcal"
 	jobs "todoboard/server/jobs"
@@ -54,8 +55,12 @@ type Handlers struct {
 	PasswordAddresses *models.AttemptGuard[ string ]
 	// Notify sends reminders and activity (server/notify), set by main.go.
 	Notify *notify.Service
-	// Version is reported to MCP clients as serverInfo.version.
+	// Version is reported to MCP clients as serverInfo.version, and to the
+	// page on every API reply (X-App-Version) so it can notice an upgrade.
 	Version string
+	// LiveReload is set by main.go when server.live_reload says open pages
+	// hear about frontend changes. Nil, the route does not exist.
+	LiveReload *livereload.Watcher
 	// Logs is the activity log (server/logs), set by main.go after New. Nil
 	// or switched off, nothing is logged and its routes answer 404
 	// (RequireLogs).
@@ -132,15 +137,30 @@ func ( handlers *Handlers ) Register( app *fiber.App ) {
 	apidoc.CheckCSRF = handlers.Guard.CheckCSRF
 	apidoc.LogFailure = bulkFailure
 
+	// Every API reply says which build answered it, so a page left open
+	// across a deploy finds out on its next call (static/js/fresh.js).
+	app.Use( "/api" , func( c fiber.Ctx ) ( err error ) {
+		c.Set( "X-App-Version" , handlers.Version )
+		err = c.Next()
+		return
+	} )
+
 	// Next, because it needs to know who is asking and has to come before
 	// every route below. See maintenance.go.
 	app.Use( handlers.Maintenance )
+
+	// A viewer reads and changes nothing: one rule for every route, so a
+	// route added later cannot forget it (security.ViewOnly).
+	app.Use( handlers.Guard.ViewOnly )
 
 	// The pages a login link and an invite link open. Opening one only shows
 	// a page; the link is spent by the POST that page sends when the person
 	// confirms. See auth.go and join.go.
 	app.Get( "/login/*" , handlers.ShowLoginPage )
 	app.Get( "/join/*" , handlers.ShowJoinPage )
+	// The readable API and MCP references, for an app with no app.repo to
+	// link to (api_docs_md.go).
+	app.Get( "/docs/*" , handlers.ShowDocsPage )
 
 	// Board pages. Each reads its own URL; nothing is decided on the GET.
 	app.Get( "/b/*" , handlers.ShowBoardPage )
@@ -158,6 +178,13 @@ func ( handlers *Handlers ) Register( app *fiber.App ) {
 	handlers.MCP = mcp_server
 
 	handlers.mountDeclared( app )
+
+	// Open pages wait here to hear about a change to the frontend
+	// (server.live_reload; server/livereload, static/js/live.js). Not part of
+	// the API.
+	if handlers.LiveReload != nil {
+		app.Get( "/api/live" , handlers.LiveReload.Handler )
+	}
 
 	// Any other /api/ path is a JSON 404, not a static page.
 	app.Get( "/api/*" , func( c fiber.Ctx ) ( err error ) {

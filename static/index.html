@@ -102,6 +102,12 @@
     </aside>
 
     <main hidden id="main" class="app-main" tabindex="-1">
+      <!-- A viewer reads and changes nothing: App.showViewOnly shows this and
+           hides every [data-write] (portal contract v2, role viewer). -->
+      <p id="view-only-banner" class="alert alert-secondary d-flex flex-wrap align-items-center gap-2" role="status" hidden>
+        <span class="badge text-bg-secondary"><i class="bi bi-eye" aria-hidden="true"></i> <span data-i18n="app.view_only_badge"></span></span>
+        <span data-i18n="app.view_only_body"></span>
+      </p>
       <p id="maintenance-banner" class="alert alert-warning" role="status" hidden></p>
       <!-- server.announcement, until dismissed. See App.showAnnouncement. -->
       <div id="announcement-banner" class="alert alert-info alert-dismissible" role="status" hidden>
@@ -317,7 +323,9 @@
         <section class="card view" data-view="account" id="account-panel">
           <div class="card-body">
             <h2 class="h4 mb-3" data-i18n="account.heading"></h2>
-            <form id="rename-form" class="row g-3 align-items-end" autocomplete="off">
+            <!-- A viewer sees the name instead of the form (App.showViewOnly). -->
+            <p id="display-name-text" class="mb-0" hidden></p>
+            <form id="rename-form" class="row g-3 align-items-end" autocomplete="off" data-write>
               <div class="col-md">
                 <label for="display-name" class="form-label" data-i18n="account.display_name_label"></label>
                 <input id="display-name" class="form-control" name="display_name" maxlength="80" required
@@ -330,7 +338,7 @@
 
             <!-- A login link for yourself; see login_link.js.
                  Sessions only: an API key cannot mint one. -->
-            <div id="own-login-panel" hidden>
+            <div id="own-login-panel" data-write hidden>
               <hr />
               <h3 class="h6" data-i18n="own_login.heading"></h3>
               <p class="text-body-secondary" data-i18n="own_login.description"></p>
@@ -363,7 +371,7 @@
 
             <!-- Password sign-in, while the owner has auth.passwords on; see
                  password.js. -->
-            <div id="password-panel" hidden>
+            <div id="password-panel" data-write hidden>
               <hr />
               <h3 class="h6" data-i18n="password.heading"></h3>
               <p class="text-body-secondary" data-i18n="password.description"></p>
@@ -395,7 +403,7 @@
             </div>
 
             <!-- Two-factor sign-in with an authenticator app; see two_factor.js. -->
-            <div id="two-factor-panel" hidden>
+            <div id="two-factor-panel" data-write hidden>
               <hr />
               <h3 class="h6" data-i18n="two_factor.heading"></h3>
               <p class="text-body-secondary" data-i18n="two_factor.description"></p>
@@ -543,7 +551,7 @@
         </section>
 
         <!-- Only for non-admin accounts; see pin.js. -->
-        <section class="card view" data-view="pin" id="pin-panel" hidden>
+        <section class="card view" data-view="pin" id="pin-panel" data-write hidden>
           <div class="card-body">
             <h2 class="h4 mb-3" data-i18n="pin.heading"></h2>
             <p class="text-body-secondary" data-i18n="pin.description"></p>
@@ -580,7 +588,7 @@
               </span>
             </p>
 
-            <form id="create-key-form" class="row g-3 align-items-end" autocomplete="off">
+            <form id="create-key-form" class="row g-3 align-items-end" autocomplete="off" data-write>
               <div class="col-md">
                 <label for="key-name" class="form-label" data-i18n="api_keys.name_label"></label>
                 <input id="key-name" class="form-control" name="name" maxlength="80" required
@@ -590,6 +598,7 @@
                 <label for="key-role" class="form-label" data-i18n="api_keys.role_label"></label>
                 <select id="key-role" class="form-select" name="role">
                   <option value="user" data-i18n="api_keys.role_user"></option>
+                  <option value="viewer" data-i18n="api_keys.role_viewer"></option>
                   <option value="admin" data-i18n="api_keys.role_admin"></option>
                 </select>
               </div>
@@ -652,7 +661,7 @@
             it. Nothing here the API keys card cannot do; it saves the reading.
             See mcp.js.
           -->
-          <div class="card" id="mcp-panel" hidden>
+          <div class="card" id="mcp-panel" data-write hidden>
             <div class="card-body">
               <h2 class="h4 mb-3" data-i18n="mcp.heading"></h2>
               <p class="text-body-secondary" data-i18n="mcp.description"></p>
@@ -691,6 +700,7 @@
                   <label for="mcp-key-role" class="form-label" data-i18n="api_keys.role_label"></label>
                   <select id="mcp-key-role" class="form-select" name="role">
                     <option value="user" data-i18n="api_keys.role_user"></option>
+                    <option value="viewer" data-i18n="api_keys.role_viewer"></option>
                     <option value="admin" data-i18n="api_keys.role_admin"></option>
                   </select>
                 </div>
@@ -755,6 +765,7 @@
                 <label for="new-role" class="form-label" data-i18n="admin.new_role_label"></label>
                 <select id="new-role" class="form-select" name="role">
                   <option value="user" data-i18n="admin.role_user"></option>
+                  <option value="viewer" data-i18n="admin.role_viewer"></option>
                   <option value="admin" data-i18n="admin.role_admin"></option>
                 </select>
               </div>
@@ -856,6 +867,13 @@
               <div class="col-6 col-md">
                 <label for="invite-days" class="form-label" data-i18n="invite_links.days_label"></label>
                 <input id="invite-days" class="form-control" name="days" type="number" min="1" max="365" value="30" required inputmode="numeric" />
+              </div>
+              <div class="col-md">
+                <label for="invite-role" class="form-label" data-i18n="invite_links.role_label"></label>
+                <select id="invite-role" class="form-select" name="role">
+                  <option value="user" data-i18n="admin.role_user"></option>
+                  <option value="viewer" data-i18n="admin.role_viewer"></option>
+                </select>
               </div>
               <div class="col-md-auto">
                 <button type="submit" class="btn btn-primary" data-i18n="invite_links.create_button"></button>
@@ -1159,6 +1177,7 @@
   <script src="/js/google_settings.js"></script>
   <script src="/js/user_settings.js"></script>
   <script src="/js/fresh.js"></script>
+  <script src="/js/live.js"></script>
   <script src="/js/app.js"></script>
 </body>
 </html>

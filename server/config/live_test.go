@@ -86,7 +86,7 @@ func TestSaveRefusesInvalidValues( t *testing.T ) {
 	for _ , changes := range []map[string]any{
 		{ "server.port": json.Number( "0" ) },
 		{ "server.port": "eighty" },
-		{ "server.trust_proxy": true },
+		{ "server.trust_proxy": true , "server.trusted_proxies": []any{} },
 	} {
 		_ , err := holder.Save( currentVersion( t , path ) , changes )
 		var validation *ValidationError

@@ -118,8 +118,8 @@ const Track = {
     const control = event.target.closest( "button, a, summary, [role=button], input[type=checkbox], input[type=radio]" );
     if ( !control || this.skipped( control ) ) return;
     const detail = {};
-    // A hash link says where it goes; any other href is left out, since a
-    // login or invite link is a credential.
+    // A link to a screen says where it goes; any other href is left out,
+    // since a login or invite link is a credential.
     const href = control.getAttribute( "href" );
     if ( href && href.charAt( 0 ) === "#" ) detail.href = href;
     const where = control.closest( "tr" ) ? "row" : "";

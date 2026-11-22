@@ -47,6 +47,7 @@ const Settings = {
     window.addEventListener( "beforeunload" , ( event ) => {
       if ( this.changes().count > 0 ) event.preventDefault();
     } );
+    Fresh.holdWhile( () => this.changes().count > 0 );
     await this.load();
     // Pick up hand edits while the screen is open, unless that would throw
     // away something typed here.
@@ -155,7 +156,7 @@ const Settings = {
     this.applyFilter();
   },
 
-  // By script rather than a #link, because the hash says which screen this is.
+  // By script rather than a #link: a fragment would put a step in Back.
   // Measured, because the tools above stay on screen and can wrap.
   jumpTo( block ) {
     const tools = document.querySelector( ".settings-tools" );

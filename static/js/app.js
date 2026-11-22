@@ -224,6 +224,7 @@ const App = {
     this.showAnnouncement( me );
     Dom.get( "announcement-dismiss" ).addEventListener( "click" , () => this.onDismissAnnouncement() );
     this.labelProfile();
+    this.showViewOnly( me );
     Dom.get( "display-name" ).value = me.display_name;
 
     Dom.onSubmit( Dom.get( "rename-form" ) , this.onRename.bind( this ) );
@@ -235,6 +236,7 @@ const App = {
     Fresh.init( me );
     await Home.init( me );
     UserSettings.render( Dom.get( "user-settings-root" ) , me );
+    Live.init( me );
     // Side by side: the wait is the slowest screen, not all of them added up.
     const loading = [];
     loading.push( ThemeEditor.init( me ) );
@@ -456,6 +458,11 @@ const App = {
     // owner takes an admin's rights away.
     if ( !isProtected && user.role === "user" ) {
       items.push( { key: "admin.make_admin_button" , action: () => this.confirmed( "admin.make_admin_confirm" , user , () => Api.setUserRole( user.id , "admin" ) , "admin.role_changed_toast" , { role: I18n.get( "admin.role_admin" ) } ) } );
+      // A viewer reads everything and changes nothing (portal contract v2).
+      items.push( { key: "admin.make_viewer_button" , action: () => this.confirmed( "admin.make_viewer_confirm" , user , () => Api.setUserRole( user.id , "viewer" ) , "admin.role_changed_toast" , { role: I18n.get( "admin.role_viewer" ) } ) } );
+    }
+    if ( !isProtected && user.role === "viewer" ) {
+      items.push( { key: "admin.make_user_button" , action: () => this.confirmed( "admin.make_user_from_viewer_confirm" , user , () => Api.setUserRole( user.id , "user" ) , "admin.role_changed_toast" , { role: I18n.get( "admin.role_user" ) } ) } );
     }
     if ( !isProtected && user.role === "admin" && me.is_owner ) {
       items.push( { key: "admin.make_user_button" , action: () => this.confirmed( "admin.make_user_confirm" , user , () => Api.setUserRole( user.id , "user" ) , "admin.role_changed_toast" , { role: I18n.get( "admin.role_user" ) } ) } );
@@ -511,7 +518,7 @@ const App = {
         const rawDays = days.value.trim();
         let created;
         try {
-          created = await Api.createKeyFor( user.id , name.value.trim() , role ? role.value : "user" , rawDays === "" ? null : Number( rawDays ) );
+          created = await Api.createKeyFor( user.id , name.value.trim() , role ? role.value : user.role === "viewer" ? "viewer" : "user" , rawDays === "" ? null : Number( rawDays ) );
         } catch ( error ) {
           Ui.error( error );
           return;
@@ -533,10 +540,21 @@ const App = {
     box.scrollIntoView( { block: "nearest" } );
   },
 
+  // A viewer may read and change nothing (the server answers 403 view_only).
+  // Every control that writes carries data-write, and style.css hides them
+  // all under <html data-view-only>.
+  showViewOnly( me ) {
+    const viewOnly = me.role === "viewer";
+    document.documentElement.toggleAttribute( "data-view-only" , viewOnly );
+    Dom.show( Dom.get( "view-only-banner" ) , viewOnly );
+    Dom.text( Dom.get( "display-name-text" ) , me.display_name );
+    Dom.show( Dom.get( "display-name-text" ) , viewOnly );
+  },
+
   async refreshUsers() {
     const body = Dom.get( "users-table" ).querySelector( "tbody" );
     await Pager.load( "users-table" , "users" , ( offset ) => Api.listUsers( offset , Pager.params( "users-table" ) ) , function ( user ) {
-      const statusKey = user.disabled ? "admin.status_disabled" : "admin.status_active";
+      const statusKey = user.expired ? "admin.status_expired" : user.disabled ? "admin.status_disabled" : "admin.status_active";
       const statusTone = user.disabled ? "secondary" : "success";
 
       const reissueButton = Dom.el( "button" , {
@@ -628,6 +646,7 @@ const App = {
       }
       const statusCell = [ Dom.el( "div" , { class: "d-flex flex-wrap gap-1" , children: badges } ) ];
       if ( user.login_link ) statusCell.push( Dom.el( "div" , { class: "small text-body-secondary mt-1" , text: LoginLinks.live( user.login_link , "live" ) } ) );
+      if ( user.expires_at && !user.expired ) statusCell.push( Dom.el( "div" , { class: "small text-body-secondary mt-1" , text: I18n.get( "admin.expires_note" ).replace( "{date}" , () => new Date( user.expires_at ).toLocaleString() ) } ) );
 
       // Built with createElement + textContent, never an HTML string: a
       // display name is user-controlled input.
