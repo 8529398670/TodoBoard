@@ -28,6 +28,7 @@ import (
 
 	fiber "github.com/gofiber/fiber/v3"
 
+	apidoc "todoboard/server/apidoc"
 	security "todoboard/server/security"
 )
 
@@ -92,7 +93,7 @@ func ( server *Server ) Handle( c fiber.Ctx ) ( err error ) {
 	if origin := c.Get( fiber.HeaderOrigin ); origin != "" {
 		parsed , parse_err := url.Parse( origin )
 		if parse_err != nil || parsed.Host != c.Host() {
-			err = c.Status( fiber.StatusForbidden ).JSON( fiber.Map{ "error": "cross-origin requests are not accepted" } )
+			err = apidoc.Refuse( c , fiber.StatusForbidden , "cross-origin requests are not accepted" , "" )
 			return
 		}
 	}
@@ -100,7 +101,7 @@ func ( server *Server ) Handle( c fiber.Ctx ) ( err error ) {
 	// header on every request. One we never offered means the two sides
 	// disagree about the protocol, which is better said than guessed past.
 	if version := c.Get( "MCP-Protocol-Version" ); version != "" && supported( version ) == false {
-		err = c.Status( fiber.StatusBadRequest ).JSON( fiber.Map{ "error": "unsupported MCP-Protocol-Version" } )
+		err = apidoc.Refuse( c , fiber.StatusBadRequest , "unsupported MCP-Protocol-Version" , "" )
 		return
 	}
 

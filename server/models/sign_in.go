@@ -69,6 +69,12 @@ func ( challenge *signInChallenge ) live( secret string ) ( result bool ) {
 // startSignInTx stores a session, or a challenge if this account has to give
 // a code.
 func startSignInTx( tx *db.Tx , user *User , rules SignInRules ) ( signed *SignIn , err error ) {
+	// Every way in comes through here, so a service account is refused once
+	// for all of them.
+	if user.IsService() {
+		err = ErrServiceAccount
+		return
+	}
 	if rules.TwoFactor && user.TwoFactorOn() {
 		challenge_id := encryption.GenerateURLToken( 12 )
 		secret := encryption.GenerateURLToken( 24 )

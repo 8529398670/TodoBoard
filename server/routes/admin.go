@@ -7,6 +7,7 @@ import (
 
 	fiber "github.com/gofiber/fiber/v3"
 
+	apidoc "todoboard/server/apidoc"
 	db "todoboard/server/db"
 	logs "todoboard/server/logs"
 	models "todoboard/server/models"
@@ -31,6 +32,7 @@ type userRow struct {
 	ExpiresAt       *time.Time            `json:"expires_at" jsonschema_description:"When the account stops working, or null for never."`
 	Expired         bool                  `json:"expired" jsonschema_description:"Whether expires_at has passed."`
 	Owner           bool                  `json:"owner"`
+	Kind            string                `json:"kind" jsonschema:"enum=person,enum=service" jsonschema_description:"person, or service for an account with API keys only (ProjectPortal's own)."`
 	HasPassword     bool                  `json:"has_password" jsonschema_extras:"x-feature=passwords"`
 	PasswordBlocked bool                  `json:"password_blocked" jsonschema_extras:"x-feature=passwords"`
 	TwoFactor       bool                  `json:"two_factor" jsonschema_extras:"x-feature=two_factor"`
@@ -94,6 +96,7 @@ func ( handlers *Handlers ) userRowsMatching( query string ) ( rows []userRow , 
 			ExpiresAt:       user.ExpiresAt,
 			Expired:         user.Expired(),
 			Owner:           user.ID == owner_id,
+			Kind:            user.KindOrPerson(),
 			HasPassword:     user.HasPassword(),
 			PasswordBlocked: user.PasswordBlocked,
 			TwoFactor:       user.TwoFactorOn(),
@@ -153,6 +156,7 @@ type createUserRequest struct {
 	// AccountExpiresAt is when the account stops working. expires_in_minutes
 	// is the login link's expiry, not the account's.
 	AccountExpiresAt *time.Time `json:"account_expires_at,omitempty" jsonschema_description:"When the account stops working (RFC 3339). Left out: never. expires_in_minutes is the login link's expiry, not this." error:"account_expires_at must be an RFC 3339 time"`
+	Kind             string     `json:"kind,omitempty" jsonschema:"enum=person,enum=service,default=person" jsonschema_description:"person, the default. service is refused (403 service_account): a service account is made by Connect on the owner's API keys screen."`
 	models.LoginLinkRequest
 }
 
@@ -180,6 +184,10 @@ type createUserReply struct {
 //     mcp="admin_create_user", call=withLoginLinkURL,
 // )
 func ( handlers *Handlers ) createUser( c fiber.Ctx , in *createUserRequest ) ( reply *createUserReply , err error ) {
+	if in.Kind == models.KindService {
+		err = serviceAccountRefusal()
+		return
+	}
 	if models.ValidDisplayName( in.DisplayName ) == false {
 		err = refuse( fiber.StatusBadRequest , "display name must be 1-80 characters" )
 		return
@@ -316,7 +324,7 @@ func ( handlers *Handlers ) renameUser( c fiber.Ctx , in *renameUserRequest ) ( 
 		err = refuse( fiber.StatusNotFound , "no such user" )
 		return
 	case errors.Is( rename_err , models.ErrOwnerRequired ):
-		err = refuse( fiber.StatusForbidden , "only the owner can rename an admin" )
+		err = refuse( fiber.StatusForbidden , "only the owner can rename an admin" ).coded( apidoc.CodeOwnerRequired )
 		return
 	case rename_err != nil:
 		err = rename_err
@@ -359,10 +367,13 @@ func ( handlers *Handlers ) setUserRole( c fiber.Ctx , in *setUserRoleRequest ) 
 		err = refuse( fiber.StatusBadRequest , role_err.Error() )
 		return
 	case errors.Is( role_err , models.ErrOwnerProtected ):
-		err = refuse( fiber.StatusForbidden , "the owner is always an admin" )
+		err = refuse( fiber.StatusForbidden , "the owner is always an admin" ).coded( apidoc.CodeOwnerProtected )
 		return
 	case errors.Is( role_err , models.ErrOwnerRequired ):
-		err = refuse( fiber.StatusForbidden , "only the owner can take away an admin's rights" )
+		err = refuse( fiber.StatusForbidden , "only the owner can take away an admin's rights" ).coded( apidoc.CodeOwnerRequired )
+		return
+	case errors.Is( role_err , models.ErrServiceAccount ):
+		err = serviceAccountRefusal()
 		return
 	case role_err != nil:
 		err = role_err
@@ -409,7 +420,7 @@ func ( handlers *Handlers ) setUserExpiry( c fiber.Ctx , in *setUserExpiryReques
 		err = refuse( fiber.StatusBadRequest , set_err.Error() )
 		return
 	case errors.Is( set_err , models.ErrOwnerProtected ):
-		err = refuse( fiber.StatusForbidden , "the owner's account cannot expire" )
+		err = refuse( fiber.StatusForbidden , "the owner's account cannot expire" ).coded( apidoc.CodeOwnerProtected )
 		return
 	case set_err != nil:
 		err = actOnRefusal( set_err , "set the expiry of" )
@@ -436,7 +447,7 @@ type okReply struct {
 //     mcp="admin_set_user_disabled",
 // )
 func ( handlers *Handlers ) setUserDisabled( c fiber.Ctx , in *setUserDisabledRequest ) ( reply *okReply , err error ) {
-	if refused := handlers.applyUserDisabled( security.UserFrom( c ).ID , in.UserID , in.Disabled ); refused != nil {
+	if refused := handlers.applyUserDisabled( security.UserFrom( c ).ID , in.UserID , in.Disabled , webhookActor( c ) ); refused != nil {
 		err = refused
 		return
 	}
@@ -497,10 +508,10 @@ func ( handlers *Handlers ) resetTwoFactor( c fiber.Ctx , in *userIDPath ) ( rep
 		err = refuse( fiber.StatusBadRequest , "you cannot reset your own two-factor sign-in" )
 		return
 	case errors.Is( reset_err , models.ErrOwnerProtected ):
-		err = refuse( fiber.StatusForbidden , "the owner's two-factor sign-in can only be reset from a shell" )
+		err = refuse( fiber.StatusForbidden , "the owner's two-factor sign-in can only be reset from a shell" ).coded( apidoc.CodeOwnerProtected )
 		return
 	case errors.Is( reset_err , models.ErrOwnerRequired ):
-		err = refuse( fiber.StatusForbidden , "only the owner can reset an admin's two-factor sign-in" )
+		err = refuse( fiber.StatusForbidden , "only the owner can reset an admin's two-factor sign-in" ).coded( apidoc.CodeOwnerRequired )
 		return
 	case reset_err != nil:
 		err = reset_err
@@ -545,9 +556,9 @@ func ( handlers *Handlers ) deleteUser( c fiber.Ctx , in *userIDPath ) ( reply *
 	case errors.Is( delete_err , models.ErrDeleteSelf ):
 		err = refuse( fiber.StatusBadRequest , "you cannot delete your own account" )
 	case errors.Is( delete_err , models.ErrOwnerProtected ):
-		err = refuse( fiber.StatusForbidden , "the owner account cannot be deleted" )
+		err = refuse( fiber.StatusForbidden , "the owner account cannot be deleted" ).coded( apidoc.CodeOwnerProtected )
 	case errors.Is( delete_err , models.ErrOwnerRequired ):
-		err = refuse( fiber.StatusForbidden , "only the owner can delete an admin account" )
+		err = refuse( fiber.StatusForbidden , "only the owner can delete an admin account" ).coded( apidoc.CodeOwnerRequired )
 	default:
 		err = delete_err
 	}
@@ -566,6 +577,18 @@ type refusal struct {
 	// extra is more for the caller beside the message, such as the current
 	// value a 409 was about.
 	extra fiber.Map
+	// code is the machine-readable reason (apidoc.ErrorCodes). Empty takes
+	// the one the status says (apidoc.StatusCode); set only where the status
+	// cannot tell, with coded.
+	code string
+}
+
+// coded says which of the contract's reasons this refusal is, where its
+// status alone does not: the owner ladder, key minting, a service account.
+func ( refused *refusal ) coded( code string ) ( result *refusal ) {
+	refused.code = code
+	result = refused
+	return
 }
 
 // Error, Send and Refused make a refusal what a declared route's handler
@@ -591,7 +614,7 @@ func ( refused *refusal ) send( c fiber.Ctx ) ( err error ) {
 		err = serverError( c , refused.cause )
 		return
 	}
-	body := fiber.Map{ "error": refused.message }
+	body := apidoc.ErrorBody( refused.status , refused.message , refused.code )
 	for name , value := range refused.extra {
 		body[ name ] = value
 	}
@@ -604,6 +627,13 @@ func ( refused *refusal ) send( c fiber.Ctx ) ( err error ) {
 func refuse( status int , message string , extra ...fiber.Map ) ( refused *refusal ) {
 	refused = &refusal{ status: status , message: message }
 	if len( extra ) > 0 { refused.extra = extra[ 0 ] }
+	return
+}
+
+// serviceAccountRefusal is the answer to a way in for a service account
+// (models.KindService): it has API keys only, and is never signed into.
+func serviceAccountRefusal() ( refused *refusal ) {
+	refused = refuse( fiber.StatusForbidden , models.ErrServiceAccount.Error() ).coded( apidoc.CodeServiceAccount )
 	return
 }
 
@@ -622,9 +652,11 @@ func actOnRefusal( err error , what string ) ( refused *refusal ) {
 	case errors.Is( err , db.ErrNotFound ):
 		refused = refuse( fiber.StatusNotFound , "no such user" )
 	case errors.Is( err , models.ErrOwnerProtected ):
-		refused = refuse( fiber.StatusForbidden , "nobody can " + what + " the owner account" )
+		refused = refuse( fiber.StatusForbidden , "nobody can " + what + " the owner account" ).coded( apidoc.CodeOwnerProtected )
 	case errors.Is( err , models.ErrOwnerRequired ):
-		refused = refuse( fiber.StatusForbidden , "only the owner can " + what + " an admin account" )
+		refused = refuse( fiber.StatusForbidden , "only the owner can " + what + " an admin account" ).coded( apidoc.CodeOwnerRequired )
+	case errors.Is( err , models.ErrServiceAccount ):
+		refused = serviceAccountRefusal()
 	default:
 		refused = internalFailure( err )
 	}
@@ -633,7 +665,7 @@ func actOnRefusal( err error , what string ) ( refused *refusal ) {
 
 // applyUserDisabled carries every rule for switching an account off or on, for
 // SetUserDisabled and the MCP admin_set_user_disabled tool.
-func ( handlers *Handlers ) applyUserDisabled( self_id uint64 , user_id uint64 , disabled bool ) ( refused *refusal ) {
+func ( handlers *Handlers ) applyUserDisabled( self_id uint64 , user_id uint64 , disabled bool , by map[string]any ) ( refused *refusal ) {
 	if _ , get_err := models.GetUser( handlers.Store , user_id ); get_err != nil {
 		refused = &refusal{ status: fiber.StatusNotFound , message: "no such user" }
 		return
@@ -652,7 +684,7 @@ func ( handlers *Handlers ) applyUserDisabled( self_id uint64 , user_id uint64 ,
 	// checks are in the model so every route gets them.
 	if disable_err := models.SetUserDisabledAs( handlers.Store , user_id , self_id , disabled ); disable_err != nil {
 		if errors.Is( disable_err , models.ErrOwnerProtected ) {
-			refused = &refusal{ status: fiber.StatusForbidden , message: "the owner account cannot be disabled" }
+			refused = &refusal{ status: fiber.StatusForbidden , message: "the owner account cannot be disabled" , code: apidoc.CodeOwnerProtected }
 			return
 		}
 		refused = actOnRefusal( disable_err , "disable or enable" )
@@ -681,7 +713,7 @@ func ( handlers *Handlers ) revokeCredentials( self_id uint64 , user_id uint64 )
 	revoked , revoke_err := models.RevokeAllCredentialsAs( handlers.Store , user_id , self_id )
 	if revoke_err != nil {
 		if errors.Is( revoke_err , models.ErrOwnerProtected ) {
-			refused = &refusal{ status: fiber.StatusForbidden , message: "the owner account's access cannot be revoked" }
+			refused = &refusal{ status: fiber.StatusForbidden , message: "the owner account's access cannot be revoked" , code: apidoc.CodeOwnerProtected }
 			return
 		}
 		refused = actOnRefusal( revoke_err , "revoke the access of" )

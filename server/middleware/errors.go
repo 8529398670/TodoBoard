@@ -6,6 +6,7 @@ import (
 
 	fiber "github.com/gofiber/fiber/v3"
 
+	apidoc "todoboard/server/apidoc"
 	errorpage "todoboard/server/errorpage"
 	logs "todoboard/server/logs"
 )
@@ -17,7 +18,7 @@ import (
 func NewErrorHandler( pages *errorpage.Pages ) ( handler fiber.ErrorHandler ) {
 	handler = func( c fiber.Ctx , handler_err error ) ( response_err error ) {
 		code := errorStatus( handler_err )
-		body := fiber.Map{ "error": statusText( code ) }
+		body := apidoc.ErrorBody( code , statusText( code ) , "" )
 		id := ""
 		if code >= 500 {
 			id = RequestIDFrom( c )

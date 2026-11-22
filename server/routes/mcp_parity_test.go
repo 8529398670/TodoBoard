@@ -132,8 +132,11 @@ func TestTheSpecSaysWhoMayCallEachRoute( t *testing.T ) {
 		raw , _ := io.ReadAll( response.Body )
 		var reply struct {
 			Error string `json:"error"`
+			Credential string `json:"credential"`
 		}
 		json.Unmarshal( raw , &reply )
+		// Rotating the key the walk calls with gives it a new secret: go on with that.
+		if operation.Path == "/api/keys/self/rotate" && response.StatusCode == fiber.StatusOK { fixture.adminKey = reply.Credential }
 		refused := ( response.StatusCode == fiber.StatusForbidden && strings.Contains( reply.Error , "requires a signed-in session" ) ) ||
 			( response.StatusCode == fiber.StatusNotFound && reply.Error == "not_found" )
 		if operation.KeyOK && refused {

@@ -249,6 +249,7 @@ const App = {
     loading.push( Sessions.init( me ) );
     Backup.initAccount( me );
     loading.push( Keys.init( me ) );
+    loading.push( Portal.init( me ) );
     Mcp.init( me );
     About.init( me );
 
@@ -641,6 +642,7 @@ const App = {
       // login link they could still use.
       const badges = [ Dom.badge( I18n.get( statusKey ) , statusTone ) ];
       if ( user.two_factor && I18n.get( "admin.two_factor_badge" ) !== "" ) badges.push( Dom.badge( I18n.get( "admin.two_factor_badge" ) , "info" ) );
+      if ( user.kind === "service" ) badges.push( Dom.badge( I18n.get( "admin.service_badge" ) , "info" ) );
       if ( user.has_password && I18n.get( "admin.password_badge" ) !== "" ) {
         badges.push( Dom.badge( I18n.get( user.password_blocked ? "admin.password_blocked_badge" : "admin.password_badge" ) , user.password_blocked ? "warning" : "secondary" ) );
       }

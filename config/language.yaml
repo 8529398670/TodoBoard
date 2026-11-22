@@ -233,6 +233,7 @@ admin:
   owner_label: "owner"
   # Badges in the Status column. Empty one to stop showing it.
   two_factor_badge: "2FA"
+  service_badge: "Service"
   password_badge: "password"
   password_blocked_badge: "password blocked"
   # The ⋯ menu on a user's row, and what its items do.
@@ -413,6 +414,19 @@ invite_links:
   switch_on_confirm: "Switch this link back on? The same link works again for anyone who has it, until it expires or its places run out."
   switched_on: "Invite link switched back on."
 
+portal:
+  heading: "ProjectPortal"
+  description: "Connect ProjectPortal through an account of its own, never yours. Its key may make keys for the accounts it runs, and never signs anyone in. Only you can change that account or cut it off."
+  name_label: "Account name"
+  days_label: "Key lifetime (days)"
+  connect_button: "Connect"
+  paste_hint: "Paste it into ProjectPortal: Catalog → this app → Admin key"
+  status_heading: "Its keys"
+  none: "Not connected."
+  expires: "Expires {date}"
+  never_expires: "Never expires"
+  disconnect_button: "Disconnect"
+  disconnect_confirm: "Disconnect ProjectPortal? Its keys stop working now, and so does every key and login link they made."
 admin_keys:
   heading: "All API keys"
   description: "Every key in this app and who owns it. Revoke or delete one to cut off whatever is using it, right away."
@@ -1777,6 +1791,7 @@ logs:
   table_ip: "IP"
   anonymous: "signed out"
   via_key: "(API key)"
+  via_named_key: "· key {name}"
 
 # The Jobs screen (owner only; static/js/jobs.js). A job you add can have a
 # name here, as job_<name> with dashes as underscores; one without shows its

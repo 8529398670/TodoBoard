@@ -16,6 +16,7 @@ import (
 
 	fiber "github.com/gofiber/fiber/v3"
 
+	apidoc "todoboard/server/apidoc"
 	config "todoboard/server/config"
 	db "todoboard/server/db"
 	encryption "todoboard/server/encryption"
@@ -241,7 +242,7 @@ func ( guard *Guard ) resolveAPIKey( c fiber.Ctx ) ( actor *Actor ) {
 // you can do silently.
 func ( guard *Guard ) RequireLogin( c fiber.Ctx ) ( err error ) {
 	if ActorFrom( c ) == nil {
-		err = c.Status( fiber.StatusUnauthorized ).JSON( fiber.Map{ "error": "not authenticated" } )
+		err = c.Status( fiber.StatusUnauthorized ).JSON( apidoc.ErrorBody( fiber.StatusUnauthorized , "not authenticated" , apidoc.CodeNotAuthenticated ) )
 		return
 	}
 	err = c.Next()
@@ -251,11 +252,11 @@ func ( guard *Guard ) RequireLogin( c fiber.Ctx ) ( err error ) {
 func ( guard *Guard ) RequireAdmin( c fiber.Ctx ) ( err error ) {
 	actor := ActorFrom( c )
 	if actor == nil {
-		err = c.Status( fiber.StatusUnauthorized ).JSON( fiber.Map{ "error": "not authenticated" } )
+		err = c.Status( fiber.StatusUnauthorized ).JSON( apidoc.ErrorBody( fiber.StatusUnauthorized , "not authenticated" , apidoc.CodeNotAuthenticated ) )
 		return
 	}
 	if actor.IsAdmin() == false {
-		err = c.Status( fiber.StatusForbidden ).JSON( fiber.Map{ "error": "forbidden" } )
+		err = c.Status( fiber.StatusForbidden ).JSON( apidoc.ErrorBody( fiber.StatusForbidden , "forbidden" , apidoc.CodeNotAdmin ) )
 		return
 	}
 	err = c.Next()
@@ -294,11 +295,11 @@ func ( guard *Guard ) RequireAdmin( c fiber.Ctx ) ( err error ) {
 func ( guard *Guard ) RequireSession( c fiber.Ctx ) ( err error ) {
 	actor := ActorFrom( c )
 	if actor == nil {
-		err = c.Status( fiber.StatusUnauthorized ).JSON( fiber.Map{ "error": "not authenticated" } )
+		err = c.Status( fiber.StatusUnauthorized ).JSON( apidoc.ErrorBody( fiber.StatusUnauthorized , "not authenticated" , apidoc.CodeNotAuthenticated ) )
 		return
 	}
 	if actor.ViaAPIKey() {
-		err = c.Status( fiber.StatusForbidden ).JSON( fiber.Map{ "error": "this endpoint requires a signed-in session, not an API key" } )
+		err = c.Status( fiber.StatusForbidden ).JSON( apidoc.ErrorBody( fiber.StatusForbidden , "this endpoint requires a signed-in session, not an API key" , apidoc.CodeSessionOnly ) )
 		return
 	}
 	err = c.Next()
@@ -318,6 +319,10 @@ func ViewerMayCall( method string , path string ) ( ok bool ) {
 		ok = true
 	case path == "/api/account/sessions/revoke-others":
 		ok = true
+	// A key rotating its own secret takes the old one away: a viewer key
+	// keeps itself current like any other (portal contract v3).
+	case path == "/api/keys/self/rotate":
+		ok = true
 	case strings.HasPrefix( path , "/api/account/sessions/" ) && strings.HasSuffix( path , "/revoke" ):
 		ok = true
 	}
@@ -334,7 +339,7 @@ func signingIn( path string ) ( result bool ) {
 
 // ViewOnly is the viewer role's one guard, in front of every route: a
 // viewer's session or key may read, and may send only what ViewerMayCall
-// lets through. Anything else answers 403 {"error":"view_only"}, whatever
+// lets through. Anything else answers 403 {"error":"view_only","code":"view_only"}, whatever
 // the route, so a route an app adds later is covered without remembering to.
 // /mcp is let through and holds each tool to the same rule (server/mcp).
 func ( guard *Guard ) ViewOnly( c fiber.Ctx ) ( err error ) {
@@ -344,7 +349,7 @@ func ( guard *Guard ) ViewOnly( c fiber.Ctx ) ( err error ) {
 		err = c.Next()
 		return
 	}
-	err = c.Status( fiber.StatusForbidden ).JSON( fiber.Map{ "error": "view_only" } )
+	err = c.Status( fiber.StatusForbidden ).JSON( apidoc.ErrorBody( fiber.StatusForbidden , "view_only" , apidoc.CodeViewOnly ) )
 	return
 }
 
@@ -357,11 +362,11 @@ func ( guard *Guard ) RequireAPIKey( c fiber.Ctx ) ( err error ) {
 	actor := ActorFrom( c )
 	if actor == nil {
 		c.Set( fiber.HeaderWWWAuthenticate , "Bearer" )
-		err = c.Status( fiber.StatusUnauthorized ).JSON( fiber.Map{ "error": "not authenticated" } )
+		err = c.Status( fiber.StatusUnauthorized ).JSON( apidoc.ErrorBody( fiber.StatusUnauthorized , "not authenticated" , apidoc.CodeNotAuthenticated ) )
 		return
 	}
 	if actor.ViaAPIKey() == false {
-		err = c.Status( fiber.StatusForbidden ).JSON( fiber.Map{ "error": "this endpoint requires an API key, not a signed-in session" } )
+		err = c.Status( fiber.StatusForbidden ).JSON( apidoc.ErrorBody( fiber.StatusForbidden , "this endpoint requires an API key, not a signed-in session" , apidoc.CodeForbidden ) )
 		return
 	}
 	err = c.Next()
@@ -385,7 +390,7 @@ func ( guard *Guard ) RequireOwner( c fiber.Ctx ) ( err error ) {
 		allowed = owner_err == nil && owner_id != 0 && actor.User.ID == owner_id
 	}
 	if allowed == false {
-		err = c.Status( fiber.StatusNotFound ).JSON( fiber.Map{ "error": "not_found" } )
+		err = c.Status( fiber.StatusNotFound ).JSON( apidoc.ErrorBody( fiber.StatusNotFound , "not_found" , apidoc.CodeNotFound ) )
 		return
 	}
 	err = c.Next()
@@ -418,6 +423,7 @@ func LogActor( actor *Actor ) ( result *logs.Actor ) {
 	}
 	if actor.APIKey != nil {
 		result.KeyID = actor.APIKey.ID
+		result.KeyName = actor.APIKey.Name
 	}
 	return
 }

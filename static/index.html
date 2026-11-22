@@ -915,7 +915,8 @@
 
         <!-- Every key in the app, whoever owns it: the admin answer to "what
              has standing access", and where a lost laptop's key gets killed. -->
-        <section class="card view" data-view="all-keys" id="admin-keys-panel" hidden>
+        <section class="view view-stack" data-view="all-keys" id="admin-keys-panel" hidden>
+          <div class="card">
           <div class="card-body">
             <h2 class="h4 mb-3" data-i18n="admin_keys.heading"></h2>
             <p class="text-body-secondary" data-i18n="admin_keys.description"></p>
@@ -948,6 +949,42 @@
               </table>
             </div>
           </div>
+          </div>
+
+          <!-- ProjectPortal's own account (portal.js): the owner's only. -->
+          <section class="card" id="portal-card" hidden>
+            <div class="card-body">
+              <h3 class="card-title"><i class="bi bi-plug me-2" aria-hidden="true"></i><span data-i18n="portal.heading"></span></h3>
+              <p class="text-body-secondary" data-i18n="portal.description"></p>
+              <form id="portal-connect-form" class="row g-3 align-items-end" autocomplete="off">
+                <div class="col-12 col-md">
+                  <label for="portal-name" class="form-label" data-i18n="portal.name_label"></label>
+                  <input id="portal-name" class="form-control" name="name" maxlength="80" value="ProjectPortal" required />
+                </div>
+                <div class="col-12 col-md-3">
+                  <label for="portal-days" class="form-label" data-i18n="portal.days_label"></label>
+                  <input id="portal-days" class="form-control" name="days" type="number" min="1" max="365" value="365" inputmode="numeric" required />
+                </div>
+                <div class="col-12 col-md-auto">
+                  <button type="submit" class="btn btn-primary w-100"><i class="bi bi-link-45deg me-1" aria-hidden="true"></i><span data-i18n="portal.connect_button"></span></button>
+                </div>
+              </form>
+
+              <div id="portal-key-box" class="alert alert-info alert-dismissible mt-3 mb-0" hidden>
+                <button type="button" class="btn-close" data-box-close="portal-name" data-i18n-attr="aria-label:nav.close"></button>
+                <p class="mb-2" data-i18n="api_keys.secret_notice"></p>
+                <div class="link-box">
+                  <code id="portal-key-value"></code>
+                  <button id="copy-portal-key-button" type="button" class="btn btn-sm btn-outline-secondary" data-i18n="api_keys.copy_button"></button>
+                </div>
+                <p class="mt-2 mb-0" data-i18n="portal.paste_hint"></p>
+              </div>
+
+              <h4 class="h6 mt-4" data-i18n="portal.status_heading"></h4>
+              <ul id="portal-status" class="list-group mb-3"></ul>
+              <button id="portal-disconnect-button" type="button" class="btn btn-outline-danger" hidden><i class="bi bi-plug-fill me-1" aria-hidden="true"></i><span data-i18n="portal.disconnect_button"></span></button>
+            </div>
+          </section>
         </section>
 
         <!-- The activity log, owner only; see logs.js. data-no-track keeps
@@ -1151,6 +1188,7 @@
   <script src="/js/nav.js"></script>
   <script src="/js/pager.js"></script>
   <script src="/js/keys.js"></script>
+  <script src="/js/portal.js"></script>
   <script src="/js/mcp.js"></script>
   <script src="/js/join.js"></script>
   <script src="/js/pin.js"></script>

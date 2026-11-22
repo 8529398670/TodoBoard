@@ -55,6 +55,7 @@ Usage:
   transfer-owner  -user-id 3         make another enabled admin the owner
   list-keys       [-user-id 3]       API keys, whose they are, when last used
   create-key      -user-id 3 -name "CI" [-role user] [-days 90]
+  portal-connect  [-name ProjectPortal] [-days 365]   ProjectPortal's own account and admin key
   revoke-key      -key-id abc123     kill one API key now, keep its record
   delete-key      -key-id abc123     kill one API key now and remove its record
   create-invite   -user-id 1 -label "Book club" [-uses 10] [-days 30]
@@ -119,6 +120,7 @@ type backend interface {
 	TransferOwner( user_id uint64 ) ( user control.UserResponse , err error )
 	ListAPIKeys( user_id uint64 ) ( keys []control.APIKeyResponse , err error )
 	CreateAPIKey( user_id uint64 , name string , role string , expires_in_days *int ) ( key control.APIKeyResponse , err error )
+	PortalConnect( name string , days int ) ( key control.APIKeyResponse , err error )
 	RevokeAPIKey( key_id string ) ( key control.APIKeyResponse , err error )
 	DeleteAPIKey( key_id string ) ( key control.APIKeyResponse , err error )
 	CreateInviteLink( user_id uint64 , label string , max_uses int , days int ) ( link control.InviteLinkResponse , err error )
@@ -207,6 +209,8 @@ func Run( arguments []string ) ( err error ) {
 		err = commandListKeys( back , rest )
 	case "create-key":
 		err = commandCreateKey( back , cfg , rest )
+	case "portal-connect":
+		err = commandPortalConnect( back , cfg , rest )
 	case "revoke-key":
 		err = commandRevokeKey( back , rest )
 	case "delete-key":
@@ -341,6 +345,11 @@ func ( b *controlBackend ) ListAPIKeys( user_id uint64 ) ( keys []control.APIKey
 
 func ( b *controlBackend ) CreateAPIKey( user_id uint64 , name string , role string , expires_in_days *int ) ( key control.APIKeyResponse , err error ) {
 	key , err = b.client.CreateAPIKey( user_id , name , role , expires_in_days )
+	return
+}
+
+func ( b *controlBackend ) PortalConnect( name string , days int ) ( key control.APIKeyResponse , err error ) {
+	key , err = b.client.PortalConnect( name , days )
 	return
 }
 
@@ -553,6 +562,17 @@ func ( b *directBackend ) ListAPIKeys( user_id uint64 ) ( keys []control.APIKeyR
 	for _ , key := range stored {
 		keys = append( keys , fromKeyModel( key , names[ key.UserID ] , "" ) )
 	}
+	return
+}
+
+func ( b *directBackend ) PortalConnect( name string , days int ) ( key control.APIKeyResponse , err error ) {
+	if b.cfg.APIKeysEnabled == false {
+		err = fmt.Errorf( "api keys are disabled on this server (auth.api_keys: false)" )
+		return
+	}
+	credential , created , user , err := models.ConnectPortal( b.store , 0 , name , time.Duration( days ) * 24 * time.Hour )
+	if err != nil { return }
+	key = fromKeyModel( created , user.DisplayName , credential )
 	return
 }
 
@@ -967,6 +987,26 @@ func commandCreateKey( back backend , cfg *config.Config , arguments []string ) 
 	bootstrap.PrintAPIKey( cfg ,
 		fmt.Sprintf( "%s-scoped %q for #%d %q" , key.Role , key.Name , key.UserID , key.DisplayName ) ,
 		key.Credential , expires )
+	return
+}
+
+// commandPortalConnect is the owner's Connect on the API keys screen, for a
+// headless install: ProjectPortal's service account (made when there is none
+// by that name) and one admin key for it that may make keys, shown once.
+func commandPortalConnect( back backend , cfg *config.Config , arguments []string ) ( err error ) {
+	set := flag.NewFlagSet( "portal-connect" , flag.ExitOnError )
+	name := set.String( "name" , models.DefaultPortalName , "the service account's name" )
+	days := set.Int( "days" , 365 , "the key's lifetime in days, 1-365" )
+	set.Parse( arguments )
+	if *days < 1 || *days > 365 {
+		err = fmt.Errorf( "-days must be 1-365" )
+		return
+	}
+	key , err := back.PortalConnect( *name , *days )
+	if err != nil { return }
+	bootstrap.PrintAPIKey( cfg ,
+		fmt.Sprintf( "ProjectPortal's admin key %q for #%d %q -- paste it into ProjectPortal: Catalog, this app, Admin key" , key.Name , key.UserID , key.DisplayName ) ,
+		key.Credential , formatKeyTime( key.ExpiresAt , "never" ) )
 	return
 }
 
