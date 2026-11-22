@@ -59,6 +59,7 @@ Every tool POST /mcp offers. Written by scripts/api_docs.sh from the registered 
 | [`create_label`](#create_label) | [`POST /api/boards/{board_id}/labels`](api.md#post-apiboardsboard_idlabels) | any key | Add a label |
 | [`create_list`](#create_list) | [`POST /api/boards/{board_id}/lists`](api.md#post-apiboardsboard_idlists) | any key | Add a column |
 | [`create_my_login_link`](#create_my_login_link) | [`POST /api/account/login-link`](api.md#post-apiaccountlogin-link) | any key | A login link for yourself |
+| [`create_view_share`](#create_view_share) | [`POST /api/boards/{board_id}/shares`](api.md#post-apiboardsboard_idshares) | admin keys | Make a view-only share link |
 | [`delete_card`](#delete_card) | [`POST /api/boards/{board_id}/cards/{card_id}/delete`](api.md#post-apiboardsboard_idcardscard_iddelete) | any key | Delete a card |
 | [`delete_card_bulk`](#delete_card_bulk) | [`POST /api/bulk/boards/cards/delete`](api.md#post-apibulkboardscardsdelete) | any key | Delete a card, for many at once |
 | [`delete_checklist_item`](#delete_checklist_item) | [`POST /api/boards/{board_id}/cards/{card_id}/checklist/{item_id}/delete`](api.md#post-apiboardsboard_idcardscard_idchecklistitem_iddelete) | any key | Delete a checklist item |
@@ -995,6 +996,28 @@ A link that signs your own account in on a browser or another device. An API key
 |---|---|---|---|---|
 | `expires_in_minutes` | integer or null | no | 0 to 525600 | 0 never expires. Default auth.login_token_ttl_seconds for a link that works once, auth.multi_use_login_token_ttl_seconds otherwise. |
 | `max_uses` | integer or null | no | 0 to 1000 | Sign-ins the link allows: 1-1000, or 0 for unlimited. Default 1. |
+
+## create_view_share
+
+Make a read-only link to the whole board for anyone holding it, for days days (0: no end); visible_list_ids limits which columns' cards it shows. Send mode "view" and leave card_id and list_id out: comment and edit links, and card or column links, need the board's owner in a browser. share_url is the link, shown only this once; revoke_share stops it. Only the board's owner, with an admin-role key.
+
+|  |  |
+|---|---|
+| Route | [`POST /api/boards/{board_id}/shares`](api.md#post-apiboardsboard_idshares) |
+| Read only | no |
+| Destructive | no |
+
+**Arguments**
+
+| Field | Type | Required | Limits | Description |
+|---|---|---|---|---|
+| `board` | string or integer | yes |  | The board's id, or its URL slug (the part after /b/), from list_boards. |
+| `card_id` | integer | no |  | A card's id, for a link to that card alone (0: not a card link). An API key cannot set it. |
+| `days` | integer | no |  | How many days the link works, up to 3650 (0: no end). |
+| `label` | string | no |  | A name for the link, up to 80 characters, shown in list_shares. |
+| `list_id` | integer | no |  | A column's id, for a link to that column alone (0: not a column link). An API key cannot set it. |
+| `mode` | string | yes | one of `view`, `comment`, `edit` | view, comment or edit. An API key may make view links only. |
+| `visible_list_ids` | array of integer | no |  | A board link only: the columns (from get_board, board.lists) whose cards it shows; the rest show their titles only. Empty: every column. |
 
 ## delete_card
 

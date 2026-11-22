@@ -6183,7 +6183,7 @@ An empty object.
 | POST | [`/api/boards/{board_id}/cards/{card_id}/share-user`](#post-apiboardsboard_idcardscard_idshare-user) | Share a card with someone | browser session or API key, anyone signed in |
 | POST | [`/api/boards/{board_id}/members`](#post-apiboardsboard_idmembers) | Add, change or remove a board member | browser session or API key, anyone signed in |
 | GET | [`/api/boards/{board_id}/shares`](#get-apiboardsboard_idshares) | List a board's share links | browser session or API key, anyone signed in |
-| POST | [`/api/boards/{board_id}/shares`](#post-apiboardsboard_idshares) | Make a share link | browser session only, anyone signed in |
+| POST | [`/api/boards/{board_id}/shares`](#post-apiboardsboard_idshares) | Make a share link | browser session or API key, anyone signed in |
 | POST | [`/api/boards/{board_id}/shares/{link_id}/delete`](#post-apiboardsboard_idshareslink_iddelete) | Delete a share link | browser session or API key, anyone signed in |
 | POST | [`/api/boards/{board_id}/shares/{link_id}/revoke`](#post-apiboardsboard_idshareslink_idrevoke) | Revoke a share link | browser session or API key, anyone signed in |
 
@@ -6306,11 +6306,12 @@ Array of object.
 
 Make a share link
 
-Make a link that opens the board, one column (list_id) or one card (card_id) to anyone holding it, to view or to edit, for days days (0: no end). share_path is the link, shown only this once. Only the board's owner may, from a browser session.
+Make a link that opens the board, one column (list_id) or one card (card_id) to anyone holding it, to view, comment or edit, for days days (0: no end). share_path is the link, shown only this once. Only the board's owner may. From a browser session any link; from an API key only a view link to the whole board (mode view, no card_id or list_id), and only an admin-role key: anything else from a key is refused with 403.
 
 |  |  |
 |---|---|
-| Who may call | browser session only, anyone signed in |
+| Who may call | browser session or API key, anyone signed in |
+| MCP tool | [`create_view_share`](mcp.md#create_view_share) |
 | Errors | 400, 401, 403, 429, 503 |
 
 **Parameters**
@@ -6323,15 +6324,15 @@ Make a link that opens the board, one column (list_id) or one card (card_id) to 
 
 | Field | Type | Required | Limits | Description |
 |---|---|---|---|---|
-| `card_id` | integer | no |  |  |
+| `card_id` | integer | no |  | A card's id, for a link to that card alone (0: not a card link). An API key cannot set it. |
 | `csrf_token` | string | no |  | From GET /api/me. Browser sessions only. |
-| `days` | integer | no |  |  |
-| `label` | string | no |  |  |
-| `list_id` | integer | no |  |  |
-| `mode` | string | yes |  |  |
-| `visible_list_ids` | array of integer | no |  |  |
+| `days` | integer | no |  | How many days the link works, up to 3650 (0: no end). |
+| `label` | string | no |  | A name for the link, up to 80 characters, shown in list_shares. |
+| `list_id` | integer | no |  | A column's id, for a link to that column alone (0: not a column link). An API key cannot set it. |
+| `mode` | string | yes | one of `view`, `comment`, `edit` | view, comment or edit. An API key may make view links only. |
+| `visible_list_ids` | array of integer | no |  | A board link only: the columns (from get_board, board.lists) whose cards it shows; the rest show their titles only. Empty: every column. |
 
-**Reply 200**: Success
+**Reply 201**: Success
 
 An empty object.
 

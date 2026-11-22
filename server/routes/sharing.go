@@ -1,11 +1,15 @@
 package routes
 
 import (
+	strconv "strconv"
+
 	fiber "github.com/gofiber/fiber/v3"
 
 	access "todoboard/server/access"
 	apidoc "todoboard/server/apidoc"
+	logs "todoboard/server/logs"
 	models "todoboard/server/models"
+	security "todoboard/server/security"
 )
 
 // Sharing is the board owner's business (access.Manage): who is on the
@@ -25,13 +29,13 @@ type cardShareRequest struct {
 
 type shareLinkRequest struct {
 	boardPath
-	CardID uint64 `json:"card_id,omitempty"`
-	ListID uint64 `json:"list_id,omitempty"`
+	CardID uint64 `json:"card_id,omitempty" jsonschema_description:"A card's id, for a link to that card alone (0: not a card link). An API key cannot set it."`
+	ListID uint64 `json:"list_id,omitempty" jsonschema_description:"A column's id, for a link to that column alone (0: not a column link). An API key cannot set it."`
 	// A board link only: the columns whose cards it shows (empty: all).
-	VisibleListIDs []uint64 `json:"visible_list_ids,omitempty"`
-	Mode   string `json:"mode"`
-	Label  string `json:"label,omitempty"`
-	Days   int    `json:"days,omitempty"`
+	VisibleListIDs []uint64 `json:"visible_list_ids,omitempty" jsonschema_description:"A board link only: the columns (from get_board, board.lists) whose cards it shows; the rest show their titles only. Empty: every column."`
+	Mode   string `json:"mode" jsonschema:"enum=view,enum=comment,enum=edit" jsonschema_description:"view, comment or edit. An API key may make view links only."`
+	Label  string `json:"label,omitempty" jsonschema_description:"A name for the link, up to 80 characters, shown in list_shares."`
+	Days   int    `json:"days,omitempty" jsonschema_description:"How many days the link works, up to 3650 (0: no end)."`
 }
 
 type shareLinkPath struct {
@@ -167,17 +171,36 @@ func ( handlers *Handlers ) listShareLinks( c fiber.Ctx , in *boardPath ) ( repl
 	return
 }
 
-// createShareLink mints a credential, so -- like creating a user or an API
-// key -- it needs a browser session. A leaked API key cannot hand the board
-// out to the world.
+// createShareLink mints a credential, so it is guarded more tightly than the
+// rest of sharing. From a browser session the board's owner may make any
+// link. An API key may make one only when it has the admin role (the key's
+// role, narrowed by its account's, see models.NarrowRole) and only a view
+// link to the whole board: a leaked key can at worst let the world read a
+// board its account owns, never change it, and every such link is in the
+// audit log under the key's name. Comment and edit links, card and column
+// links, and every non-admin key stay session-only.
 //
 // @route("POST /api/boards/{board_id}/shares", summary="Make a share link",
-//     tag="Sharing", access=SESSION_ONLY,
+//     tag="Sharing", status=201, errors=(403,),
 //     description="Make a link that opens the board, one column (list_id) or one card (card_id) to anyone "
-//         "holding it, to view or to edit, for days days (0: no end). share_path is the link, shown only "
-//         "this once. Only the board's owner may, from a browser session.",
+//         "holding it, to view, comment or edit, for days days (0: no end). share_path is the link, shown "
+//         "only this once. Only the board's owner may. From a browser session any link; from an API key "
+//         "only a view link to the whole board (mode view, no card_id or list_id), and only an admin-role "
+//         "key: anything else from a key is refused with 403.",
+//     mcp="create_view_share", admin_only=True, call=withShareURL,
+//     mcp_title="Make a view-only share link",
+//     mcp_description="Make a read-only link to the whole board for anyone holding it, for days days (0: "
+//         "no end); visible_list_ids limits which columns' cards it shows. Send mode \"view\" and leave "
+//         "card_id and list_id out: comment and edit links, and card or column links, need the board's "
+//         "owner in a browser. share_url is the link, shown only this once; revoke_share stops it. Only "
+//         "the board's owner, with an admin-role key.",
 // )
 func ( handlers *Handlers ) createShareLink( c fiber.Ctx , in *shareLinkRequest ) ( reply *fiber.Map , err error ) {
+	actor := security.ActorFrom( c )
+	via_key := actor != nil && actor.ViaAPIKey()
+	if via_key {
+		if err = keyShareRefusal( actor , in ); err != nil { return }
+	}
 	principal , board , err := handlers.requireBoardAt( c , in.BoardID , access.Manage )
 	if err != nil { return }
 	credential , link , issue_err := models.IssueShareLink( handlers.Store , board.ID , in.CardID , in.ListID , in.VisibleListIDs , in.Mode , in.Label , in.Days , principal.UserID )
@@ -185,9 +208,33 @@ func ( handlers *Handlers ) createShareLink( c fiber.Ctx , in *shareLinkRequest 
 		err = modelErr( issue_err )
 		return
 	}
+	if via_key {
+		handlers.audit( c , logs.KindAdmin , "view share link made with API key " + strconv.Quote( actor.APIKey.Name ) , fiber.Map{
+			"key_id": actor.APIKey.ID , "key_name": actor.APIKey.Name ,
+			"board_id": board.ID , "board_title": board.Title , "link_id": link.ID , "mode": link.Mode ,
+			"label": link.Label , "expires_at": link.ExpiresAt ,
+		} )
+	}
 	payload := shareLinkPayload( link )
 	payload[ "share_path" ] = "/s/" + credential
 	reply = &payload
+	return
+}
+
+// What an API key is told when it asks for a share link it may not make.
+const (
+	shareKeyNotAdmin = "only an admin-role API key can make a share link; use a signed-in browser session"
+	shareKeyViewOnly = "an API key can make only a view link to the whole board (mode view, no card_id or list_id); comment and edit links, and card or column links, need a signed-in browser session"
+)
+
+// keyShareRefusal is why a key may not make the link asked for, or nil.
+func keyShareRefusal( actor *security.Actor , in *shareLinkRequest ) ( err error ) {
+	switch {
+	case actor.IsAdmin() == false:
+		err = refuse( fiber.StatusForbidden , shareKeyNotAdmin )
+	case in.Mode != models.ModeView || in.CardID != 0 || in.ListID != 0:
+		err = refuse( fiber.StatusForbidden , shareKeyViewOnly )
+	}
 	return
 }
 

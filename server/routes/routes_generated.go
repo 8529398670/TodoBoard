@@ -730,11 +730,11 @@ func ( handlers *Handlers ) mountDeclared( app *fiber.App ) {
 	} , handlers.listShareLinks , handlers.Guard.RequireLogin )
 	apidoc.Mount( app , "POST" , "/api/boards/{board_id}/shares" , apidoc.Op{
 		Summary: "Make a share link",
-		Description: "Make a link that opens the board, one column (list_id) or one card (card_id) to anyone holding it, to view or to edit, for days days (0: no end). share_path is the link, shown only this once. Only the board's owner may, from a browser session.",
+		Description: "Make a link that opens the board, one column (list_id) or one card (card_id) to anyone holding it, to view, comment or edit, for days days (0: no end). share_path is the link, shown only this once. Only the board's owner may. From a browser session any link; from an API key only a view link to the whole board (mode view, no card_id or list_id), and only an admin-role key: anything else from a key is refused with 403.",
 		Tag: "Sharing",
-		Access: apidoc.SessionOnly,
+		Status: 201,
 		Errors: []int{ 400 , 401 , 403 },
-	} , handlers.createShareLink , handlers.Guard.RequireLogin , handlers.Guard.RequireSession )
+	} , handlers.createShareLink , handlers.Guard.RequireLogin )
 	apidoc.Mount( app , "POST" , "/api/boards/{board_id}/shares/{link_id}/delete" , apidoc.Op{
 		Summary: "Delete a share link",
 		Description: "Remove one of the board's share links from the list (link_id from list_shares); a live one stops working. Only the board's owner may.",
@@ -1901,6 +1901,12 @@ func ( handlers *Handlers ) registerDeclaredTools( server *mcp.Server ) {
 		Title: "A login link for yourself",
 		Description: "A link that signs your own account in on a browser or another device. An API key may ask only if your account let it, from a browser session (POST /api/keys/{key_id}/sign-in); its link works once, for at most 15 minutes. Only works if this key was allowed to make sign-in links, on the API keys card. Answers with login_url (open it to sign in; it works once, for at most 15 minutes), expires_at and max_uses. Any older link the account could still use stops working; its signed-in devices stay signed in. Revoking or deleting this API key voids the link while it is unused, and signs out every device it signed in.",
 	} , withLoginLinkURL ) )
+	server.Register( mcp.ForRoute( "POST /api/boards/{board_id}/shares" , handlers.createShareLink , mcp.Tool{
+		Name: "create_view_share",
+		Title: "Make a view-only share link",
+		Description: "Make a read-only link to the whole board for anyone holding it, for days days (0: no end); visible_list_ids limits which columns' cards it shows. Send mode \"view\" and leave card_id and list_id out: comment and edit links, and card or column links, need the board's owner in a browser. share_url is the link, shown only this once; revoke_share stops it. Only the board's owner, with an admin-role key.",
+		AdminOnly: true,
+	} , withShareURL ) )
 	server.Register( mcp.ForRoute( "POST /api/boards/{board_id}/cards/{card_id}/delete" , handlers.deleteCard , mcp.Tool{
 		Name: "delete_card",
 		Title: "Delete a card",

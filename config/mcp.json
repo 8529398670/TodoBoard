@@ -2288,6 +2288,74 @@
       "title": "A login link for yourself"
     },
     {
+      "adminOnly": true,
+      "annotations": {
+        "destructiveHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": "Make a view-only share link"
+      },
+      "description": "Make a read-only link to the whole board for anyone holding it, for days days (0: no end); visible_list_ids limits which columns' cards it shows. Send mode \"view\" and leave card_id and list_id out: comment and edit links, and card or column links, need the board's owner in a browser. share_url is the link, shown only this once; revoke_share stops it. Only the board's owner, with an admin-role key.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "board": {
+            "description": "The board's id, or its URL slug (the part after /b/), from list_boards.",
+            "oneOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "minimum": 1,
+                "type": "integer"
+              }
+            ]
+          },
+          "card_id": {
+            "description": "A card's id, for a link to that card alone (0: not a card link). An API key cannot set it.",
+            "type": "integer"
+          },
+          "days": {
+            "description": "How many days the link works, up to 3650 (0: no end).",
+            "type": "integer"
+          },
+          "label": {
+            "description": "A name for the link, up to 80 characters, shown in list_shares.",
+            "type": "string"
+          },
+          "list_id": {
+            "description": "A column's id, for a link to that column alone (0: not a column link). An API key cannot set it.",
+            "type": "integer"
+          },
+          "mode": {
+            "description": "view, comment or edit. An API key may make view links only.",
+            "enum": [
+              "view",
+              "comment",
+              "edit"
+            ],
+            "type": "string"
+          },
+          "visible_list_ids": {
+            "description": "A board link only: the columns (from get_board, board.lists) whose cards it shows; the rest show their titles only. Empty: every column.",
+            "items": {
+              "type": "integer"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "board",
+          "mode"
+        ],
+        "type": "object"
+      },
+      "name": "create_view_share",
+      "route": "POST /api/boards/{board_id}/shares",
+      "title": "Make a view-only share link"
+    },
+    {
       "adminOnly": false,
       "annotations": {
         "destructiveHint": true,

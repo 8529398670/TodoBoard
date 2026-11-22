@@ -34,6 +34,13 @@ func withJoinURL[ In any , Out any ]( call *mcp.Call , in *In , serve func( fibe
 	return
 }
 
+// withShareURL is withLoginLinkURL for a share link: share_url beside
+// share_path.
+func withShareURL[ In any , Out any ]( call *mcp.Call , in *In , serve func( fiber.Ctx , *In ) ( *Out , error ) ) ( result any , err error ) {
+	result , err = withFullURL( call , in , serve , "share_path" , "share_url" )
+	return
+}
+
 // withFullURL is the route's reply with url_field added beside path_field,
 // the full address, from the address this agent reached /mcp at.
 func withFullURL[ In any , Out any ]( call *mcp.Call , in *In , serve func( fiber.Ctx , *In ) ( *Out , error ) , path_field string , url_field string ) ( result any , err error ) {
