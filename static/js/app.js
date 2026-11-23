@@ -468,8 +468,10 @@ const App = {
     if ( !isProtected && user.role === "admin" && me.is_owner ) {
       items.push( { key: "admin.make_user_button" , action: () => this.confirmed( "admin.make_user_confirm" , user , () => Api.setUserRole( user.id , "user" ) , "admin.role_changed_toast" , { role: I18n.get( "admin.role_user" ) } ) } );
     }
-    // Devices: the owner's own are the owner's alone.
-    if ( me.auth === "session" && ( !user.owner || me.is_owner ) ) {
+    // Devices, on the server's ladder: nobody else sees the owner's, and
+    // only the owner sees another admin's.
+    const seesSessions = me.is_owner || user.id === me.id || user.role !== "admin";
+    if ( me.auth === "session" && seesSessions ) {
       items.push( { key: "admin.sessions_button" , action: () => Sessions.showFor( user ) } );
     }
     if ( user.login_link ) {
