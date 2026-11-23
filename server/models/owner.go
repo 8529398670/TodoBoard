@@ -56,6 +56,10 @@ var (
 	// take your own admin rights away, or sign you out.
 	ErrRoleSelf = errors.New( "you cannot change your own role" )
 
+	// ErrExpirySelf is the refusal for setting your own account's expiry:
+	// whoever set it would be undone by the person it was meant to stop.
+	ErrExpirySelf = errors.New( "you cannot change when your own account expires" )
+
 	// ErrResetSelf is the refusal for resetting your own 2FA: that would skip
 	// the code turning it off asks for.
 	ErrResetSelf = errors.New( "you cannot reset your own two-factor sign-in" )

@@ -315,9 +315,14 @@ func ( handlers *Handlers ) createMyAPIKey( c fiber.Ctx , in *createAPIKeyReques
 		return
 	}
 
-	user := security.UserFrom( c )
-	credential , key , issue_err := models.IssueAPIKeyLimited( handlers.Store , user.ID , in.Name , keyRole( in.Role ) , ttl , in.BoardAccess , in.BoardIDs )
+	// The lineage: a key made in a session a key's login link opened answers
+	// to that key, and dies with it.
+	actor := security.ActorFrom( c )
+	credential , key , issue_err := models.IssueOwnAPIKey( handlers.Store , actor.User.ID , actor.LineageKey() , in.Name , keyRole( in.Role ) , ttl , in.BoardAccess , in.BoardIDs )
 	switch {
+	case errors.Is( issue_err , models.ErrParentKeyDead ):
+		err = refuse( fiber.StatusForbidden , issue_err.Error() )
+		return
 	case errors.Is( issue_err , models.ErrAPIKeyRole ):
 		err = refuse( fiber.StatusForbidden , "you cannot create an API key with more permission than your own account" )
 		return
@@ -370,8 +375,11 @@ func ( handlers *Handlers ) createAPIKeyForUser( c fiber.Ctx , in *createUserAPI
 	}
 
 	actor := security.UserFrom( c )
-	credential , key , issue_err := models.IssueAPIKeyFor( handlers.Store , actor.ID , in.UserID , in.Name , keyRole( in.Role ) , ttl )
+	credential , key , issue_err := models.IssueAPIKeyFor( handlers.Store , actor.ID , security.ActorFrom( c ).LineageKey() , in.UserID , in.Name , keyRole( in.Role ) , ttl )
 	switch {
+	case errors.Is( issue_err , models.ErrParentKeyDead ):
+		err = refuse( fiber.StatusForbidden , issue_err.Error() )
+		return
 	case errors.Is( issue_err , db.ErrNotFound ):
 		err = refuse( fiber.StatusNotFound , "no such user" )
 		return
@@ -541,6 +549,9 @@ func ( handlers *Handlers ) setKeyExpiry( c fiber.Ctx , in *apiKeyExpiryRequest 
 	case errors.Is( set_err , models.ErrAPIKeyDead ):
 		err = refuse( fiber.StatusBadRequest , "only a live key can have its expiry changed -- create a new one instead" )
 		return
+	case errors.Is( set_err , models.ErrParentKeyDead ):
+		err = refuse( fiber.StatusBadRequest , "the key that made this one no longer works, so neither can this one -- create a new one instead" )
+		return
 	case errors.Is( set_err , models.ErrOwnerProtected ):
 		err = refuse( fiber.StatusForbidden , "only the owner can change when the owner's keys expire" ).coded( apidoc.CodeOwnerProtected )
 		return
@@ -665,8 +676,11 @@ func ( handlers *Handlers ) mintKeyForUser( c fiber.Ctx , in *mintKeyRequest ) (
 	}
 	actor := security.ActorFrom( c )
 	ttl := time.Duration( in.ExpiresInDays ) * 24 * time.Hour
-	credential , key , issue_err := models.MintAPIKey( handlers.Store , actor.User.ID , actor.KeyID() , in.UserID , in.Name , in.Role , ttl )
+	credential , key , issue_err := models.MintAPIKey( handlers.Store , actor.User.ID , actor.LineageKey() , in.UserID , in.Name , in.Role , ttl )
 	switch {
+	case errors.Is( issue_err , models.ErrParentKeyDead ):
+		err = refuse( fiber.StatusForbidden , issue_err.Error() )
+		return
 	case errors.Is( issue_err , db.ErrNotFound ):
 		err = refuse( fiber.StatusNotFound , "no such user" )
 		return
@@ -946,6 +960,10 @@ func ( handlers *Handlers ) rotateSelf( c fiber.Ctx , in *apidoc.None ) ( reply 
 //         "shown only now. The old secret stops working at once; nothing else about the key changes.",
 // )
 func ( handlers *Handlers ) rotateMyAPIKey( c fiber.Ctx , in *keyIDPath ) ( reply *rotatedKeyReply , err error ) {
+	if refused := keyBornRefusal( c ); refused != nil {
+		err = refused
+		return
+	}
 	user := security.UserFrom( c )
 	key , get_err := models.GetAPIKey( handlers.Store , in.KeyID )
 	if get_err != nil || key.Deleted() || key.UserID != user.ID {
